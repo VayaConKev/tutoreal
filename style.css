@@ -97,6 +97,14 @@ textarea {
 .chip.unused { background: transparent; color: var(--muted); border: 1px dashed var(--line); }
 .fb-next { margin: 0 0 8px; }
 .fb-next .ko { display: block; color: var(--muted); font-size: 14px; }
+.choices { display: flex; flex-direction: column; gap: 8px; }
+.choice {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 14px 16px; text-align: left;
+  background: var(--bg); color: inherit; border: 1px solid var(--line); border-radius: 12px; font: inherit; cursor: pointer;
+}
+.choice span { color: var(--muted); font-size: 14px; }
+.choice.selected { border: 2px solid var(--accent); background: var(--accent-soft); }
+.choice.selected strong { color: var(--accent); }
 .review-actions { display: flex; gap: 8px; margin-top: 16px; }
 .review-actions button { margin-top: 0; }
 .hint { color: var(--muted); font-size: 13px; text-align: center; margin: 10px 0 0; }

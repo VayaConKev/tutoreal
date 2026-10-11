@@ -81,7 +81,12 @@
       </div>
       <div class="card" data-step="3" hidden>
         <h3>선생님과 공유할까요?</h3>
-        <p class="goal">공유 선택은 v0.13에서 열려요. 지금은 대화 내용과 자기 평가가 어디에도 저장되지 않아요.</p>
+        <p class="goal">공유하면 대화 글자, 피드백, 자기 평가가 선생님이 보는 시트에 저장돼요. 사용 시간은 어느 쪽을 골라도 기록돼요.</p>
+        <div class="choices" id="share">
+          <button class="choice" data-value="yes"><strong>공유하기</strong><span>선생님이 보고 도와줄 수 있어요</span></button>
+          <button class="choice" data-value="no"><strong>나만 보기</strong><span>이 휴대폰에만 남아요</span></button>
+        </div>
+        <p class="hint" id="share-msg" role="alert"></p>
       </div>
       <div class="review-actions">
         <button class="secondary" id="review-prev">이전</button>

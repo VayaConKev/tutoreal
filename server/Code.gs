@@ -15,12 +15,13 @@
  * v0.10.1: 받아쓰기에 언어 힌트(영어·한국어)와 단어 힌트(환자 이름·핵심 단어)를 준다.
  * v0.12 (12단계): AI 피드백 — doPost(action=feedback)가 대화 글자를 텍스트 모델(settings의 text_model)로 보내 피드백을 만든다.
  *                 setup()이 prompts 탭에 빠진 지시문(feedback-v1)을 추가한다. testFeedback()으로 편집기에서 확인한다.
+ * v0.13 (13단계): 공유 선택 — doPost(action=share)로 공유를 고른 대화의 글자·피드백·자기 평가를 시트에 저장한다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.12';
+const SERVER_VERSION = 'v0.13';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -272,6 +273,9 @@ function doPost(e) {
     }
     if (body.action === 'feedback') {
       return json_(feedback_(body.code, String(body.session_id || ''), body.lines));
+    }
+    if (body.action === 'share') {
+      return json_(share_(body.code, String(body.session_id || ''), body.confidence, body.difficulty, body.lines));
     }
     if (body.action === 'end') {
       return json_(endSession_(body.code, String(body.session_id || ''), body.duration_sec, String(body.end_reason || '')));
@@ -701,4 +705,61 @@ function testFeedback() {
   ]);
   if (r.ok) console.log('OK: 피드백 생성 성공\n' + JSON.stringify(r.feedback, null, 2));
   else console.log('실패: ' + r.error + ' — 바로 위에 빨간 오류 줄이 있으면 그 내용을 Claude에게 알려 주세요.');
+}
+
+
+/* ───────────────────────── 13단계: 공유 선택 ───────────────────────── */
+
+/**
+ * 학생이 '공유하기'를 고른 대화를 시트에 저장한다.
+ * sessions: shared=TRUE, confidence(1~3), difficulty_note, feedback(서버가 만든 피드백, JSON 글자)
+ * transcripts: 대화 한 줄씩 / keyword_checks: 핵심 단어별 사용 여부
+ * 피드백은 앱이 보낸 값이 아니라 서버가 만들어 기억해 둔 것을 쓴다. 이미 공유된 대화는 다시 저장하지 않는다.
+ */
+function share_(code, sessionId, confidence, difficulty, lines) {
+  const auth = auth_(code);
+  if (!auth.ok) return auth;
+
+  const lock = LockService.getScriptLock();   // 같은 대화를 두 번 눌러도 한 번만 저장되도록
+  lock.waitLock(10000);
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('sessions');
+    const values = sheet.getDataRange().getValues();
+    const headers = values[0].map(function (h) { return String(h).trim(); });
+    const col = function (name) { return headers.indexOf(name); };
+
+    let r = -1;
+    for (let i = values.length - 1; i >= 1; i--) {
+      if (String(values[i][col('session_id')]) === sessionId) { r = i; break; }
+    }
+    if (r < 0) return { ok: false, error: 'NO_SESSION' };
+    const row = values[r];
+    if (String(row[col('student_id')]) !== String(auth.student.student_id)) return { ok: false, error: 'NOT_YOURS' };
+    if (isTrue_(row[col('shared')])) return { ok: true };   // 이미 저장됨
+
+    const cached = CacheService.getScriptCache().get('fb_' + sessionId);
+    const fb = cached ? JSON.parse(cached) : null;
+    const conf = [1, 2, 3].indexOf(Number(confidence)) >= 0 ? Number(confidence) : '';
+    const set = function (name, value) { if (col(name) >= 0) sheet.getRange(r + 1, col(name) + 1).setValue(value); };
+    set('shared', true);
+    set('confidence', conf);
+    set('difficulty_note', String(difficulty || '').trim().slice(0, 300));
+    set('feedback', fb ? JSON.stringify(fb) : '');
+
+    const now = new Date();
+    cleanLines_(lines).forEach(function (l, i) {
+      appendRow_('transcripts', { session_id: sessionId, seq: i + 1, speaker: l.who === 'me' ? 'nurse' : 'patient', text: l.text, at: now });
+    });
+    if (fb) {
+      fb.keywords.forEach(function (k) {
+        appendRow_('keyword_checks', {
+          session_id: sessionId, student_id: String(auth.student.student_id),
+          chapter_id: String(row[col('chapter_id')]), keyword: k.keyword, found: k.used
+        });
+      });
+    }
+    return { ok: true };
+  } finally {
+    lock.releaseLock();
+  }
 }

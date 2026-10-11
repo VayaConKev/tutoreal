@@ -62,6 +62,11 @@ export async function getFeedback(code, sessionId, lines) {
   return data.feedback;
 }
 
+// '공유하기'를 고른 대화의 글자와 자기 평가를 시트에 저장한다. 피드백은 서버가 기억해 둔 것을 쓴다.
+export async function shareTalk(code, sessionId, confidence, difficulty, lines) {
+  await postServer('share', { code, session_id: sessionId, confidence, difficulty, lines }, 30000);
+}
+
 // 대화가 끝났음을 알린다 (사용 시간 기록). 답은 기다리지 않는다.
 // v0.9의 sendBeacon은 구글 로그인 정보(쿠키)를 함께 보내 기록이 남지 않았다 → 다른 요청과 같은 방식 + keepalive.
 export function endTalk(code, sessionId, durationSec, endReason) {

@@ -1,6 +1,6 @@
 // 화면 전환과 전체 흐름을 담당한다.
 import { APP_VERSION } from './config.js';
-import { getChapters, login, startTalk, endTalk, getFeedback } from './api.js';
+import { getChapters, login, startTalk, endTalk, getFeedback, shareTalk } from './api.js';
 import { LiveSession } from './live.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -10,7 +10,7 @@ const views = {
 let chapters = [];
 let currentChapter = null;
 let live = null;        // 진행 중인 음성 대화
-let talk = null;        // 진행 중인 대화의 정보 { sessionId, readyAt, endReason, reported, limitSec, limitKind }
+let talk = null;        // 진행 중인 대화의 정보 { sessionId, patient, readyAt, endReason, reported, limitSec, limitKind }
 let clock = null;       // 경과 시간 타이머
 
 // 접속 코드는 이 기기의 브라우저에만 기억한다 (다음에 열 때 다시 입력하지 않도록).
@@ -204,7 +204,7 @@ function reportEnd(t) {
 
 async function beginTalk() {
   if (live || !currentChapter) return;
-  const t = { sessionId: null, readyAt: 0, endReason: '', reported: false, limitSec: 0, limitKind: '' };
+  const t = { sessionId: null, patient: null, readyAt: 0, endReason: '', reported: false, limitSec: 0, limitKind: '' };
   talk = t;
   // 오디오는 버튼을 누른 이 순간에 켜야 한다 (iOS). 그래서 다른 일보다 먼저 만든다.
   live = new LiveSession({
@@ -240,6 +240,7 @@ async function beginTalk() {
     setTalkStatus('수검자를 부르는 중…');
     const { token, model, patient, sessionId, server, limitSec, limitKind } = await startTalk(loadCode(), currentChapter.chapter_id);
     t.sessionId = sessionId;
+    t.patient = patient;
     t.limitSec = limitSec || 0;
     t.limitKind = limitKind || '';
     if (session.ended) return reportEnd(t);   // 준비 중에 끝난 경우에도 시작 기록을 마무리한다
@@ -266,7 +267,7 @@ function endedTalk(reason, info, t) {
   else setTalkStatus(reason ? `대화가 끝났어요. ${reason}` : '대화가 끝났어요. 수고하셨어요!');
   // 내가 한 말이 있으면 대화 후 화면(1/3 자기 평가)으로 이어지고, 없으면 챕터로 돌아간다.
   const spoke = transcript.lines.some((l) => l.who === 'me' && l.text.trim());
-  review.data = spoke ? { sessionId: t.sessionId, chapter: currentChapter, lines: transcript.lines.slice() } : null;
+  review.data = spoke ? { sessionId: t.sessionId, chapter: currentChapter, patient: t.patient, lines: transcript.lines.slice() } : null;
   $('#talk-end').hidden = true;
   $('#talk-next').hidden = !spoke;
   $('#talk-back').hidden = spoke;
@@ -274,15 +275,16 @@ function endedTalk(reason, info, t) {
 }
 
 /* ── 대화 후 화면: 1/3 자기 평가 → 2/3 피드백 → 3/3 공유 선택 ── */
-// review.data: { sessionId, chapter, lines, confidence(1~3), difficulty } — 13단계(공유 선택) 전까지는 화면에만 있다.
+// review.data: { sessionId, chapter, patient, lines, confidence(1~3), difficulty, feedback, shared }
 
 const review = { step: 1, data: null };
 
 function openReview() {
   if (!review.data) return;
-  document.querySelectorAll('.face').forEach((b) => b.classList.remove('selected'));
+  document.querySelectorAll('.face, .choice').forEach((b) => b.classList.remove('selected'));
   $('#difficulty').value = '';
   $('#review-msg').textContent = '';
+  $('#share-msg').textContent = '';
   goStep(1);
   show('review');
   loadFeedback();   // 자기 평가를 하는 동안 미리 만든다
@@ -343,8 +345,51 @@ function nextStep() {
     review.data.difficulty = $('#difficulty').value.trim();
   }
   if (review.step < 3) return goStep(review.step + 1);
-  review.data = null;   // 완료: 아직 저장하지 않는다 (13단계)
-  show('detail');
+  finishReview();
+}
+
+/* ── 기록: 이 휴대폰에 최근 30개까지 (공유 여부와 관계없이). 공유를 고르면 시트에도 저장한다. ── */
+
+const HISTORY_KEY = 'tutoreal.history';
+const HISTORY_MAX = 30;
+
+function saveLocal(d) {
+  const entry = {
+    sessionId: d.sessionId, chapterId: d.chapter.chapter_id, chapterTitle: d.chapter.title, at: new Date().toISOString(),
+    patient: d.patient, confidence: d.confidence, difficulty: d.difficulty, shared: d.shared,
+    lines: d.lines.map((l) => ({ who: l.who, text: l.text })), feedback: d.feedback || null
+  };
+  try {
+    const list = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]').filter((e) => e.sessionId !== entry.sessionId);
+    list.unshift(entry);
+    // 휴대폰 저장 공간이 모자라면 오래된 기록부터 지운다.
+    for (let n = Math.min(list.length, HISTORY_MAX); n > 0; n--) {
+      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, n))); return; } catch { /* 줄여서 다시 */ }
+    }
+  } catch { /* 저장 못 해도 진행 */ }
+}
+
+async function finishReview() {
+  const d = review.data;
+  if (d.shared === undefined) {
+    $('#share-msg').textContent = '공유할지 하나를 골라 주세요.';
+    return;
+  }
+  const btn = $('#review-next');
+  btn.disabled = true;
+  btn.textContent = '저장 중…';
+  try {
+    if (d.shared) await shareTalk(loadCode(), d.sessionId, d.confidence, d.difficulty, d.lines.map((l) => ({ who: l.who, text: l.text })));
+    saveLocal(d);
+    review.data = null;
+    show('detail');
+  } catch (err) {
+    console.warn(err);
+    $('#share-msg').textContent = `저장하지 못했어요. 다시 눌러 주세요. (${errorText(err)})`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '완료';
+  }
 }
 
 document.querySelectorAll('.face').forEach((btn) => {
@@ -352,6 +397,13 @@ document.querySelectorAll('.face').forEach((btn) => {
     document.querySelectorAll('.face').forEach((b) => b.classList.toggle('selected', b === btn));
     review.data.confidence = Number(btn.dataset.value);
     $('#review-msg').textContent = '';
+  });
+});
+document.querySelectorAll('.choice').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.choice').forEach((b) => b.classList.toggle('selected', b === btn));
+    review.data.shared = btn.dataset.value === 'yes';
+    $('#share-msg').textContent = '';
   });
 });
 $('#review-next').addEventListener('click', nextStep);
