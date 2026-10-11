@@ -58,7 +58,8 @@ input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px
 .chart dt { flex: none; width: 72px; color: var(--muted); }
 .chart dd { margin: 0; font-weight: 600; }
 .talk-time { font-size: 40px; font-weight: 700; text-align: center; margin: 16px 0 0; font-variant-numeric: tabular-nums; }
-.talk-status { color: var(--muted); text-align: center; min-height: 3em; margin: 4px 0 12px; }
+.talk-status { color: var(--muted); text-align: center; min-height: 3em; margin: 4px 0 4px; }
+.talk-info { color: var(--muted); font-size: 12px; text-align: center; min-height: 1.5em; margin: 0 0 12px; }
 .hint { color: var(--muted); font-size: 13px; text-align: center; margin: 10px 0 0; }
 .state { color: var(--muted); text-align: center; padding: 24px 0; margin: 0; }
 footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 28px; }

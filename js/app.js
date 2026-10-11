@@ -139,6 +139,7 @@ function startClock() {
   clock = setInterval(() => {
     const sec = Math.floor((Date.now() - started) / 1000);
     $('#talk-time').textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+    if (live) $('#talk-info').textContent = live.info();
   }, 1000);
 }
 
@@ -158,6 +159,7 @@ async function beginTalk() {
   $('#talk-dob').textContent = '–';
   $('#talk-exam').textContent = '–';
   $('#talk-time').textContent = '0:00';
+  $('#talk-info').textContent = '';
   $('#talk-end').hidden = false;
   $('#talk-back').hidden = true;
   show('talk');
@@ -182,9 +184,10 @@ async function beginTalk() {
   }
 }
 
-function endedTalk(reason) {
+function endedTalk(reason, info) {
   clearInterval(clock);
   live = null;
+  $('#talk-info').textContent = info;
   setTalkStatus(reason ? `대화가 끝났어요. ${reason}` : '대화가 끝났어요. 수고하셨어요!');
   $('#talk-end').hidden = true;
   $('#talk-back').hidden = false;

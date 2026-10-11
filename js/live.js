@@ -25,6 +25,12 @@ export class LiveSession {
     this.onEnd = onEnd;
     this.ctx = new AudioContext();
     this.ctx.resume();
+    // iOS는 마이크를 켜는 순간이나 전화·알림이 올 때 오디오를 멈출 수 있다. 대화 중이면 다시 켠다.
+    this.ctx.onstatechange = () => {
+      if (!this.ended && this.ctx.state !== 'running' && this.ctx.state !== 'closed') this.ctx.resume().catch(() => {});
+    };
+    this.sent = 0;   // 보낸 소리 (초)
+    this.recv = 0;   // 받은 소리 (초)
     this.sources = new Set();
     this.playAt = 0;
     this.ready = false;
@@ -36,6 +42,7 @@ export class LiveSession {
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
+    if (this.ctx.state !== 'running') await this.ctx.resume().catch(() => {});
     await this.ctx.audioWorklet.addModule(new URL('./mic-worklet.js', import.meta.url));
     if (this.ended) return;
     this.mic = new AudioWorkletNode(this.ctx, 'mic-processor', { processorOptions: { targetRate: IN_RATE } });
@@ -52,14 +59,13 @@ export class LiveSession {
     this.ws.binaryType = 'arraybuffer';
     this.ws.onopen = () => this.ws.send(JSON.stringify({ setup: { model: `models/${model}` } }));
     this.ws.onmessage = (e) => this.handle(e.data);
-    this.ws.onclose = (e) => {
-      if (e.code === 1000) this.stop('');
-      else this.stop(`연결이 끊겼어요 (${e.code}${e.reason ? ': ' + e.reason : ''})`);
-    };
+    // '끝내기'로 닫은 경우는 stop()이 먼저 불려 여기서 아무 일도 하지 않는다. 그 밖에는 끊긴 이유를 보여 준다.
+    this.ws.onclose = (e) => this.stop(`연결이 끊겼어요 (${e.code}${e.reason ? ': ' + e.reason : ''})`);
   }
 
   sendAudio(buffer) {
     if (!this.ready || this.ws.readyState !== WebSocket.OPEN) return;
+    this.sent += buffer.byteLength / 2 / IN_RATE;
     this.ws.send(JSON.stringify({
       realtimeInput: { audio: { data: toBase64(buffer), mimeType: `audio/pcm;rate=${IN_RATE}` } }
     }));
@@ -92,6 +98,7 @@ export class LiveSession {
     const bytes = fromBase64(data);
     const pcm = new Int16Array(bytes.buffer, 0, bytes.length >> 1);
     if (!pcm.length) return;
+    this.recv += pcm.length / rate;
     const buf = this.ctx.createBuffer(1, pcm.length, rate);
     const ch = buf.getChannelData(0);
     for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 0x8000;
@@ -105,6 +112,11 @@ export class LiveSession {
     src.onended = () => this.sources.delete(src);
   }
 
+  /** 문제를 찾기 위한 연결 정보: 보낸 소리, 받은 소리, 오디오 상태 */
+  info() {
+    return `보낸 소리 ${this.sent.toFixed(1)}초 · 받은 소리 ${this.recv.toFixed(1)}초 · 오디오 ${this.ctx.state}`;
+  }
+
   stopPlayback() {
     this.sources.forEach((src) => { try { src.stop(); } catch { /* 이미 끝남 */ } });
     this.sources.clear();
@@ -116,10 +128,11 @@ export class LiveSession {
     if (this.ended) return;
     this.ended = true;
     this.ready = false;
+    const info = this.info();
     if (this.stream) this.stream.getTracks().forEach((t) => t.stop());
     if (this.ws && this.ws.readyState <= WebSocket.OPEN) this.ws.close(1000);
     this.stopPlayback();
     this.ctx.close().catch(() => {});
-    this.onEnd(reason);
+    this.onEnd(reason, info);
   }
 }
