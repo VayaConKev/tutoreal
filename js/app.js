@@ -4,7 +4,9 @@ import { getChapters, login, startTalk, endTalk } from './api.js';
 import { LiveSession } from './live.js';
 
 const $ = (sel) => document.querySelector(sel);
-const views = { login: $('#view-login'), list: $('#view-list'), detail: $('#view-detail'), talk: $('#view-talk') };
+const views = {
+  login: $('#view-login'), list: $('#view-list'), detail: $('#view-detail'), talk: $('#view-talk'), review: $('#view-review')
+};
 let chapters = [];
 let currentChapter = null;
 let live = null;        // 진행 중인 음성 대화
@@ -39,7 +41,7 @@ const errorText = (err) => ERROR_TEXT[err.name] || ERROR_TEXT[err.message] || `�
 
 function show(name) {
   Object.entries(views).forEach(([key, el]) => { el.hidden = key !== name; });
-  $('#who').hidden = name === 'login' || name === 'talk';
+  $('#who').hidden = name === 'login' || name === 'talk' || name === 'review';
   window.scrollTo(0, 0);
 }
 
@@ -159,7 +161,7 @@ function startClock(t) {
 
 /* 받아쓰기·자막: 말이 글자로 조금씩 도착하면 지금 말하는 사람의 말풍선에 이어 붙인다.
    환자 차례가 끝나면 두 말풍선을 닫아, 다음 말은 새 말풍선에 쓴다. 글자는 화면에만 있고 저장하지 않는다. */
-const transcript = { me: null, ai: null };
+const transcript = { me: null, ai: null, lines: [] };   // lines: [{ who, text }] — 대화 후 화면에서 쓴다
 
 function addText(who, text) {
   if (who === 'ai' && currentChapter.ai_captions === 'off') return;
@@ -175,10 +177,13 @@ function addText(who, text) {
       line.addEventListener('click', () => line.classList.remove('covered'), { once: true });
     }
     $('#transcript').append(line);
+    line.entry = { who, text: '' };
+    transcript.lines.push(line.entry);
     transcript[who] = line;
     line.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
   line.querySelector('.text').textContent += text;
+  line.entry.text += text;
 }
 
 function endTurn() {
@@ -218,8 +223,10 @@ async function beginTalk() {
   $('#talk-time').textContent = '0:00';
   $('#talk-info').hidden = true;
   $('#transcript').innerHTML = '';
+  transcript.lines = [];
   endTurn();
   $('#talk-end').hidden = false;
+  $('#talk-next').hidden = true;
   $('#talk-back').hidden = true;
   show('talk');
 
@@ -255,10 +262,60 @@ function endedTalk(reason, info, t) {
   // 연결 전에 끝남 (한도, 마이크 거부 등): 빈 환자 차트는 숨기고 이유만 보여 준다.
   if (!t.readyAt && reason) { $('#talk-head').hidden = true; setTalkStatus(reason); }
   else setTalkStatus(reason ? `대화가 끝났어요. ${reason}` : '대화가 끝났어요. 수고하셨어요!');
+  // 내가 한 말이 있으면 대화 후 화면(1/3 자기 평가)으로 이어지고, 없으면 챕터로 돌아간다.
+  const spoke = transcript.lines.some((l) => l.who === 'me' && l.text.trim());
+  review.data = spoke ? { sessionId: t.sessionId, chapter: currentChapter, lines: transcript.lines.slice() } : null;
   $('#talk-end').hidden = true;
-  $('#talk-back').hidden = false;
+  $('#talk-next').hidden = !spoke;
+  $('#talk-back').hidden = spoke;
   $('#talk-status').scrollIntoView({ block: 'center', behavior: 'smooth' });   // 아래로 내려가 있어도 끝난 문구가 보이게
 }
+
+/* ── 대화 후 화면: 1/3 자기 평가 → 2/3 피드백 → 3/3 공유 선택 ── */
+// review.data: { sessionId, chapter, lines, confidence(1~3), difficulty } — 13단계(공유 선택) 전까지는 화면에만 있다.
+
+const review = { step: 1, data: null };
+
+function openReview() {
+  if (!review.data) return;
+  document.querySelectorAll('.face').forEach((b) => b.classList.remove('selected'));
+  $('#difficulty').value = '';
+  $('#review-msg').textContent = '';
+  goStep(1);
+  show('review');
+}
+
+function goStep(n) {
+  review.step = n;
+  document.querySelectorAll('#view-review [data-step]').forEach((el) => { el.hidden = Number(el.dataset.step) !== n; });
+  $('#review-step').textContent = `${n} / 3`;
+  $('#review-prev').hidden = n === 1;
+  $('#review-next').textContent = n === 3 ? '완료' : '다음';
+  window.scrollTo(0, 0);
+}
+
+function nextStep() {
+  if (review.step === 1) {
+    if (!review.data.confidence) {
+      $('#review-msg').textContent = '오늘 대화가 어땠는지 하나를 골라 주세요.';
+      return;
+    }
+    review.data.difficulty = $('#difficulty').value.trim();
+  }
+  if (review.step < 3) return goStep(review.step + 1);
+  review.data = null;   // 완료: 아직 저장하지 않는다 (13단계)
+  show('detail');
+}
+
+document.querySelectorAll('.face').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.face').forEach((b) => b.classList.toggle('selected', b === btn));
+    review.data.confidence = Number(btn.dataset.value);
+    $('#review-msg').textContent = '';
+  });
+});
+$('#review-next').addEventListener('click', nextStep);
+$('#review-prev').addEventListener('click', () => goStep(review.step - 1));
 
 /* ── 시작 ── */
 
@@ -276,6 +333,7 @@ $('#back').addEventListener('click', () => show('list'));
 $('#talk-start').addEventListener('click', beginTalk);
 $('#talk-end').addEventListener('click', () => { if (live) { talk.endReason = 'user'; live.stop(''); } });
 $('#talk-back').addEventListener('click', () => show('detail'));
+$('#talk-next').addEventListener('click', openReview);
 window.addEventListener('pagehide', () => { if (live) { talk.endReason = 'left'; live.stop(''); } });
 
 setVersion();

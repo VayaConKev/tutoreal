@@ -57,7 +57,35 @@
       <p class="talk-info" id="talk-info" hidden></p>
       <div class="talk-actions">
         <button class="primary" id="talk-end">대화 끝내기</button>
+        <button class="primary" id="talk-next" hidden>다음</button>
         <button class="secondary" id="talk-back" hidden>챕터로 돌아가기</button>
+      </div>
+    </section>
+
+    <section id="view-review" hidden>
+      <p class="step-count" id="review-step"></p>
+      <div class="card" data-step="1">
+        <h3>오늘 대화는 어땠나요?</h3>
+        <div class="faces" id="confidence">
+          <button class="face" data-value="1"><span class="face-icon" aria-hidden="true">😣</span>어려웠어요</button>
+          <button class="face" data-value="2"><span class="face-icon" aria-hidden="true">🙂</span>보통이에요</button>
+          <button class="face" data-value="3"><span class="face-icon" aria-hidden="true">😄</span>자신 있어요</button>
+        </div>
+        <label class="field-label" for="difficulty">어려웠던 점 (선택)</label>
+        <textarea id="difficulty" rows="3" maxlength="300" placeholder="이름 철자를 묻는 게 어려웠어요"></textarea>
+        <p class="hint" id="review-msg" role="alert"></p>
+      </div>
+      <div class="card" data-step="2" hidden>
+        <h3>피드백</h3>
+        <p class="goal">AI 피드백은 다음 버전(v0.12)에서 열려요.</p>
+      </div>
+      <div class="card" data-step="3" hidden>
+        <h3>선생님과 공유할까요?</h3>
+        <p class="goal">공유 선택은 v0.13에서 열려요. 지금은 대화 내용과 자기 평가가 어디에도 저장되지 않아요.</p>
+      </div>
+      <div class="review-actions">
+        <button class="secondary" id="review-prev">이전</button>
+        <button class="primary" id="review-next">다음</button>
       </div>
     </section>
 
