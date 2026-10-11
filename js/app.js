@@ -210,6 +210,7 @@ async function beginTalk() {
     onTurnEnd: endTurn
   });
 
+  $('#talk-head').hidden = false;
   $('#talk-chapter').textContent = `${currentChapter.order}장 · ${currentChapter.title}`;
   $('#talk-name').textContent = '수검자 준비 중…';
   $('#talk-dob').textContent = '–';
@@ -251,7 +252,8 @@ function endedTalk(reason, info, t) {
   // 예상하지 못한 이유로 끝난 경우(연결 끊김 등)에만 연결 정보(보낸·받은 소리 등)를 보여 준다.
   $('#talk-info').textContent = info;
   $('#talk-info').hidden = !reason || !!t.endReason || !t.readyAt;
-  if (!t.readyAt && reason) setTalkStatus(reason);   // 연결 전에 끝남 (한도, 마이크 거부 등): 이유만
+  // 연결 전에 끝남 (한도, 마이크 거부 등): 빈 환자 차트는 숨기고 이유만 보여 준다.
+  if (!t.readyAt && reason) { $('#talk-head').hidden = true; setTalkStatus(reason); }
   else setTalkStatus(reason ? `대화가 끝났어요. ${reason}` : '대화가 끝났어요. 수고하셨어요!');
   $('#talk-end').hidden = true;
   $('#talk-back').hidden = false;

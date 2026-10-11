@@ -12,12 +12,13 @@
  * v0.8 (8단계): 받아쓰기·자막 — 토큰 설정에 음성→글자 변환을 켜고, 챕터 목록에 ai_captions(자막 방식)를 보낸다.
  * v0.9 (9단계): 사용 시간 기록 — 토큰을 줄 때 sessions 탭에 한 줄을 만들고, doPost(action=end)로 사용 시간을 채운다.
  * v0.10 (10단계): 하루 한도 — 오늘의 대화 횟수·사용 시간이 한도에 닿으면 토큰을 주지 않고, 남은 시간만큼만 쓰게 한다.
+ * v0.10.1: 받아쓰기에 언어 힌트(영어·한국어)와 단어 힌트(환자 이름·핵심 단어)를 준다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.10';
+const SERVER_VERSION = 'v0.10.1';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -354,8 +355,15 @@ function createLiveToken_(chapterId, maxSec) {
     model: 'models/' + model,
     generationConfig: { responseModalities: ['AUDIO'] },
     systemInstruction: { parts: [{ text: instruction }] },
-    inputAudioTranscription: {},    // 학생 말 → 글자 (받아쓰기)
-    outputAudioTranscription: {}    // 환자(AI) 말 → 글자 (자막)
+    // 학생 말 → 글자 (받아쓰기). 언어를 지정하지 않으면 자동 판단하다가 다른 언어(예: 스페인어)로 적는 경우가 있었다.
+    // 한국어도 넣어 학생이 한국어로 말하면 한국어로 적히게 한다. 환자 이름·핵심 단어는 더 잘 알아듣도록 단어 힌트로 준다.
+    // 모드는 기본값(VERBATIM, 들린 그대로)을 쓴다. SMART는 문법을 다듬어 학생의 실수가 지워진다.
+    inputAudioTranscription: {
+      languageCodes: ['en-US', 'ko-KR'],
+      customVocabulary: [patient.name].concat(
+        String(chapter.keywords || '').split(',').map(function (k) { return k.trim(); }).filter(Boolean))
+    },
+    outputAudioTranscription: { languageCodes: ['en-US'] }   // 환자(AI) 말 → 글자 (자막)
   };
   // 목소리: settings 탭의 voice_male / voice_female. 비어 있으면 Gemini 기본 목소리.
   const voice = String(settings[patient.sex.toLowerCase() === 'female' ? 'voice_female' : 'voice_male'] || '').trim();
