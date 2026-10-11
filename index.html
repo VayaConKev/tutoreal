@@ -38,8 +38,23 @@
         <p class="goal" id="detail-goal"></p>
         <h2>핵심 단어</h2>
         <div class="chips" id="detail-keywords"></div>
-        <button class="primary" disabled>대화 시작</button>
-        <p class="hint">음성 대화는 5단계에서 열려요.</p>
+        <button class="primary" id="talk-start">대화 시작</button>
+        <p class="hint">마이크를 사용해요. 음성은 저장하지 않아요.</p>
+      </div>
+    </section>
+
+    <section id="view-talk" hidden>
+      <div class="card">
+        <p class="eyebrow" id="talk-chapter"></p>
+        <h3 id="talk-name">수검자 준비 중…</h3>
+        <dl class="chart">
+          <div><dt>생년월일</dt><dd id="talk-dob">–</dd></div>
+          <div><dt>검사</dt><dd id="talk-exam">–</dd></div>
+        </dl>
+        <p class="talk-time" id="talk-time">0:00</p>
+        <p class="talk-status" id="talk-status" role="status"></p>
+        <button class="primary" id="talk-end">대화 끝내기</button>
+        <button class="secondary" id="talk-back" hidden>챕터로 돌아가기</button>
       </div>
     </section>
 

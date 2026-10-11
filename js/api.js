@@ -44,3 +44,8 @@ export async function login(code) {
   const data = await postServer('login', { code });
   return { name: data.name, server: data.server };
 }
+
+export async function startTalk(code, chapterId) {
+  const data = await postServer('talk', { code, chapter_id: chapterId });
+  return { token: data.token, model: data.model, patient: data.patient, server: data.server };
+}
