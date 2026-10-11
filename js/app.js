@@ -8,7 +8,7 @@ const views = { login: $('#view-login'), list: $('#view-list'), detail: $('#view
 let chapters = [];
 let currentChapter = null;
 let live = null;        // 진행 중인 음성 대화
-let talk = null;        // 진행 중인 대화의 기록용 정보 { sessionId, readyAt, endReason, reported }
+let talk = null;        // 진행 중인 대화의 정보 { sessionId, readyAt, endReason, reported, limitSec, limitKind }
 let clock = null;       // 경과 시간 타이머
 
 // 접속 코드는 이 기기의 브라우저에만 기억한다 (다음에 열 때 다시 입력하지 않도록).
@@ -27,7 +27,13 @@ const ERROR_TEXT = {
   NotAllowedError: '마이크 사용이 허용되지 않았어요. 브라우저 설정에서 이 사이트의 마이크를 허용해 주세요.',
   NotFoundError: '마이크를 찾지 못했어요.',
   NO_SCENARIO: '이 챕터에 준비된 시나리오가 없어요.',
-  TOKEN_FAILED: '음성 연결 준비에 실패했어요. 잠시 뒤 다시 해 주세요.'
+  TOKEN_FAILED: '음성 연결 준비에 실패했어요. 잠시 뒤 다시 해 주세요.',
+  DAILY_CONNECT_LIMIT: '오늘 대화 횟수를 다 썼어요. 내일 다시 만나요.',
+  DAILY_TIME_LIMIT: '오늘 사용 시간을 다 썼어요. 내일 다시 만나요.'
+};
+const LIMIT_TEXT = {
+  daily: '오늘 사용 시간을 다 써서 대화를 마쳤어요.',
+  session: '대화 한 번은 최대 15분이에요.'
 };
 const errorText = (err) => ERROR_TEXT[err.name] || ERROR_TEXT[err.message] || `연결에 문제가 있어요. (${err.message})`;
 
@@ -134,12 +140,20 @@ function setTalkStatus(text) {
   $('#talk-status').textContent = text;
 }
 
-function startClock() {
-  const started = Date.now();
+const mmss = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+
+/** 경과 시간을 '0:42 / 15:00'처럼 보여 주고, 쓸 수 있는 시간이 되면 대화를 끝낸다. 1분 전에 미리 알린다. */
+function startClock(t) {
   clearInterval(clock);
   clock = setInterval(() => {
-    const sec = Math.floor((Date.now() - started) / 1000);
-    $('#talk-time').textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+    const sec = Math.floor((Date.now() - t.readyAt) / 1000);
+    $('#talk-time').textContent = t.limitSec ? `${mmss(sec)} / ${mmss(t.limitSec)}` : mmss(sec);
+    if (!t.limitSec || !live) return;
+    if (sec === t.limitSec - 60) setTalkStatus('1분 남았어요.');
+    if (sec >= t.limitSec) {
+      t.endReason = 'limit';
+      live.stop(LIMIT_TEXT[t.limitKind] || LIMIT_TEXT.session);
+    }
   }, 1000);
 }
 
@@ -183,15 +197,15 @@ function reportEnd(t) {
 
 async function beginTalk() {
   if (live || !currentChapter) return;
-  const t = { sessionId: null, readyAt: 0, endReason: '', reported: false };
+  const t = { sessionId: null, readyAt: 0, endReason: '', reported: false, limitSec: 0, limitKind: '' };
   talk = t;
   // 오디오는 버튼을 누른 이 순간에 켜야 한다 (iOS). 그래서 다른 일보다 먼저 만든다.
   live = new LiveSession({
     onStatus: (s) => {
-      if (s === 'ready') { t.readyAt = Date.now(); setTalkStatus('연결됐어요. 먼저 말을 걸어 보세요.'); startClock(); }
+      if (s === 'ready') { t.readyAt = Date.now(); setTalkStatus('연결됐어요. 먼저 말을 걸어 보세요.'); startClock(t); }
       if (s === 'goaway') setTalkStatus('곧 연결이 끝나요.');
     },
-    onEnd: (reason, info) => { endedTalk(reason, info); reportEnd(t); },
+    onEnd: (reason, info) => { endedTalk(reason, info, t); reportEnd(t); },
     onText: addText,
     onTurnEnd: endTurn
   });
@@ -214,8 +228,10 @@ async function beginTalk() {
     await session.openMic();
     if (session.ended) return;   // 준비 중에 '끝내기'를 누른 경우
     setTalkStatus('수검자를 부르는 중…');
-    const { token, model, patient, sessionId, server } = await startTalk(loadCode(), currentChapter.chapter_id);
+    const { token, model, patient, sessionId, server, limitSec, limitKind } = await startTalk(loadCode(), currentChapter.chapter_id);
     t.sessionId = sessionId;
+    t.limitSec = limitSec || 0;
+    t.limitKind = limitKind || '';
     if (session.ended) return reportEnd(t);   // 준비 중에 끝난 경우에도 시작 기록을 마무리한다
     setVersion(server);
     $('#talk-name').textContent = patient.name;
@@ -229,13 +245,14 @@ async function beginTalk() {
   }
 }
 
-function endedTalk(reason, info) {
+function endedTalk(reason, info, t) {
   clearInterval(clock);
   live = null;
-  // 문제가 생겨 끝난 경우에만 연결 정보(보낸·받은 소리 등)를 보여 준다.
+  // 예상하지 못한 이유로 끝난 경우(연결 끊김 등)에만 연결 정보(보낸·받은 소리 등)를 보여 준다.
   $('#talk-info').textContent = info;
-  $('#talk-info').hidden = !reason;
-  setTalkStatus(reason ? `대화가 끝났어요. ${reason}` : '대화가 끝났어요. 수고하셨어요!');
+  $('#talk-info').hidden = !reason || !!t.endReason || !t.readyAt;
+  if (!t.readyAt && reason) setTalkStatus(reason);   // 연결 전에 끝남 (한도, 마이크 거부 등): 이유만
+  else setTalkStatus(reason ? `대화가 끝났어요. ${reason}` : '대화가 끝났어요. 수고하셨어요!');
   $('#talk-end').hidden = true;
   $('#talk-back').hidden = false;
   $('#talk-status').scrollIntoView({ block: 'center', behavior: 'smooth' });   // 아래로 내려가 있어도 끝난 문구가 보이게

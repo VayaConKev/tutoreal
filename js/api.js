@@ -50,7 +50,10 @@ export async function login(code) {
 
 export async function startTalk(code, chapterId) {
   const data = await postServer('talk', { code, chapter_id: chapterId });
-  return { token: data.token, model: data.model, patient: data.patient, sessionId: data.session_id, server: data.server };
+  return {
+    token: data.token, model: data.model, patient: data.patient, sessionId: data.session_id, server: data.server,
+    limitSec: data.limit_sec, limitKind: data.limit_kind
+  };
 }
 
 // 대화가 끝났음을 알린다 (사용 시간 기록). 답은 기다리지 않는다.

@@ -11,12 +11,13 @@
  *               testLiveToken() — 편집기에서 토큰 발급이 되는지 확인한다.
  * v0.8 (8단계): 받아쓰기·자막 — 토큰 설정에 음성→글자 변환을 켜고, 챕터 목록에 ai_captions(자막 방식)를 보낸다.
  * v0.9 (9단계): 사용 시간 기록 — 토큰을 줄 때 sessions 탭에 한 줄을 만들고, doPost(action=end)로 사용 시간을 채운다.
+ * v0.10 (10단계): 하루 한도 — 오늘의 대화 횟수·사용 시간이 한도에 닿으면 토큰을 주지 않고, 남은 시간만큼만 쓰게 한다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.9';
+const SERVER_VERSION = 'v0.10';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -294,8 +295,15 @@ function getSettings_() {
 function startTalk_(code, chapterId) {
   const auth = auth_(code);
   if (!auth.ok) return auth;
-  const result = createLiveToken_(chapterId);
-  if (result.ok) result.session_id = logSessionStart_(auth.student, chapterId, result.scenario_id);
+  const limit = checkDailyLimit_(auth.student);
+  if (!limit.ok) return limit;
+  const maxSec = Math.min(limit.remainingSec, LIVE_SESSION_MAX_MIN * 60);
+  const result = createLiveToken_(chapterId, maxSec);
+  if (result.ok) {
+    result.session_id = logSessionStart_(auth.student, chapterId, result.scenario_id);
+    result.limit_sec = maxSec;                                       // 이 대화에서 쓸 수 있는 최대 시간(초)
+    result.limit_kind = maxSec < LIVE_SESSION_MAX_MIN * 60 ? 'daily' : 'session';
+  }
   return result;
 }
 
@@ -303,7 +311,8 @@ function startTalk_(code, chapterId) {
  * 챕터의 활성 시나리오 하나를 무작위로 고르고, 지시문을 채워 임시 토큰 안에 고정한다.
  * 지시문과 시나리오의 숨은 설정(twist)은 브라우저로 보내지 않는다. 브라우저는 토큰과 환자 차트만 받는다.
  */
-function createLiveToken_(chapterId) {
+function createLiveToken_(chapterId, maxSec) {
+  maxSec = maxSec || LIVE_SESSION_MAX_MIN * 60;
   const chapter = readTable_('chapters').filter(function (c) {
     return String(c.chapter_id) === chapterId && isTrue_(c.published);
   })[0];
@@ -360,7 +369,8 @@ function createLiveToken_(chapterId) {
     headers: { 'x-goog-api-key': key },
     payload: JSON.stringify({
       uses: 1,
-      expireTime: new Date(now + LIVE_SESSION_MAX_MIN * 60000).toISOString(),
+      // 앱이 maxSec에 맞춰 대화를 끝낸다. 토큰은 1분 여유를 두고 만료되어, 앱이 끝내지 못해도 Gemini가 끊는다.
+      expireTime: new Date(now + maxSec * 1000 + 60000).toISOString(),
       newSessionExpireTime: new Date(now + 60000).toISOString(),
       bidiGenerateContentSetup: setup
     }),
@@ -402,8 +412,8 @@ function testLiveToken() {
 
 /* ───────────────────────── 9단계: 사용 시간 기록 ───────────────────────── */
 
-// 대화가 끝난 이유: user(끝내기) / left(화면을 닫음) / closed(연결이 끊김) / error(연결 전에 실패)
-const END_REASONS = ['user', 'left', 'closed', 'error'];
+// 대화가 끝난 이유: user(끝내기) / left(화면을 닫음) / closed(연결이 끊김) / error(연결 전에 실패) / limit(시간 한도)
+const END_REASONS = ['user', 'left', 'closed', 'error', 'limit'];
 
 /** 탭의 칸 이름(1행)에 맞춰 한 줄을 추가한다. 없는 칸은 비워 둔다. */
 function appendRow_(name, obj) {
@@ -452,4 +462,36 @@ function endSession_(code, sessionId, durationSec, endReason) {
     return { ok: true };
   }
   return { ok: false, error: 'NO_SESSION' };
+}
+
+
+/* ───────────────────────── 10단계: 하루 한도 ───────────────────────── */
+
+/**
+ * 오늘(시트의 시간대 기준) 이 학생의 대화 횟수와 사용 시간을 sessions 탭에서 센다.
+ * 한도: 횟수 = settings의 daily_connect_limit, 시간(분) = students의 daily_limit_min → 없으면 settings의 default_daily_limit_min.
+ * 끝 기록이 없는 대화는 실제로 흐른 시간(최대 15분)만큼 쓴 것으로 센다.
+ */
+function checkDailyLimit_(student) {
+  const settings = getSettings_();
+  const maxConnect = Number(settings.daily_connect_limit) || 20;
+  const maxMin = Number(student.daily_limit_min) || Number(settings.default_daily_limit_min) || 30;
+  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+  const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+
+  let count = 0;
+  let usedSec = 0;
+  readTable_('sessions').forEach(function (s) {
+    if (String(s.student_id) !== String(student.student_id) || !(s.started_at instanceof Date)) return;
+    if (Utilities.formatDate(s.started_at, tz, 'yyyy-MM-dd') !== today) return;
+    count++;
+    usedSec += s.duration_sec !== ''
+      ? Number(s.duration_sec) || 0
+      : Math.min((Date.now() - s.started_at.getTime()) / 1000, LIVE_SESSION_MAX_MIN * 60);
+  });
+
+  if (count >= maxConnect) return { ok: false, error: 'DAILY_CONNECT_LIMIT' };
+  const remainingSec = Math.floor(maxMin * 60 - usedSec);
+  if (remainingSec < 60) return { ok: false, error: 'DAILY_TIME_LIMIT' };
+  return { ok: true, remainingSec: remainingSec };
 }
