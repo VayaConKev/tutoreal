@@ -10,8 +10,11 @@ class MicProcessor extends AudioWorkletProcessor {
     this.count = 0;
     this.chunk = new Int16Array(target / 10);
     this.len = 0;
-    this.calls = 0;   // 문제 찾기용: 처리 횟수와 그중 마이크 소리가 비어 있던 횟수를 1초마다 알려 준다
+    // 문제 찾기용: 처리 횟수, 그중 마이크 소리가 비어 있던 횟수, 보낸 덩어리 수, 최근 1초의 가장 큰 소리(0~100)
+    this.calls = 0;
     this.empty = 0;
+    this.chunks = 0;
+    this.peak = 0;
     this.reportAt = 0;
   }
 
@@ -19,12 +22,14 @@ class MicProcessor extends AudioWorkletProcessor {
     this.calls++;
     if (currentTime >= this.reportAt) {
       this.reportAt = currentTime + 1;
-      this.port.postMessage({ calls: this.calls, empty: this.empty });
+      this.port.postMessage({ type: 'stats', calls: this.calls, empty: this.empty, chunks: this.chunks, peak: Math.round(this.peak * 100) });
+      this.peak = 0;
     }
     const input = inputs[0] && inputs[0][0];
     if (!input) { this.empty++; return true; }
     for (let i = 0; i < input.length; i++) {
       this.sum += input[i];
+      if (Math.abs(input[i]) > this.peak) this.peak = Math.abs(input[i]);
       this.count++;
       this.pos += 1;
       if (this.pos >= this.ratio) {
@@ -34,7 +39,8 @@ class MicProcessor extends AudioWorkletProcessor {
         this.sum = 0;
         this.count = 0;
         if (this.len === this.chunk.length) {
-          this.port.postMessage(this.chunk.buffer, [this.chunk.buffer]);
+          this.port.postMessage({ type: 'pcm', buffer: this.chunk.buffer }, [this.chunk.buffer]);
+          this.chunks++;
           this.chunk = new Int16Array(this.chunk.length);
           this.len = 0;
         }

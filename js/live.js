@@ -28,7 +28,7 @@ export class LiveSession {
     this.ctx = this.keepRunning(new AudioContext());
     this.sent = 0;   // 보낸 소리 (초)
     this.recv = 0;   // 받은 소리 (초)
-    this.micStats = { calls: 0, empty: 0 };   // 마이크 처리 횟수, 그중 소리가 비어 있던 횟수
+    this.micStats = { calls: 0, empty: 0, chunks: 0, peak: 0 };   // 변환기가 1초마다 알려 주는 진단 숫자
     this.sources = new Set();
     this.playAt = 0;
     this.ready = false;
@@ -55,9 +55,10 @@ export class LiveSession {
     await this.micCtx.audioWorklet.addModule(new URL('./mic-worklet.js', import.meta.url));
     if (this.ended) return this.closeMic();
     this.mic = new AudioWorkletNode(this.micCtx, 'mic-processor', { processorOptions: { targetRate: IN_RATE } });
+    // 메시지 종류는 이름표(type)로 구분한다. Safari에서 'instanceof ArrayBuffer' 검사가 통하지 않는 것으로 보였다 (v0.6.2).
     this.mic.port.onmessage = (e) => {
-      if (e.data instanceof ArrayBuffer) this.sendAudio(e.data);
-      else this.micStats = e.data;
+      if (e.data.type === 'pcm') this.sendAudio(e.data.buffer);
+      else if (e.data.type === 'stats') this.micStats = e.data;
     };
     // 변환기는 소리를 내보내지 않으므로(무음) 스피커에 이어도 내 목소리가 다시 들리지 않는다. 이어야 작동한다.
     this.micCtx.createMediaStreamSource(this.stream).connect(this.mic).connect(this.micCtx.destination);
@@ -132,8 +133,9 @@ export class LiveSession {
   info() {
     const t = this.track;
     const mic = t ? `${t.readyState}${t.muted ? ' 음소거' : ''}` : '없음';
+    const m = this.micStats;
     return `보낸 소리 ${this.sent.toFixed(1)}초 · 받은 소리 ${this.recv.toFixed(1)}초\n` +
-      `마이크 ${mic} · 마이크 처리 ${this.micStats.calls}/${this.micStats.empty} · ` +
+      `마이크 ${mic} · 처리 ${m.calls}/${m.empty} · 덩어리 ${m.chunks} · 크기 ${m.peak}\n` +
       `오디오 ${this.ctx.state}/${this.micCtx ? this.micCtx.state : '-'}`;
   }
 
