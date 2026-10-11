@@ -9,16 +9,17 @@
  * v0.5 (5-1단계): doPost(action=login) — 접속 코드를 students 탭에서 확인한다.
  * v0.6 (6단계): doPost(action=talk) — 시나리오를 고르고 Gemini Live 임시 토큰을 발급한다.
  *               testLiveToken() — 편집기에서 토큰 발급이 되는지 확인한다.
+ * v0.8 (8단계): 받아쓰기·자막 — 토큰 설정에 음성→글자 변환을 켜고, 챕터 목록에 ai_captions(자막 방식)를 보낸다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.6';
+const SERVER_VERSION = 'v0.8';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
-  chapters:       ['chapter_id', 'order', 'title', 'goal', 'keywords', 'scene', 'published'],
+  chapters:       ['chapter_id', 'order', 'title', 'goal', 'keywords', 'scene', 'published', 'ai_captions'],
   scenarios:      ['scenario_id', 'chapter_id', 'name', 'sex', 'dob', 'country', 'exam', 'twist', 'level', 'active'],
   prompts:        ['prompt_id', 'text', 'active'],
   students:       ['student_id', 'display_name', 'access_code', 'status', 'daily_limit_min', 'created_at'],
@@ -44,10 +45,10 @@ const SEED = {
   chapters: [
     ['ch01', 1, '호명과 본인 확인', '수검자를 호명해 창구로 부르고 이름과 생년월일로 본인 확인하기',
      'counter, full name, spell, date of birth, Is that right, have a seat',
-     'You are in the waiting area. Wait until the nurse calls your name, then answer.', true],
+     'You are in the waiting area. Wait until the nurse calls your name, then answer.', true, 'tap'],
     ['ch02', 2, '검사실 안내', '수면 내시경 검사실에서 자세, 과거력, 마우스피스, 진정제 안내하기',
      'left side, knees, move back, glaucoma, prostate, IV, bite, sting, eyes open',
-     'You are now in the endoscopy room. The nurse will guide you.', true]
+     'You are now in the endoscopy room. The nurse will guide you.', true, 'tap']
   ],
   scenarios: [
     ['ch01-s01', 'ch01', 'Lucas Martin', 'male', '1988-06-14', 'France', 'stomach endoscopy', '', 1, true],
@@ -185,6 +186,12 @@ function isTrue_(v) {
   return v === true || String(v).trim().toUpperCase() === 'TRUE' || String(v).trim() === '1';
 }
 
+/** 환자 말 자막 방식: tap(눌러서 보기, 기본) / show(항상 보기) / off(안 보임) */
+function captionMode_(v) {
+  const mode = String(v || '').trim().toLowerCase();
+  return mode === 'show' || mode === 'off' ? mode : 'tap';
+}
+
 /** 공개(published)된 챕터만 순서(order)대로. 학생 화면에 필요한 칸만 보낸다. */
 function listChapters_() {
   return readTable_('chapters')
@@ -196,7 +203,8 @@ function listChapters_() {
         order: Number(c.order),
         title: String(c.title || ''),
         goal: String(c.goal || ''),
-        keywords: String(c.keywords || '').split(',').map(function (k) { return k.trim(); }).filter(Boolean)
+        keywords: String(c.keywords || '').split(',').map(function (k) { return k.trim(); }).filter(Boolean),
+        ai_captions: captionMode_(c.ai_captions)
       };
     });
 }
@@ -323,7 +331,9 @@ function createLiveToken_(chapterId) {
   const setup = {
     model: 'models/' + model,
     generationConfig: { responseModalities: ['AUDIO'] },
-    systemInstruction: { parts: [{ text: instruction }] }
+    systemInstruction: { parts: [{ text: instruction }] },
+    inputAudioTranscription: {},    // 학생 말 → 글자 (받아쓰기)
+    outputAudioTranscription: {}    // 환자(AI) 말 → 글자 (자막)
   };
   // 목소리: settings 탭의 voice_male / voice_female. 비어 있으면 Gemini 기본 목소리.
   const voice = String(settings[patient.sex.toLowerCase() === 'female' ? 'voice_female' : 'voice_male'] || '').trim();

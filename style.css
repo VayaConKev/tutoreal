@@ -53,13 +53,25 @@ input[type="text"] {
   background: var(--bg); color: var(--text); font: inherit; font-size: 17px;
 }
 input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-.chart { margin: 0 0 8px; }
-.chart div { display: flex; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line); }
-.chart dt { flex: none; width: 72px; color: var(--muted); }
-.chart dd { margin: 0; font-weight: 600; }
-.talk-time { font-size: 40px; font-weight: 700; text-align: center; margin: 16px 0 0; font-variant-numeric: tabular-nums; }
-.talk-status { color: var(--muted); text-align: center; min-height: 3em; margin: 4px 0 4px; }
-.talk-info { color: var(--muted); font-size: 12px; text-align: center; min-height: 1.5em; margin: 0 0 12px; white-space: pre-line; }
+.talk-head { padding: 14px 16px; }
+.talk-head-row { display: flex; justify-content: space-between; align-items: center; }
+.talk-head h3 { margin: 2px 0 0; font-size: 20px; }
+.talk-meta { margin: 0; color: var(--muted); font-size: 14px; }
+.talk-time { font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.talk-status { color: var(--muted); text-align: center; font-size: 14px; margin: 12px 0; }
+.talk-info { color: var(--muted); font-size: 12px; text-align: center; margin: 0 0 12px; white-space: pre-line; }
+
+.transcript { display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; }
+.line { max-width: 85%; padding: 8px 12px; border-radius: 14px; font-size: 16px; }
+.line .who { display: block; font-size: 12px; color: var(--muted); }
+.line.ai { align-self: flex-start; background: var(--card); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+.line.me { align-self: flex-end; background: var(--accent-soft); border-bottom-right-radius: 4px; }
+.line.ai.covered { cursor: pointer; }
+.line.ai.covered .text { display: none; }
+.line .cover { color: var(--muted); }
+.line.ai:not(.covered) .cover { display: none; }
+
+.talk-actions { position: sticky; bottom: 0; padding: 10px 0 12px; background: var(--bg); }
 .hint { color: var(--muted); font-size: 13px; text-align: center; margin: 10px 0 0; }
 .state { color: var(--muted); text-align: center; padding: 24px 0; margin: 0; }
 footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 28px; }

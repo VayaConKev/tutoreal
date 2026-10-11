@@ -44,16 +44,18 @@
     </section>
 
     <section id="view-talk" hidden>
-      <div class="card">
-        <p class="eyebrow" id="talk-chapter"></p>
+      <div class="card talk-head">
+        <div class="talk-head-row">
+          <p class="eyebrow" id="talk-chapter"></p>
+          <span class="talk-time" id="talk-time">0:00</span>
+        </div>
         <h3 id="talk-name">수검자 준비 중…</h3>
-        <dl class="chart">
-          <div><dt>생년월일</dt><dd id="talk-dob">–</dd></div>
-          <div><dt>검사</dt><dd id="talk-exam">–</dd></div>
-        </dl>
-        <p class="talk-time" id="talk-time">0:00</p>
-        <p class="talk-status" id="talk-status" role="status"></p>
-        <p class="talk-info" id="talk-info"></p>
+        <p class="talk-meta"><span id="talk-dob">–</span> · <span id="talk-exam">–</span></p>
+      </div>
+      <p class="talk-status" id="talk-status" role="status"></p>
+      <div class="transcript" id="transcript"></div>
+      <p class="talk-info" id="talk-info" hidden></p>
+      <div class="talk-actions">
         <button class="primary" id="talk-end">대화 끝내기</button>
         <button class="secondary" id="talk-back" hidden>챕터로 돌아가기</button>
       </div>

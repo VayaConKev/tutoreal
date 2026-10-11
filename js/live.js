@@ -22,9 +22,12 @@ export class LiveSession {
   // 반드시 버튼을 누른 그 순간에 만든다. iOS는 사용자가 누른 순간에만 소리를 켤 수 있다.
   // ctx는 AI 목소리 재생용. 마이크용 micCtx는 마이크를 켠 뒤에 따로 만든다 (iOS는 마이크보다 먼저 만든
   // 오디오 장치에 마이크 소리를 넘겨주지 않는 경우가 있다).
-  constructor({ onStatus, onEnd }) {
+  // onText(who, text): 'me'(학생) / 'ai'(환자) 말이 글자로 조금씩 도착할 때. onTurnEnd(): 환자 차례가 끝났을 때.
+  constructor({ onStatus, onEnd, onText, onTurnEnd }) {
     this.onStatus = onStatus;
     this.onEnd = onEnd;
+    this.onText = onText;
+    this.onTurnEnd = onTurnEnd;
     this.ctx = this.keepRunning(new AudioContext());
     this.sent = 0;   // 보낸 소리 (초)
     this.recv = 0;   // 받은 소리 (초)
@@ -106,6 +109,9 @@ export class LiveSession {
       parts.forEach((p) => {
         if (p.inlineData && /^audio\/pcm/.test(p.inlineData.mimeType || '')) this.play(p.inlineData);
       });
+      if (sc.inputTranscription && sc.inputTranscription.text) this.onText('me', sc.inputTranscription.text);
+      if (sc.outputTranscription && sc.outputTranscription.text) this.onText('ai', sc.outputTranscription.text);
+      if (sc.turnComplete || sc.interrupted) this.onTurnEnd();
     }
     if (msg.goAway) this.onStatus('goaway');
   }

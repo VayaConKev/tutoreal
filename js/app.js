@@ -139,8 +139,36 @@ function startClock() {
   clock = setInterval(() => {
     const sec = Math.floor((Date.now() - started) / 1000);
     $('#talk-time').textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
-    if (live) $('#talk-info').textContent = live.info();
   }, 1000);
+}
+
+/* 받아쓰기·자막: 말이 글자로 조금씩 도착하면 지금 말하는 사람의 말풍선에 이어 붙인다.
+   환자 차례가 끝나면 두 말풍선을 닫아, 다음 말은 새 말풍선에 쓴다. 글자는 화면에만 있고 저장하지 않는다. */
+const transcript = { me: null, ai: null };
+
+function addText(who, text) {
+  if (who === 'ai' && currentChapter.ai_captions === 'off') return;
+  setTalkStatus('');
+  let line = transcript[who];
+  if (!line) {
+    line = document.createElement('div');
+    line.className = `line ${who}`;
+    line.innerHTML = `<span class="who">${who === 'me' ? '나' : '환자'}</span>` +
+      (who === 'ai' ? '<span class="cover">눌러서 자막 보기</span>' : '') + '<span class="text"></span>';
+    if (who === 'ai' && currentChapter.ai_captions === 'tap') {
+      line.classList.add('covered');
+      line.addEventListener('click', () => line.classList.remove('covered'), { once: true });
+    }
+    $('#transcript').append(line);
+    transcript[who] = line;
+    line.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  line.querySelector('.text').textContent += text;
+}
+
+function endTurn() {
+  transcript.me = null;
+  transcript.ai = null;
 }
 
 async function beginTalk() {
@@ -151,7 +179,9 @@ async function beginTalk() {
       if (s === 'ready') { setTalkStatus('연결됐어요. 먼저 말을 걸어 보세요.'); startClock(); }
       if (s === 'goaway') setTalkStatus('곧 연결이 끝나요.');
     },
-    onEnd: endedTalk
+    onEnd: endedTalk,
+    onText: addText,
+    onTurnEnd: endTurn
   });
 
   $('#talk-chapter').textContent = `${currentChapter.order}장 · ${currentChapter.title}`;
@@ -159,7 +189,9 @@ async function beginTalk() {
   $('#talk-dob').textContent = '–';
   $('#talk-exam').textContent = '–';
   $('#talk-time').textContent = '0:00';
-  $('#talk-info').textContent = '';
+  $('#talk-info').hidden = true;
+  $('#transcript').innerHTML = '';
+  endTurn();
   $('#talk-end').hidden = false;
   $('#talk-back').hidden = true;
   show('talk');
@@ -187,7 +219,9 @@ async function beginTalk() {
 function endedTalk(reason, info) {
   clearInterval(clock);
   live = null;
+  // 문제가 생겨 끝난 경우에만 연결 정보(보낸·받은 소리 등)를 보여 준다.
   $('#talk-info').textContent = info;
+  $('#talk-info').hidden = !reason;
   setTalkStatus(reason ? `대화가 끝났어요. ${reason}` : '대화가 끝났어요. 수고하셨어요!');
   $('#talk-end').hidden = true;
   $('#talk-back').hidden = false;
