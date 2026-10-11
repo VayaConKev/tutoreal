@@ -20,21 +20,28 @@ function fromBase64(b64) {
 
 export class LiveSession {
   // 반드시 버튼을 누른 그 순간에 만든다. iOS는 사용자가 누른 순간에만 소리를 켤 수 있다.
+  // ctx는 AI 목소리 재생용. 마이크용 micCtx는 마이크를 켠 뒤에 따로 만든다 (iOS는 마이크보다 먼저 만든
+  // 오디오 장치에 마이크 소리를 넘겨주지 않는 경우가 있다).
   constructor({ onStatus, onEnd }) {
     this.onStatus = onStatus;
     this.onEnd = onEnd;
-    this.ctx = new AudioContext();
-    this.ctx.resume();
-    // iOS는 마이크를 켜는 순간이나 전화·알림이 올 때 오디오를 멈출 수 있다. 대화 중이면 다시 켠다.
-    this.ctx.onstatechange = () => {
-      if (!this.ended && this.ctx.state !== 'running' && this.ctx.state !== 'closed') this.ctx.resume().catch(() => {});
-    };
+    this.ctx = this.keepRunning(new AudioContext());
     this.sent = 0;   // 보낸 소리 (초)
     this.recv = 0;   // 받은 소리 (초)
+    this.micStats = { calls: 0, empty: 0 };   // 마이크 처리 횟수, 그중 소리가 비어 있던 횟수
     this.sources = new Set();
     this.playAt = 0;
     this.ready = false;
     this.ended = false;
+  }
+
+  /** 오디오 장치를 켜고, iOS가 (마이크 시작·전화·알림 때문에) 멈추면 대화 중에는 다시 켠다. */
+  keepRunning(ctx) {
+    ctx.resume().catch(() => {});
+    ctx.onstatechange = () => {
+      if (!this.ended && ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => {});
+    };
+    return ctx;
   }
 
   /** 마이크를 켠다. 토큰은 1분 안에 써야 하므로, 허용 창이 뜰 수 있는 마이크를 먼저 준비한다. */
@@ -42,14 +49,23 @@ export class LiveSession {
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
-    if (this.ctx.state !== 'running') await this.ctx.resume().catch(() => {});
-    await this.ctx.audioWorklet.addModule(new URL('./mic-worklet.js', import.meta.url));
-    if (this.ended) return;
-    this.mic = new AudioWorkletNode(this.ctx, 'mic-processor', { processorOptions: { targetRate: IN_RATE } });
-    this.mic.port.onmessage = (e) => this.sendAudio(e.data);
-    const mute = this.ctx.createGain();   // 내 목소리가 스피커로 다시 나오지 않게 소리 0으로 연결
-    mute.gain.value = 0;
-    this.ctx.createMediaStreamSource(this.stream).connect(this.mic).connect(mute).connect(this.ctx.destination);
+    this.track = this.stream.getAudioTracks()[0];
+    if (this.ended) return this.closeMic();
+    this.micCtx = this.keepRunning(new AudioContext());
+    await this.micCtx.audioWorklet.addModule(new URL('./mic-worklet.js', import.meta.url));
+    if (this.ended) return this.closeMic();
+    this.mic = new AudioWorkletNode(this.micCtx, 'mic-processor', { processorOptions: { targetRate: IN_RATE } });
+    this.mic.port.onmessage = (e) => {
+      if (e.data instanceof ArrayBuffer) this.sendAudio(e.data);
+      else this.micStats = e.data;
+    };
+    // 변환기는 소리를 내보내지 않으므로(무음) 스피커에 이어도 내 목소리가 다시 들리지 않는다. 이어야 작동한다.
+    this.micCtx.createMediaStreamSource(this.stream).connect(this.mic).connect(this.micCtx.destination);
+  }
+
+  closeMic() {
+    if (this.stream) this.stream.getTracks().forEach((t) => t.stop());
+    if (this.micCtx) this.micCtx.close().catch(() => {});
   }
 
   /** 임시 토큰으로 Gemini Live에 직접 연결한다. 지시문은 토큰 안에 고정되어 있어 모델 이름만 보낸다. */
@@ -114,7 +130,11 @@ export class LiveSession {
 
   /** 문제를 찾기 위한 연결 정보: 보낸 소리, 받은 소리, 오디오 상태 */
   info() {
-    return `보낸 소리 ${this.sent.toFixed(1)}초 · 받은 소리 ${this.recv.toFixed(1)}초 · 오디오 ${this.ctx.state}`;
+    const t = this.track;
+    const mic = t ? `${t.readyState}${t.muted ? ' 음소거' : ''}` : '없음';
+    return `보낸 소리 ${this.sent.toFixed(1)}초 · 받은 소리 ${this.recv.toFixed(1)}초\n` +
+      `마이크 ${mic} · 마이크 처리 ${this.micStats.calls}/${this.micStats.empty} · ` +
+      `오디오 ${this.ctx.state}/${this.micCtx ? this.micCtx.state : '-'}`;
   }
 
   stopPlayback() {
@@ -129,7 +149,7 @@ export class LiveSession {
     this.ended = true;
     this.ready = false;
     const info = this.info();
-    if (this.stream) this.stream.getTracks().forEach((t) => t.stop());
+    this.closeMic();
     if (this.ws && this.ws.readyState <= WebSocket.OPEN) this.ws.close(1000);
     this.stopPlayback();
     this.ctx.close().catch(() => {});

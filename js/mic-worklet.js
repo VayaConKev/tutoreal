@@ -10,11 +10,19 @@ class MicProcessor extends AudioWorkletProcessor {
     this.count = 0;
     this.chunk = new Int16Array(target / 10);
     this.len = 0;
+    this.calls = 0;   // 문제 찾기용: 처리 횟수와 그중 마이크 소리가 비어 있던 횟수를 1초마다 알려 준다
+    this.empty = 0;
+    this.reportAt = 0;
   }
 
   process(inputs) {
+    this.calls++;
+    if (currentTime >= this.reportAt) {
+      this.reportAt = currentTime + 1;
+      this.port.postMessage({ calls: this.calls, empty: this.empty });
+    }
     const input = inputs[0] && inputs[0][0];
-    if (!input) return true;
+    if (!input) { this.empty++; return true; }
     for (let i = 0; i < input.length; i++) {
       this.sum += input[i];
       this.count++;
