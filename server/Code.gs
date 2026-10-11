@@ -3,10 +3,14 @@
  * 원본: tutoreal/server/Code.gs  ← 이 파일만 고치고, Apps Script 편집기에는 붙여 넣기만 한다.
  *
  * v0.2 (2단계): setup() — 시트의 탭과 칸 이름을 자동으로 만들고 예시 내용을 채운다.
- * 여러 번 실행해도 안전하다. 이미 있는 탭과 내용은 건드리지 않는다.
+ * v0.3 (3단계): doGet() — 웹 앱 주소로 접속하면 서버 상태를 알려준다.
+ *               checkApiKey() — 스크립트 속성의 Gemini API 키가 작동하는지 확인한다.
+ *
+ * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
+ * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.2';
+const SERVER_VERSION = 'v0.3';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -104,4 +108,49 @@ function setup() {
   const msg = log.length ? log.join('\n') : '이미 모두 준비되어 있어요. 바뀐 것 없음.';
   console.log(msg);
   return msg;
+}
+
+
+/* ───────────────────────── 3단계: 웹 앱 입구 ───────────────────────── */
+
+/** 웹 앱 주소로 들어오는 요청을 받는다. 지금은 상태 확인(ping)만 한다. */
+function doGet(e) {
+  const action = (e && e.parameter && e.parameter.action) || 'ping';
+  try {
+    if (action === 'ping') {
+      return json_({ ok: true, server: SERVER_VERSION, time: new Date().toISOString() });
+    }
+    return json_({ ok: false, error: 'UNKNOWN_ACTION' });
+  } catch (err) {
+    console.error(err);
+    return json_({ ok: false, error: 'SERVER_ERROR' });   // 자세한 오류는 로그에만 남긴다
+  }
+}
+
+function json_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/** 편집기에서 한 번 실행: API 키가 작동하는지 확인하고, 쓸 수 있는 음성(Live) 모델 이름을 보여준다. */
+function checkApiKey() {
+  const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!key) {
+    console.log('API 키가 없어요. 프로젝트 설정 → 스크립트 속성에 GEMINI_API_KEY를 추가해 주세요.');
+    return;
+  }
+  const res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000', {
+    headers: { 'x-goog-api-key': key },
+    muteHttpExceptions: true
+  });
+  const code = res.getResponseCode();
+  if (code !== 200) {
+    console.log('API 키 확인 실패 (응답 코드 ' + code + '). 키를 다시 복사해 붙여 넣었는지 확인해 주세요.');
+    return;
+  }
+  const models = (JSON.parse(res.getContentText()).models || []).map(function (m) { return m.name.replace('models/', ''); });
+  const live = models.filter(function (n) { return /live|native-audio/i.test(n); });
+  const flash = models.filter(function (n) { return /flash/i.test(n) && !/live|native-audio|tts|image/i.test(n); });
+  console.log('OK: API 키가 작동해요. 사용 가능한 모델 ' + models.length + '개');
+  console.log('음성(Live) 모델 후보:\n' + (live.length ? live.join('\n') : '(없음)'));
+  console.log('텍스트(Flash) 모델 후보:\n' + (flash.length ? flash.slice(0, 15).join('\n') : '(없음)'));
 }
