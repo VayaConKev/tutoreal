@@ -5,12 +5,13 @@
  * v0.2 (2단계): setup() — 시트의 탭과 칸 이름을 자동으로 만들고 예시 내용을 채운다.
  * v0.3 (3단계): doGet() — 웹 앱 주소로 접속하면 서버 상태를 알려준다.
  *               checkApiKey() — 스크립트 속성의 Gemini API 키가 작동하는지 확인한다.
+ * v0.4 (4단계): doGet(action=chapters) — 공개된 챕터 목록을 시트에서 읽어 웹앱에 보낸다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.3';
+const SERVER_VERSION = 'v0.4';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -120,6 +121,9 @@ function doGet(e) {
     if (action === 'ping') {
       return json_({ ok: true, server: SERVER_VERSION, time: new Date().toISOString() });
     }
+    if (action === 'chapters') {
+      return json_({ ok: true, server: SERVER_VERSION, chapters: listChapters_() });
+    }
     return json_({ ok: false, error: 'UNKNOWN_ACTION' });
   } catch (err) {
     console.error(err);
@@ -153,4 +157,43 @@ function checkApiKey() {
   console.log('OK: API 키가 작동해요. 사용 가능한 모델 ' + models.length + '개');
   console.log('음성(Live) 모델 후보:\n' + (live.length ? live.join('\n') : '(없음)'));
   console.log('텍스트(Flash) 모델 후보:\n' + (flash.length ? flash.slice(0, 15).join('\n') : '(없음)'));
+}
+
+
+/* ───────────────────────── 4단계: 챕터 목록 ───────────────────────── */
+
+/** 시트 탭 하나를 [{칸이름: 값, ...}, ...] 형태로 읽는다. 칸 이름(1행)으로 찾으므로 칸 순서가 바뀌어도 괜찮다. */
+function readTable_(name) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  const values = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).getValues();
+  const headers = values[0].map(function (h) { return String(h).trim(); });
+  return values.slice(1)
+    .filter(function (row) { return row.join('') !== ''; })
+    .map(function (row) {
+      const obj = {};
+      headers.forEach(function (h, i) { if (h) obj[h] = row[i]; });
+      return obj;
+    });
+}
+
+/** TRUE / 'TRUE' / 'true' / 1 을 모두 참으로 본다. */
+function isTrue_(v) {
+  return v === true || String(v).trim().toUpperCase() === 'TRUE' || String(v).trim() === '1';
+}
+
+/** 공개(published)된 챕터만 순서(order)대로. 학생 화면에 필요한 칸만 보낸다. */
+function listChapters_() {
+  return readTable_('chapters')
+    .filter(function (c) { return c.chapter_id && isTrue_(c.published); })
+    .sort(function (a, b) { return Number(a.order) - Number(b.order); })
+    .map(function (c) {
+      return {
+        chapter_id: String(c.chapter_id),
+        order: Number(c.order),
+        title: String(c.title || ''),
+        goal: String(c.goal || ''),
+        keywords: String(c.keywords || '').split(',').map(function (k) { return k.trim(); }).filter(Boolean)
+      };
+    });
 }

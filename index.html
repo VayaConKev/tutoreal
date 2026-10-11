@@ -4,32 +4,35 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tutoreal</title>
-  <style>
-    :root { --bg: #f6f7f9; --card: #ffffff; --text: #1f2933; --muted: #6b7280; --accent: #2f6fdd; }
-    @media (prefers-color-scheme: dark) {
-      :root { --bg: #14171c; --card: #1d2229; --text: #e5e7eb; --muted: #9ca3af; --accent: #6b9cf0; }
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
-      padding: 16px; background: var(--bg); color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
-    }
-    main { width: 100%; max-width: 420px; background: var(--card); border-radius: 16px; padding: 32px 24px; text-align: center; }
-    h1 { margin: 0 0 8px; font-size: 28px; }
-    p { margin: 0 0 6px; line-height: 1.6; }
-    .sub { color: var(--muted); font-size: 15px; }
-    .version { margin-top: 24px; color: var(--muted); font-size: 12px; }
-    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-right: 6px; }
-  </style>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main>
-    <h1>안녕하세요 👋</h1>
-    <p>Tutoreal</p>
-    <p class="sub">내시경실 영어 디지털 교과서</p>
-    <p class="sub"><span class="dot"></span>이 화면이 보이면 1단계 성공이에요.</p>
-    <p class="version">v0.1</p>
-  </main>
+  <div class="wrap">
+    <header>
+      <h1>Tutoreal</h1>
+      <p>내시경실 영어 디지털 교과서</p>
+    </header>
+
+    <section id="view-list">
+      <h2>챕터</h2>
+      <div id="chapter-list"></div>
+    </section>
+
+    <section id="view-detail" hidden>
+      <button class="link" id="back">‹ 챕터 목록</button>
+      <div class="card">
+        <p class="eyebrow" id="detail-no"></p>
+        <h3 id="detail-title"></h3>
+        <p class="goal" id="detail-goal"></p>
+        <h2>핵심 단어</h2>
+        <div class="chips" id="detail-keywords"></div>
+        <button class="primary" disabled>대화 시작</button>
+        <p class="hint">음성 대화는 5단계에서 열려요.</p>
+      </div>
+    </section>
+
+    <footer id="version"></footer>
+  </div>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>
