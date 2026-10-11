@@ -67,3 +67,11 @@
 - 서버 v0.8: 토큰 설정에 inputAudioTranscription, outputAudioTranscription 추가, 챕터 목록에 ai_captions 포함
 - 진단 숫자(보낸·받은 소리 등)는 문제가 생겨 대화가 끝났을 때만 표시
 - 글자는 화면에만 있고 저장하지 않음
+
+## v0.9 (2026-10-11)
+- 9단계: 사용 시간 기록 — 대화를 시작할 때(토큰 발급) sessions 탭에 한 줄(session_id, student_id, started_at, chapter_id, scenario_id, shared=FALSE)을 만들고, 끝나면 duration_sec과 end_reason을 채움
+- end_reason: user(끝내기) / left(화면 닫음) / closed(연결 끊김) / error(연결 전 실패)
+- 서버 v0.9: doPost(action=end) 추가. 사용 시간은 실제 흐른 시간과 15분을 넘지 않게 자름. 다른 학생의 기록은 바꿀 수 없음
+- 앱: 화면을 닫을 때도 기록이 전달되도록 sendBeacon 사용
+- 대화가 끝나면 '대화가 끝났어요' 문구가 보이도록 화면을 옮김 (8단계 테스트에서 발견)
+- 대화 내용(글자·음성)은 기록하지 않음

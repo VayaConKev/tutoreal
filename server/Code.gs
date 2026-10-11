@@ -10,12 +10,13 @@
  * v0.6 (6단계): doPost(action=talk) — 시나리오를 고르고 Gemini Live 임시 토큰을 발급한다.
  *               testLiveToken() — 편집기에서 토큰 발급이 되는지 확인한다.
  * v0.8 (8단계): 받아쓰기·자막 — 토큰 설정에 음성→글자 변환을 켜고, 챕터 목록에 ai_captions(자막 방식)를 보낸다.
+ * v0.9 (9단계): 사용 시간 기록 — 토큰을 줄 때 sessions 탭에 한 줄을 만들고, doPost(action=end)로 사용 시간을 채운다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.8';
+const SERVER_VERSION = 'v0.9';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -234,6 +235,9 @@ function doPost(e) {
       result.server = SERVER_VERSION;
       return json_(result);
     }
+    if (body.action === 'end') {
+      return json_(endSession_(body.code, String(body.session_id || ''), body.duration_sec, String(body.end_reason || '')));
+    }
     return json_({ ok: false, error: 'UNKNOWN_ACTION' });
   } catch (err) {
     console.error(err);
@@ -243,6 +247,13 @@ function doPost(e) {
 
 /** 코드가 맞고 상태가 active인 학생이면 이름만 돌려준다. 대소문자와 앞뒤 공백은 무시한다. */
 function login_(code) {
+  const auth = auth_(code);
+  if (!auth.ok) return auth;
+  return { ok: true, name: String(auth.student.display_name || auth.student.student_id) };
+}
+
+/** 접속 코드를 확인하고 학생 정보(students 탭의 한 줄)를 돌려준다. 틀리면 실패 횟수를 센다. */
+function auth_(code) {
   code = String(code || '').trim().toLowerCase();
   if (!code) return { ok: false, error: 'INVALID_CODE' };
 
@@ -255,7 +266,7 @@ function login_(code) {
     cache.put('login_fails', String(fails + 1), 600);
     return { ok: false, error: 'INVALID_CODE' };
   }
-  return { ok: true, name: String(student.display_name || student.student_id) };
+  return { ok: true, student: student };
 }
 
 function findStudent_(code) {
@@ -281,9 +292,11 @@ function getSettings_() {
 
 /** 접속 코드를 확인한 뒤 대화 한 번 분량의 임시 토큰을 준다. */
 function startTalk_(code, chapterId) {
-  const auth = login_(code);
+  const auth = auth_(code);
   if (!auth.ok) return auth;
-  return createLiveToken_(chapterId);
+  const result = createLiveToken_(chapterId);
+  if (result.ok) result.session_id = logSessionStart_(auth.student, chapterId, result.scenario_id);
+  return result;
 }
 
 /**
@@ -384,4 +397,59 @@ function testLiveToken() {
   } else {
     console.log('실패: ' + r.error + ' — 바로 위에 빨간 오류 줄이 있으면 그 내용을 Claude에게 알려 주세요.');
   }
+}
+
+
+/* ───────────────────────── 9단계: 사용 시간 기록 ───────────────────────── */
+
+// 대화가 끝난 이유: user(끝내기) / left(화면을 닫음) / closed(연결이 끊김) / error(연결 전에 실패)
+const END_REASONS = ['user', 'left', 'closed', 'error'];
+
+/** 탭의 칸 이름(1행)에 맞춰 한 줄을 추가한다. 없는 칸은 비워 둔다. */
+function appendRow_(name, obj) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function (h) { return String(h).trim(); });
+  sheet.appendRow(headers.map(function (h) { return Object.prototype.hasOwnProperty.call(obj, h) ? obj[h] : ''; }));
+}
+
+/** 토큰을 줄 때 sessions 탭에 시작 기록을 남긴다. 대화 내용은 남기지 않는다. */
+function logSessionStart_(student, chapterId, scenarioId) {
+  const id = Utilities.getUuid();
+  appendRow_('sessions', {
+    session_id: id,
+    student_id: String(student.student_id),
+    started_at: new Date(),
+    chapter_id: chapterId,
+    scenario_id: scenarioId,
+    shared: false
+  });
+  return id;
+}
+
+/**
+ * 대화가 끝나면 사용 시간(초)과 끝난 이유를 채운다. 이미 채워진 줄은 바꾸지 않는다.
+ * 앱이 보낸 시간이 실제로 흐른 시간이나 대화 최대 시간보다 길면 그 값으로 자른다.
+ */
+function endSession_(code, sessionId, durationSec, endReason) {
+  const auth = auth_(code);
+  if (!auth.ok) return auth;
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('sessions');
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(function (h) { return String(h).trim(); });
+  const col = function (name) { return headers.indexOf(name); };
+
+  for (let i = values.length - 1; i >= 1; i--) {
+    const row = values[i];
+    if (String(row[col('session_id')]) !== sessionId) continue;
+    if (String(row[col('student_id')]) !== String(auth.student.student_id)) return { ok: false, error: 'NOT_YOURS' };
+    if (row[col('duration_sec')] !== '') return { ok: true };
+
+    const started = row[col('started_at')];
+    const elapsed = started instanceof Date ? (Date.now() - started.getTime()) / 1000 : LIVE_SESSION_MAX_MIN * 60;
+    const sec = Math.round(Math.max(0, Math.min(Number(durationSec) || 0, elapsed, LIVE_SESSION_MAX_MIN * 60)));
+    sheet.getRange(i + 1, col('duration_sec') + 1).setValue(sec);
+    sheet.getRange(i + 1, col('end_reason') + 1).setValue(END_REASONS.indexOf(endReason) >= 0 ? endReason : 'unknown');
+    return { ok: true };
+  }
+  return { ok: false, error: 'NO_SESSION' };
 }

@@ -47,5 +47,11 @@ export async function login(code) {
 
 export async function startTalk(code, chapterId) {
   const data = await postServer('talk', { code, chapter_id: chapterId });
-  return { token: data.token, model: data.model, patient: data.patient, server: data.server };
+  return { token: data.token, model: data.model, patient: data.patient, sessionId: data.session_id, server: data.server };
+}
+
+// 대화가 끝났음을 알린다 (사용 시간 기록). 화면을 닫는 순간에도 전달되도록 sendBeacon으로 보내고 답은 기다리지 않는다.
+export function endTalk(code, sessionId, durationSec, endReason) {
+  const body = JSON.stringify({ action: 'end', code, session_id: sessionId, duration_sec: durationSec, end_reason: endReason });
+  navigator.sendBeacon(SERVER_URL, new Blob([body], { type: 'text/plain;charset=utf-8' }));
 }

@@ -1,6 +1,6 @@
 // 화면 전환과 전체 흐름을 담당한다.
 import { APP_VERSION } from './config.js';
-import { getChapters, login, startTalk } from './api.js';
+import { getChapters, login, startTalk, endTalk } from './api.js';
 import { LiveSession } from './live.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -8,6 +8,7 @@ const views = { login: $('#view-login'), list: $('#view-list'), detail: $('#view
 let chapters = [];
 let currentChapter = null;
 let live = null;        // 진행 중인 음성 대화
+let talk = null;        // 진행 중인 대화의 기록용 정보 { sessionId, readyAt, endReason, reported }
 let clock = null;       // 경과 시간 타이머
 
 // 접속 코드는 이 기기의 브라우저에만 기억한다 (다음에 열 때 다시 입력하지 않도록).
@@ -171,15 +172,26 @@ function endTurn() {
   transcript.ai = null;
 }
 
+/** 사용 시간 기록을 서버에 보낸다. 한 대화에 한 번만. */
+function reportEnd(t) {
+  if (!t.sessionId || t.reported) return;
+  t.reported = true;
+  const sec = t.readyAt ? Math.round((Date.now() - t.readyAt) / 1000) : 0;
+  const reason = t.endReason || (t.readyAt ? 'closed' : 'error');
+  endTalk(loadCode(), t.sessionId, sec, reason);
+}
+
 async function beginTalk() {
   if (live || !currentChapter) return;
+  const t = { sessionId: null, readyAt: 0, endReason: '', reported: false };
+  talk = t;
   // 오디오는 버튼을 누른 이 순간에 켜야 한다 (iOS). 그래서 다른 일보다 먼저 만든다.
   live = new LiveSession({
     onStatus: (s) => {
-      if (s === 'ready') { setTalkStatus('연결됐어요. 먼저 말을 걸어 보세요.'); startClock(); }
+      if (s === 'ready') { t.readyAt = Date.now(); setTalkStatus('연결됐어요. 먼저 말을 걸어 보세요.'); startClock(); }
       if (s === 'goaway') setTalkStatus('곧 연결이 끝나요.');
     },
-    onEnd: endedTalk,
+    onEnd: (reason, info) => { endedTalk(reason, info); reportEnd(t); },
     onText: addText,
     onTurnEnd: endTurn
   });
@@ -202,8 +214,9 @@ async function beginTalk() {
     await session.openMic();
     if (session.ended) return;   // 준비 중에 '끝내기'를 누른 경우
     setTalkStatus('수검자를 부르는 중…');
-    const { token, model, patient, server } = await startTalk(loadCode(), currentChapter.chapter_id);
-    if (session.ended) return;
+    const { token, model, patient, sessionId, server } = await startTalk(loadCode(), currentChapter.chapter_id);
+    t.sessionId = sessionId;
+    if (session.ended) return reportEnd(t);   // 준비 중에 끝난 경우에도 시작 기록을 마무리한다
     setVersion(server);
     $('#talk-name').textContent = patient.name;
     $('#talk-dob').textContent = patient.dob;
@@ -225,6 +238,7 @@ function endedTalk(reason, info) {
   setTalkStatus(reason ? `대화가 끝났어요. ${reason}` : '대화가 끝났어요. 수고하셨어요!');
   $('#talk-end').hidden = true;
   $('#talk-back').hidden = false;
+  $('#talk-status').scrollIntoView({ block: 'center', behavior: 'smooth' });   // 아래로 내려가 있어도 끝난 문구가 보이게
 }
 
 /* ── 시작 ── */
@@ -241,9 +255,9 @@ $('#login-form').addEventListener('submit', (e) => {
 $('#logout').addEventListener('click', logout);
 $('#back').addEventListener('click', () => show('list'));
 $('#talk-start').addEventListener('click', beginTalk);
-$('#talk-end').addEventListener('click', () => { if (live) live.stop(''); });
+$('#talk-end').addEventListener('click', () => { if (live) { talk.endReason = 'user'; live.stop(''); } });
 $('#talk-back').addEventListener('click', () => show('detail'));
-window.addEventListener('pagehide', () => { if (live) live.stop(''); });
+window.addEventListener('pagehide', () => { if (live) { talk.endReason = 'left'; live.stop(''); } });
 
 setVersion();
 show('login');
