@@ -55,7 +55,7 @@ export class LiveSession {
     await this.micCtx.audioWorklet.addModule(new URL('./mic-worklet.js', import.meta.url));
     if (this.ended) return this.closeMic();
     this.mic = new AudioWorkletNode(this.micCtx, 'mic-processor', { processorOptions: { targetRate: IN_RATE } });
-    // 메시지 종류는 이름표(type)로 구분한다. Safari에서 'instanceof ArrayBuffer' 검사가 통하지 않는 것으로 보였다 (v0.6.2).
+    // 메시지 종류는 이름표(type)로 구분한다: pcm = 마이크 소리 덩어리, stats = 진단 숫자
     this.mic.port.onmessage = (e) => {
       if (e.data.type === 'pcm') this.sendAudio(e.data.buffer);
       else if (e.data.type === 'stats') this.micStats = e.data;

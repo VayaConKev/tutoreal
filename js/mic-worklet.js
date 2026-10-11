@@ -8,9 +8,10 @@ class MicProcessor extends AudioWorkletProcessor {
     this.pos = 0;
     this.sum = 0;
     this.count = 0;
-    this.chunk = new Int16Array(target / 10);
+    this.size = target / 10;   // 0.1초 분량 (16000 / 10 = 1600개)
+    this.chunk = new Int16Array(this.size);
     this.len = 0;
-    // 문제 찾기용: 처리 횟수, 그중 마이크 소리가 비어 있던 횟수, 보낸 덩어리 수, 최근 1초의 가장 큰 소리(0~100)
+    // 문제 찾기용: 처리 횟수, 그중 마이크 소리가 비어 있던 횟수, 보낸 덩어리 수, 대화 중 가장 큰 소리(0~100)
     this.calls = 0;
     this.empty = 0;
     this.chunks = 0;
@@ -23,7 +24,6 @@ class MicProcessor extends AudioWorkletProcessor {
     if (currentTime >= this.reportAt) {
       this.reportAt = currentTime + 1;
       this.port.postMessage({ type: 'stats', calls: this.calls, empty: this.empty, chunks: this.chunks, peak: Math.round(this.peak * 100) });
-      this.peak = 0;
     }
     const input = inputs[0] && inputs[0][0];
     if (!input) { this.empty++; return true; }
@@ -41,7 +41,8 @@ class MicProcessor extends AudioWorkletProcessor {
         if (this.len === this.chunk.length) {
           this.port.postMessage({ type: 'pcm', buffer: this.chunk.buffer }, [this.chunk.buffer]);
           this.chunks++;
-          this.chunk = new Int16Array(this.chunk.length);
+          // 보낸 그릇은 넘겨줘서 비어 있으므로(길이 0) 정해 둔 크기로 새로 만든다. (v0.6.0~0.6.3 버그)
+          this.chunk = new Int16Array(this.size);
           this.len = 0;
         }
       }
