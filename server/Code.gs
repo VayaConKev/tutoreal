@@ -6,12 +6,13 @@
  * v0.3 (3단계): doGet() — 웹 앱 주소로 접속하면 서버 상태를 알려준다.
  *               checkApiKey() — 스크립트 속성의 Gemini API 키가 작동하는지 확인한다.
  * v0.4 (4단계): doGet(action=chapters) — 공개된 챕터 목록을 시트에서 읽어 웹앱에 보낸다.
+ * v0.5 (5-1단계): doPost(action=login) — 접속 코드를 students 탭에서 확인한다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.4';
+const SERVER_VERSION = 'v0.5';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -196,4 +197,56 @@ function listChapters_() {
         keywords: String(c.keywords || '').split(',').map(function (k) { return k.trim(); }).filter(Boolean)
       };
     });
+}
+
+
+/* ───────────────────────── 5-1단계: 접속 코드 ───────────────────────── */
+
+// 10분 동안 전체 로그인 실패가 이 횟수에 닿으면 잠시 막는다 (코드 무작위 대입 방지).
+const LOGIN_FAIL_LIMIT = 20;
+
+/** 접속 코드처럼 주소(URL)에 남으면 안 되는 값은 POST 본문으로 받는다. 접속 코드는 로그에 남기지 않는다. */
+function doPost(e) {
+  let body;
+  try {
+    body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+  } catch (err) {
+    return json_({ ok: false, error: 'BAD_REQUEST' });   // 본문에 코드가 있을 수 있으므로 로그에 남기지 않는다
+  }
+  try {
+    if (body.action === 'login') {
+      const result = login_(body.code);
+      result.server = SERVER_VERSION;
+      return json_(result);
+    }
+    return json_({ ok: false, error: 'UNKNOWN_ACTION' });
+  } catch (err) {
+    console.error(err);
+    return json_({ ok: false, error: 'SERVER_ERROR' });
+  }
+}
+
+/** 코드가 맞고 상태가 active인 학생이면 이름만 돌려준다. 대소문자와 앞뒤 공백은 무시한다. */
+function login_(code) {
+  code = String(code || '').trim().toLowerCase();
+  if (!code) return { ok: false, error: 'INVALID_CODE' };
+
+  const cache = CacheService.getScriptCache();
+  const fails = Number(cache.get('login_fails') || 0);
+  if (fails >= LOGIN_FAIL_LIMIT) return { ok: false, error: 'TOO_MANY_TRIES' };
+
+  const student = findStudent_(code);
+  if (!student) {
+    cache.put('login_fails', String(fails + 1), 600);
+    return { ok: false, error: 'INVALID_CODE' };
+  }
+  return { ok: true, name: String(student.display_name || student.student_id) };
+}
+
+function findStudent_(code) {
+  const found = readTable_('students').filter(function (s) {
+    return String(s.access_code).trim().toLowerCase() === code &&
+           String(s.status).trim().toLowerCase() === 'active';
+  });
+  return found.length ? found[0] : null;
 }

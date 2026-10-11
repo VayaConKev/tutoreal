@@ -11,9 +11,21 @@
     <header>
       <h1>Tutoreal</h1>
       <p>내시경실 영어 디지털 교과서</p>
+      <p class="who" id="who" hidden><span id="who-name"></span> · <button class="link" id="logout">코드 바꾸기</button></p>
     </header>
 
-    <section id="view-list">
+    <section id="view-login" hidden>
+      <form class="card" id="login-form">
+        <h3>접속 코드</h3>
+        <p class="goal">선생님께 받은 접속 코드를 입력해 주세요.</p>
+        <input id="login-code" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+               aria-label="접속 코드" placeholder="접속 코드">
+        <button class="primary" type="submit" id="login-submit">들어가기</button>
+        <p class="hint" id="login-msg" role="alert"></p>
+      </form>
+    </section>
+
+    <section id="view-list" hidden>
       <h2>챕터</h2>
       <div id="chapter-list"></div>
     </section>
