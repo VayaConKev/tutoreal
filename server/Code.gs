@@ -13,12 +13,14 @@
  * v0.9 (9단계): 사용 시간 기록 — 토큰을 줄 때 sessions 탭에 한 줄을 만들고, doPost(action=end)로 사용 시간을 채운다.
  * v0.10 (10단계): 하루 한도 — 오늘의 대화 횟수·사용 시간이 한도에 닿으면 토큰을 주지 않고, 남은 시간만큼만 쓰게 한다.
  * v0.10.1: 받아쓰기에 언어 힌트(영어·한국어)와 단어 힌트(환자 이름·핵심 단어)를 준다.
+ * v0.12 (12단계): AI 피드백 — doPost(action=feedback)가 대화 글자를 텍스트 모델(settings의 text_model)로 보내 피드백을 만든다.
+ *                 setup()이 prompts 탭에 빠진 지시문(feedback-v1)을 추가한다. testFeedback()으로 편집기에서 확인한다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.10.1';
+const SERVER_VERSION = 'v0.12';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -44,6 +46,27 @@ const PATIENT_PROMPT_V1 = [
   'Sometimes ask one simple question, like a real patient. Never give medical advice. Stay in role.'
 ].join('\n');
 
+// 피드백 지시문. {goal} {keywords} {name} {dob} {exam} 은 서버가 채운다. 대화 글자는 따로 붙는다.
+const FEEDBACK_PROMPT_V1 = [
+  'You are an English speaking coach for Korean nurses at a health check-up center in Seoul.',
+  'You review one practice conversation between a nurse (the learner) and an AI playing a foreign patient.',
+  'Lesson goal (Korean): {goal}',
+  'Key expressions: {keywords}',
+  'Patient chart: name {name}; born {dob}; exam {exam}.',
+  'The transcript comes from speech recognition, so:',
+  '- Do not comment on spelling of names, punctuation, or capital letters. Names may be spelled differently from the chart.',
+  '- Some English words may be written in Korean letters (for example "오케이" = "okay"). Treat them as English.',
+  '- Korean sentences mean the nurse switched to Korean. Suggest an English way to say it.',
+  '- Do not judge pronunciation.',
+  'Write feedback for the nurse:',
+  '- summary: one short sentence in Korean.',
+  '- strengths: 1-3 short points in Korean, based on what the nurse actually said.',
+  '- fixes: up to 3 items. "said" = the nurse\'s exact words, "better" = a natural, polite English sentence a nurse would use, "why" = one short reason in Korean. Only include real improvements.',
+  '- keywords: for each key expression, in the same order, whether the nurse used it or a clear equivalent.',
+  '- next_practice: 1-2 useful English sentences for next time ("en") with Korean meaning ("ko").',
+  'Be kind and specific. Give feedback only on the nurse\'s lines; patient lines are context.'
+].join('\n');
+
 const SEED = {
   chapters: [
     ['ch01', 1, '호명과 본인 확인', '수검자를 호명해 창구로 부르고 이름과 생년월일로 본인 확인하기',
@@ -62,7 +85,8 @@ const SEED = {
     ['ch02-s03', 'ch02', 'Jason Tan Wei Ming', 'male', '1980-02-28', 'Singapore', 'colonoscopy with sedation', 'When the sleeping medicine goes in, you say "Ouch, my arm!"', 3, true]
   ],
   prompts: [
-    ['patient-v1', PATIENT_PROMPT_V1, true]
+    ['patient-v1', PATIENT_PROMPT_V1, true],
+    ['feedback-v1', FEEDBACK_PROMPT_V1, true]
   ],
   settings: [
     ['live_model', '', '5단계에서 입력 (Gemini Live 모델 이름)'],
@@ -101,6 +125,15 @@ function setup() {
       const rows = SEED[name];
       sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
       log.push('예시 내용 ' + rows.length + '줄: ' + name);
+    } else if (name === 'prompts') {
+      // 새 버전에서 생긴 지시문(예: feedback-v1)이 없으면 추가한다. 이미 있는 줄은 건드리지 않는다.
+      const have = readTable_('prompts').map(function (p) { return String(p.prompt_id); });
+      SEED.prompts.forEach(function (row) {
+        if (have.indexOf(row[0]) < 0) {
+          sheet.appendRow(row);
+          log.push('지시문 추가: ' + row[0]);
+        }
+      });
     }
   });
 
@@ -237,6 +270,9 @@ function doPost(e) {
       result.server = SERVER_VERSION;
       return json_(result);
     }
+    if (body.action === 'feedback') {
+      return json_(feedback_(body.code, String(body.session_id || ''), body.lines));
+    }
     if (body.action === 'end') {
       return json_(endSession_(body.code, String(body.session_id || ''), body.duration_sec, String(body.end_reason || '')));
     }
@@ -285,6 +321,13 @@ function findStudent_(code) {
 // Gemini Live의 음성 대화 한 번은 최대 15분 (API 한도). 토큰도 그때까지만 쓸 수 있게 한다.
 const LIVE_SESSION_MAX_MIN = 15;
 
+/** prompts 탭에서 이름이 kind(예: 'patient', 'feedback')로 시작하고 active인 첫 지시문. */
+function activePrompt_(kind) {
+  return readTable_('prompts').filter(function (p) {
+    return isTrue_(p.active) && String(p.prompt_id).indexOf(kind) === 0;
+  })[0];
+}
+
 /** settings 탭을 {key: value} 로 읽는다. */
 function getSettings_() {
   const out = {};
@@ -325,7 +368,7 @@ function createLiveToken_(chapterId, maxSec) {
   if (!scenarios.length) return { ok: false, error: 'NO_SCENARIO' };
   const sc = scenarios[Math.floor(Math.random() * scenarios.length)];
 
-  const prompt = readTable_('prompts').filter(function (p) { return isTrue_(p.active); })[0];
+  const prompt = activePrompt_('patient');
   if (!prompt) return { ok: false, error: 'NO_PROMPT' };
 
   const settings = getSettings_();
@@ -502,4 +545,160 @@ function checkDailyLimit_(student) {
   const remainingSec = Math.floor(maxMin * 60 - usedSec);
   if (remainingSec < 60) return { ok: false, error: 'DAILY_TIME_LIMIT' };
   return { ok: true, remainingSec: remainingSec };
+}
+
+
+/* ───────────────────────── 12단계: AI 피드백 ───────────────────────── */
+
+// 텍스트 모델이 돌려줄 피드백의 모양 (JSON).
+const FEEDBACK_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    summary: { type: 'STRING' },
+    strengths: { type: 'ARRAY', items: { type: 'STRING' } },
+    fixes: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: { said: { type: 'STRING' }, better: { type: 'STRING' }, why: { type: 'STRING' } },
+        required: ['said', 'better', 'why']
+      }
+    },
+    keywords: {
+      type: 'ARRAY',
+      items: { type: 'OBJECT', properties: { keyword: { type: 'STRING' }, used: { type: 'BOOLEAN' } }, required: ['keyword', 'used'] }
+    },
+    next_practice: {
+      type: 'ARRAY',
+      items: { type: 'OBJECT', properties: { en: { type: 'STRING' }, ko: { type: 'STRING' } }, required: ['en', 'ko'] }
+    }
+  },
+  required: ['summary', 'strengths', 'fixes', 'keywords', 'next_practice']
+};
+
+const FEEDBACK_CACHE_SEC = 6 * 3600;   // 같은 대화의 피드백은 6시간 동안 다시 만들지 않고 그대로 준다
+const FEEDBACK_MAX_TRIES = 3;          // 실패해도 한 대화에 3번까지만 시도
+
+/**
+ * 대화 글자를 받아 피드백을 만든다. 글자는 피드백을 만드는 데만 쓰고 시트에 저장하지 않는다.
+ * 챕터와 시나리오는 앱이 보낸 값이 아니라 sessions 탭의 기록에서 찾는다.
+ */
+function feedback_(code, sessionId, lines) {
+  const auth = auth_(code);
+  if (!auth.ok) return auth;
+
+  const session = readTable_('sessions').filter(function (s) { return String(s.session_id) === sessionId; })[0];
+  if (!session) return { ok: false, error: 'NO_SESSION' };
+  if (String(session.student_id) !== String(auth.student.student_id)) return { ok: false, error: 'NOT_YOURS' };
+
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('fb_' + sessionId);
+  if (cached) return { ok: true, feedback: JSON.parse(cached) };
+  const tries = Number(cache.get('fbn_' + sessionId) || 0);
+  if (tries >= FEEDBACK_MAX_TRIES) return { ok: false, error: 'FEEDBACK_LIMIT' };
+  cache.put('fbn_' + sessionId, String(tries + 1), FEEDBACK_CACHE_SEC);
+
+  const chapter = readTable_('chapters').filter(function (c) { return String(c.chapter_id) === String(session.chapter_id); })[0];
+  const scenario = readTable_('scenarios').filter(function (s) { return String(s.scenario_id) === String(session.scenario_id); })[0];
+  if (!chapter || !scenario) return { ok: false, error: 'NO_CHAPTER' };
+
+  const result = makeFeedback_(chapter, scenario, cleanLines_(lines));
+  if (result.ok) cache.put('fb_' + sessionId, JSON.stringify(result.feedback), FEEDBACK_CACHE_SEC);
+  return result;
+}
+
+/** 앱이 보낸 대화 글자를 정리한다: 최대 80줄, 한 줄 400자. */
+function cleanLines_(lines) {
+  return (Array.isArray(lines) ? lines : []).slice(0, 80)
+    .map(function (l) { return { who: l && l.who === 'me' ? 'me' : 'ai', text: String((l && l.text) || '').trim().slice(0, 400) }; })
+    .filter(function (l) { return l.text; });
+}
+
+function makeFeedback_(chapter, scenario, lines) {
+  if (!lines.some(function (l) { return l.who === 'me'; })) return { ok: false, error: 'NO_TALK' };
+
+  const prompt = activePrompt_('feedback');
+  if (!prompt) return { ok: false, error: 'NO_PROMPT' };
+  const model = String(getSettings_().text_model || '').trim().replace(/^models\//, '');
+  if (!model) return { ok: false, error: 'NO_TEXT_MODEL' };
+  const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!key) return { ok: false, error: 'NO_API_KEY' };
+
+  const keywords = String(chapter.keywords || '').split(',').map(function (k) { return k.trim(); }).filter(Boolean);
+  const system = String(prompt.text)
+    .replace(/\{goal\}/g, String(chapter.goal || ''))
+    .replace(/\{keywords\}/g, keywords.join(', '))
+    .replace(/\{name\}/g, String(scenario.name || ''))
+    .replace(/\{dob\}/g, formatDob_(scenario.dob))
+    .replace(/\{exam\}/g, String(scenario.exam || ''));
+  const transcript = 'Transcript:\n' + lines.map(function (l) { return (l.who === 'me' ? 'Nurse: ' : 'Patient: ') + l.text; }).join('\n');
+
+  const request = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'x-goog-api-key': key },
+    payload: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: 'user', parts: [{ text: transcript }] }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: FEEDBACK_SCHEMA,
+        thinkingConfig: { thinkingLevel: 'low' },   // 빠르고 저렴하게
+        maxOutputTokens: 4096
+      }
+    }),
+    muteHttpExceptions: true
+  };
+  // 모델이 붐비면(503) 또는 잠시 요청이 많으면(429, 500) 잠깐 기다렸다 다시 시도한다: 2초, 4초 뒤 최대 2번 더.
+  let res;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) Utilities.sleep(2000 * attempt);
+    res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent', request);
+    if ([429, 500, 503].indexOf(res.getResponseCode()) < 0) break;
+  }
+  if (res.getResponseCode() !== 200) {
+    console.error('피드백 실패 (응답 코드 ' + res.getResponseCode() + '): ' + res.getContentText().slice(0, 800));
+    return { ok: false, error: 'FEEDBACK_FAILED' };
+  }
+
+  let fb;
+  try {
+    const cand = (JSON.parse(res.getContentText()).candidates || [])[0] || {};
+    const text = ((cand.content && cand.content.parts) || [])
+      .filter(function (p) { return !p.thought; })
+      .map(function (p) { return p.text || ''; }).join('');
+    fb = JSON.parse(text);
+  } catch (err) {
+    console.error('피드백 결과를 읽지 못함: ' + res.getContentText().slice(0, 800));
+    return { ok: false, error: 'FEEDBACK_FAILED' };
+  }
+
+  // 핵심 단어는 챕터의 목록 순서 그대로, 빠진 단어는 '안 씀'으로 맞춘다.
+  const used = {};
+  (fb.keywords || []).forEach(function (k) { used[String(k.keyword).trim().toLowerCase()] = k.used === true; });
+  return {
+    ok: true,
+    feedback: {
+      summary: String(fb.summary || ''),
+      strengths: (fb.strengths || []).map(String).slice(0, 3),
+      fixes: (fb.fixes || []).slice(0, 3).map(function (f) { return { said: String(f.said || ''), better: String(f.better || ''), why: String(f.why || '') }; }),
+      keywords: keywords.map(function (k) { return { keyword: k, used: used[k.toLowerCase()] === true }; }),
+      next_practice: (fb.next_practice || []).slice(0, 2).map(function (n) { return { en: String(n.en || ''), ko: String(n.ko || '') }; })
+    }
+  };
+}
+
+/** 편집기에서 실행: 예시 대화로 피드백이 만들어지는지 확인한다. */
+function testFeedback() {
+  const chapter = readTable_('chapters').filter(function (c) { return String(c.chapter_id) === 'ch01'; })[0];
+  const scenario = readTable_('scenarios').filter(function (s) { return String(s.scenario_id) === 'ch01-s02'; })[0];
+  const r = makeFeedback_(chapter, scenario, [
+    { who: 'me', text: 'Miss Kelly Shu, please come to the counter.' },
+    { who: 'ai', text: "Yes, that's me." },
+    { who: 'me', text: 'Tell me birthday.' },
+    { who: 'ai', text: 'May eleventh, two thousand and three.' },
+    { who: 'me', text: '잠시만요. 오케이, 땡큐.' }
+  ]);
+  if (r.ok) console.log('OK: 피드백 생성 성공\n' + JSON.stringify(r.feedback, null, 2));
+  else console.log('실패: ' + r.error + ' — 바로 위에 빨간 오류 줄이 있으면 그 내용을 Claude에게 알려 주세요.');
 }

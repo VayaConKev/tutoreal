@@ -56,6 +56,12 @@ export async function startTalk(code, chapterId) {
   };
 }
 
+// 대화 글자로 AI 피드백을 받는다. 모델이 생각하는 시간이 있어 넉넉히 60초까지 기다린다.
+export async function getFeedback(code, sessionId, lines) {
+  const data = await postServer('feedback', { code, session_id: sessionId, lines }, 60000);
+  return data.feedback;
+}
+
 // 대화가 끝났음을 알린다 (사용 시간 기록). 답은 기다리지 않는다.
 // v0.9의 sendBeacon은 구글 로그인 정보(쿠키)를 함께 보내 기록이 남지 않았다 → 다른 요청과 같은 방식 + keepalive.
 export function endTalk(code, sessionId, durationSec, endReason) {

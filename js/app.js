@@ -1,6 +1,6 @@
 // 화면 전환과 전체 흐름을 담당한다.
 import { APP_VERSION } from './config.js';
-import { getChapters, login, startTalk, endTalk } from './api.js';
+import { getChapters, login, startTalk, endTalk, getFeedback } from './api.js';
 import { LiveSession } from './live.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -30,6 +30,8 @@ const ERROR_TEXT = {
   NotFoundError: '마이크를 찾지 못했어요.',
   NO_SCENARIO: '이 챕터에 준비된 시나리오가 없어요.',
   TOKEN_FAILED: '음성 연결 준비에 실패했어요. 잠시 뒤 다시 해 주세요.',
+  FEEDBACK_FAILED: '피드백을 만들지 못했어요.',
+  FEEDBACK_LIMIT: '이 대화의 피드백을 여러 번 실패했어요. 다음 대화에서 다시 받아 보세요.',
   DAILY_CONNECT_LIMIT: '오늘 대화 횟수를 다 썼어요. 내일 다시 만나요.',
   DAILY_TIME_LIMIT: '오늘 사용 시간을 다 썼어요. 내일 다시 만나요.'
 };
@@ -283,6 +285,44 @@ function openReview() {
   $('#review-msg').textContent = '';
   goStep(1);
   show('review');
+  loadFeedback();   // 자기 평가를 하는 동안 미리 만든다
+}
+
+/* 2/3 피드백: 대화 글자를 서버로 보내 AI 피드백을 받는다 (저장은 하지 않는다). */
+async function loadFeedback() {
+  const data = review.data;
+  const box = $('#feedback');
+  box.innerHTML = '<p class="state">피드백을 만드는 중…</p>';
+  try {
+    const lines = data.lines.map((l) => ({ who: l.who, text: l.text }));
+    data.feedback = await getFeedback(loadCode(), data.sessionId, lines);
+    if (review.data === data) renderFeedback(data.feedback);
+  } catch (err) {
+    console.warn(err);
+    if (review.data !== data) return;
+    box.innerHTML = `<p class="state">${escapeHtml(errorText(err))}</p>` +
+      (err.message === 'FEEDBACK_LIMIT' ? '' : '<button class="secondary" id="feedback-retry">다시 시도</button>');
+    const retry = $('#feedback-retry');
+    if (retry) retry.addEventListener('click', loadFeedback);
+  }
+}
+
+function renderFeedback(fb) {
+  const used = fb.keywords.filter((k) => k.used).length;
+  $('#feedback').innerHTML = `
+    <p class="fb-summary">${escapeHtml(fb.summary)}</p>
+    ${fb.strengths.length ? `<p class="fb-title">잘한 점</p>
+      <ul class="fb-list">${fb.strengths.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>` : ''}
+    ${fb.fixes.length ? `<p class="fb-title">더 좋은 표현</p>
+      ${fb.fixes.map((f) => `<div class="fb-fix">
+        <p class="fb-said">${escapeHtml(f.said)}</p>
+        <p class="fb-better">→ ${escapeHtml(f.better)}</p>
+        <p class="fb-why">${escapeHtml(f.why)}</p></div>`).join('')}` : ''}
+    ${fb.keywords.length ? `<p class="fb-title">핵심 단어 ${used} / ${fb.keywords.length}</p>
+      <div class="chips">${fb.keywords.map((k) =>
+        `<span class="chip${k.used ? '' : ' unused'}">${k.used ? '✓ ' : ''}${escapeHtml(k.keyword)}</span>`).join('')}</div>` : ''}
+    ${fb.next_practice.length ? `<p class="fb-title">다음에 연습할 문장</p>
+      ${fb.next_practice.map((n) => `<p class="fb-next">${escapeHtml(n.en)}<span class="ko">${escapeHtml(n.ko)}</span></p>`).join('')}` : ''}`;
 }
 
 function goStep(n) {
