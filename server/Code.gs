@@ -20,12 +20,14 @@
  *                 남은 예산만큼만 대화하게 한다. setup()이 settings 탭에 빠진 요금 줄을 추가한다. budgetReport()로 확인.
  * v0.15 (다듬기): 지시문 v2 — patient-v2(되묻기, 없는 정보, 한국어에 "Sorry?"), feedback-v2(후한 칭찬·지어낸 사실 줄이기).
  *                 setup()이 prompts 탭에 추가한다. v1 줄의 active를 FALSE로 바꾸면 v2가 쓰인다.
+ * v0.17 (17단계): 선생님용 요약 — buildSummary_()가 기간 안의 기록을 학생별·챕터별로 정리하고,
+ *                 시트 메뉴 'Tutoreal → 요약 새로고침'(refreshSummary)이 summary 탭에 적는다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.15';
+const SERVER_VERSION = 'v0.17';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -901,4 +903,207 @@ function budgetReport() {
   console.log('이번 달 예상 비용: $' + spent.toFixed(2) + ' / 예산 $' + r.budget +
     '\n남은 예산: $' + Math.max(0, r.budget - spent).toFixed(2) + ' (AI가 내내 말하는 최악의 경우 약 ' + Math.floor(worstMin) + '분 대화 가능)' +
     '\n요금: 음성 입력 $' + r.liveIn + '/분, 출력 $' + r.liveOut + '/분, 여유 배수 ' + r.factor);
+}
+
+
+/* ───────────────────────── 17단계: 선생님용 요약 ───────────────────────── */
+
+/** 시트를 열 때 위쪽 메뉴에 'Tutoreal'을 붙인다. (시트에 연결된 스크립트라 자동으로 실행된다) */
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu('Tutoreal')
+    .addItem('요약 새로고침', 'refreshSummary')
+    .addToUi();
+}
+
+/** 메뉴에서 실행: 요약을 계산해 summary 탭에 적는다. */
+function refreshSummary() {
+  const summary = buildSummary_();
+  writeSummary_(summary);
+  SpreadsheetApp.getActiveSpreadsheet().toast('요약을 새로 만들었어요 (' + summary.period.label + ')', 'Tutoreal');
+}
+
+/**
+ * 요약 기간: settings의 last_class_date(지난 수업일)부터 오늘까지. 비어 있으면 최근 7일(오늘 포함).
+ * 날짜는 시트의 시간대 기준 'yyyy-MM-dd' 글자로 비교한다.
+ */
+function summaryPeriod_(tz) {
+  const fmt = function (d) { return Utilities.formatDate(d, tz, 'yyyy-MM-dd'); };
+  const today = fmt(new Date());
+  const v = getSettings_().last_class_date;
+  let from = '';
+  if (v instanceof Date) from = fmt(v);
+  else if (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '').trim())) from = String(v).trim();
+  if (from && from <= today) return { from: from, to: today, label: from + ' ~ ' + today + ' (지난 수업일 이후)' };
+  from = fmt(new Date(Date.now() - 6 * 86400000));
+  return { from: from, to: today, label: from + ' ~ ' + today + ' (최근 7일)' };
+}
+
+/**
+ * 기간 안의 기록을 정리한다. 앱의 선생님 화면(19단계)도 이 결과를 그대로 쓴다.
+ * 횟수·시간은 모든 대화로, 자기 평가·핵심 단어·어려웠던 점은 '공유하기'를 고른 대화로만 계산한다.
+ */
+function buildSummary_() {
+  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+  const period = summaryPeriod_(tz);
+  const students = readTable_('students').filter(function (s) { return s.student_id && String(s.status).trim().toLowerCase() === 'active'; });
+  const nameOf = {};
+  students.forEach(function (s) { nameOf[String(s.student_id)] = String(s.display_name || s.student_id); });
+
+  // 기간 안의 모든 대화(비용 계산용)와, 그중 활성 학생의 대화(나머지 통계용)
+  const allInPeriod = readTable_('sessions').filter(function (s) {
+    if (!(s.started_at instanceof Date)) return false;
+    const day = Utilities.formatDate(s.started_at, tz, 'yyyy-MM-dd');
+    return day >= period.from && day <= period.to;
+  });
+  const sessions = allInPeriod.filter(function (s) { return nameOf[String(s.student_id)] !== undefined; });
+  const inPeriod = {};
+  sessions.forEach(function (s) { inPeriod[String(s.session_id)] = s; });
+
+  // 챕터: 공개된 챕터 + 기간 안에 연습 기록이 있는 챕터, 순서대로
+  const chapterRows = readTable_('chapters');
+  const used = {};
+  sessions.forEach(function (s) { used[String(s.chapter_id)] = true; });
+  const chapters = chapterRows
+    .filter(function (c) { return c.chapter_id && (isTrue_(c.published) || used[String(c.chapter_id)]); })
+    .sort(function (a, b) { return Number(a.order) - Number(b.order); })
+    .map(function (c) {
+      return {
+        chapter_id: String(c.chapter_id), order: Number(c.order), title: String(c.title || ''),
+        keywords: String(c.keywords || '').split(',').map(function (k) { return k.trim(); }).filter(Boolean)
+      };
+    });
+
+  const sec = function (s) { return Number(s.duration_sec) || 0; };
+  const avg = function (list) { return list.length ? Math.round(list.reduce(function (a, b) { return a + b; }, 0) / list.length * 10) / 10 : null; };
+  const confOf = function (s) { const c = Number(s.confidence); return isTrue_(s.shared) && c >= 1 && c <= 3 ? c : null; };
+
+  // 학생 × 챕터
+  const matrix = {};
+  students.forEach(function (st) { matrix[String(st.student_id)] = {}; });
+  sessions.forEach(function (s) {
+    const sid = String(s.student_id);
+    if (!matrix[sid]) return;   // 비활성 학생은 표에서 뺀다
+    const cell = matrix[sid][String(s.chapter_id)] || (matrix[sid][String(s.chapter_id)] = { count: 0, sec: 0 });
+    cell.count++;
+    cell.sec += sec(s);
+  });
+
+  // 핵심 단어 체크 (공유된 대화만 기록되어 있다)
+  const checks = readTable_('keyword_checks').filter(function (k) { return inPeriod[String(k.session_id)]; });
+
+  const chapterStats = chapters.map(function (c) {
+    const list = sessions.filter(function (s) { return String(s.chapter_id) === c.chapter_id; });
+    const shared = list.filter(function (s) { return isTrue_(s.shared); });
+    const kw = c.keywords.map(function (k) {
+      const rows = checks.filter(function (r) { return String(r.chapter_id) === c.chapter_id && String(r.keyword).toLowerCase() === k.toLowerCase(); });
+      const yes = rows.filter(function (r) { return isTrue_(r.found); }).length;
+      return { keyword: k, used: yes, total: rows.length };
+    });
+    return {
+      chapter_id: c.chapter_id, order: c.order, title: c.title,
+      students: Object.keys(list.reduce(function (m, s) { m[String(s.student_id)] = 1; return m; }, {})).length,
+      count: list.length,
+      minutes: Math.round(list.reduce(function (a, s) { return a + sec(s); }, 0) / 60),
+      shared: shared.length,
+      confidence: avg(shared.map(confOf).filter(function (c) { return c !== null; })),
+      keywords: kw,
+      difficulties: shared.filter(function (s) { return String(s.difficulty_note || '').trim(); }).map(function (s) {
+        return { student: nameOf[String(s.student_id)] || String(s.student_id), text: String(s.difficulty_note).trim() };
+      })
+    };
+  });
+
+  const studentStats = students.map(function (st) {
+    const sid = String(st.student_id);
+    const list = sessions.filter(function (s) { return String(s.student_id) === sid; });
+    const shared = list.filter(function (s) { return isTrue_(s.shared); });
+    const top = chapters.map(function (c) { return { c: c, n: (matrix[sid][c.chapter_id] || {}).count || 0 }; })
+      .filter(function (x) { return x.n; }).sort(function (a, b) { return b.n - a.n; })
+      .map(function (x) { return x.c.order + '장'; });
+    return {
+      student_id: sid, name: nameOf[sid],
+      count: list.length,
+      minutes: Math.round(list.reduce(function (a, s) { return a + sec(s); }, 0) / 60),
+      chapters: top,
+      confidence: avg(shared.map(confOf).filter(function (c) { return c !== null; })),
+      shared: shared.length
+    };
+  });
+
+  return {
+    period: period,
+    generated_at: Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm'),
+    totals: {
+      students: studentStats.filter(function (s) { return s.count; }).length,
+      count: sessions.length,
+      minutes: Math.round(sessions.reduce(function (a, s) { return a + sec(s); }, 0) / 60),
+      cost_usd: Math.round(allInPeriod.reduce(function (a, s) { return a + (Number(s.est_cost_usd) || 0); }, 0) * 100) / 100
+    },
+    chapters: chapters.map(function (c) { return { chapter_id: c.chapter_id, order: c.order, title: c.title }; }),
+    matrix: matrix,
+    chapterStats: chapterStats,
+    studentStats: studentStats
+  };
+}
+
+/** 요약을 summary 탭에 적는다. 1행(item, value)은 그대로 두고 2행부터 새로 쓴다. */
+function writeSummary_(sm) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('summary');
+  const rows = [];
+  const bold = [];
+  const title = function (text) { bold.push(rows.length); rows.push([text]); };
+  const blank = function () { rows.push(['']); };
+  const pct = function (k) { return k.total ? Math.round(k.used / k.total * 100) + '% (' + k.used + '/' + k.total + ')' : '–'; };
+  const label = function (c) { return c.order + '장 ' + c.title; };
+
+  title('Tutoreal 요약');
+  rows.push(['기간', sm.period.label]);
+  rows.push(['만든 시각', sm.generated_at]);
+  blank();
+
+  title('전체');
+  rows.push(['연습한 학생', sm.totals.students]);
+  rows.push(['연습 횟수', sm.totals.count]);
+  rows.push(['연습 시간(분)', sm.totals.minutes]);
+  rows.push(['예상 비용(USD, 비활성 학생 포함)', sm.totals.cost_usd]);
+  blank();
+
+  title('학생 × 챕터 (횟수 / 분)');
+  bold.push(rows.length);
+  rows.push(['학생'].concat(sm.chapters.map(label), ['합계']));
+  sm.studentStats.forEach(function (st) {
+    const cells = sm.chapters.map(function (c) {
+      const cell = sm.matrix[st.student_id][c.chapter_id];
+      return cell ? cell.count + '회 ' + Math.round(cell.sec / 60) + '분' : '–';
+    });
+    rows.push([st.name].concat(cells, [st.count ? st.count + '회 ' + st.minutes + '분' : '–']));
+  });
+  blank();
+
+  title('챕터별 (자기 평가·핵심 단어·어려웠던 점은 공유된 대화 기준)');
+  sm.chapterStats.forEach(function (c) {
+    bold.push(rows.length);
+    rows.push([label(c)]);
+    rows.push(['연습', '학생 ' + c.students + '명 · ' + c.count + '회 · ' + c.minutes + '분']);
+    rows.push(['공유된 대화', c.shared]);
+    rows.push(['자기 평가 평균 (1 어려움 ~ 3 자신)', c.confidence === null ? '–' : c.confidence]);
+    c.keywords.forEach(function (k) { rows.push(['핵심 단어: ' + k.keyword, pct(k)]); });
+    c.difficulties.forEach(function (d) { rows.push(['어려웠던 점 (' + d.student + ')', d.text]); });
+    blank();
+  });
+
+  title('학생별');
+  bold.push(rows.length);
+  rows.push(['학생', '연습 횟수', '연습 시간(분)', '주로 연습한 챕터', '자기 평가 평균', '공유한 대화']);
+  sm.studentStats.forEach(function (st) {
+    rows.push([st.name, st.count, st.minutes, st.chapters.join(', ') || '–', st.confidence === null ? '–' : st.confidence, st.shared]);
+  });
+
+  const width = rows.reduce(function (w, r) { return Math.max(w, r.length); }, 2);
+  const grid = rows.map(function (r) { return r.concat(Array(width - r.length).fill('')); });
+  const last = Math.max(sheet.getLastRow(), 2);
+  sheet.getRange(2, 1, last, Math.max(sheet.getLastColumn(), width)).clearContent().setFontWeight('normal');
+  sheet.getRange(2, 1, grid.length, width).setValues(grid);
+  bold.forEach(function (i) { sheet.getRange(i + 2, 1, 1, width).setFontWeight('bold'); });
+  sheet.autoResizeColumns(1, width);
 }
