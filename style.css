@@ -136,13 +136,16 @@ textarea {
   color: var(--muted); font: inherit; font-size: 14px; cursor: pointer;
 }
 .level.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 700; }
+.level-desc { color: var(--muted); font-size: 14px; margin: -2px 0 10px; }
 .drill-card { min-height: 220px; }
-.situation { color: var(--muted); margin: 0 0 10px; }
+.situation-label { color: var(--accent); font-size: 13px; font-weight: 700; margin: 0 0 2px; }
+.situation { color: var(--text); font-size: 19px; font-weight: 700; line-height: 1.45; margin: 0 0 14px; }
+.sentence-label { color: var(--muted); font-size: 13px; font-weight: 700; margin: 0 0 2px; }
 .sentence { font-size: 21px; line-height: 1.8; margin: 0; }
 .blank { display: inline-block; border-bottom: 2px solid var(--muted); margin: 0 3px; height: 1.2em; vertical-align: -0.15em; }
-.filled { color: var(--accent); font-weight: 700; border-bottom: 2px solid var(--accent); }
+.filled { color: var(--accent); font-weight: 800; font-size: 1.08em; border-bottom: 2px solid var(--accent); }
 .drill-say { color: var(--muted); font-size: 14px; margin: 16px 0 0; }
-.drill-hint { color: var(--accent); font-size: 15px; margin: 8px 0 0; letter-spacing: 0.05em; }
+.drill-hint { color: var(--accent); font-size: 16px; font-weight: 700; margin: 8px 0 0; letter-spacing: 0.05em; }
 .drill-pron { color: var(--muted); font-size: 14px; margin: 10px 0 0; }
 .drill-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .drill-actions .row { display: flex; gap: 8px; }

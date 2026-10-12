@@ -503,6 +503,10 @@ function openRecord(e) {
 
 const DRILL_KEY = 'tutoreal.drills';
 const drill = { level: 'blank', queue: [], pos: 0, revealed: false, hintShown: false, hard: 0, total: 0 };
+const LEVEL_DESC = {
+  blank: '문장 틀을 보면서 핵심 단어를 떠올려요.',
+  korean: '상황만 보고 영어 문장을 처음부터 말해요. 실전처럼!'
+};
 
 function loadDrillMarks() {
   try { return JSON.parse(localStorage.getItem(DRILL_KEY) || '{}'); } catch { return {}; }
@@ -537,6 +541,7 @@ function startDrill() {
 
 function renderDrill() {
   document.querySelectorAll('.level').forEach((b) => b.classList.toggle('on', b.dataset.level === drill.level));
+  $('#level-desc').textContent = LEVEL_DESC[drill.level];
   const card = $('#drill-card');
   const actions = $('#drill-actions');
   if (drill.pos >= drill.queue.length) {
@@ -544,8 +549,10 @@ function renderDrill() {
     card.innerHTML = `<h3>다 했어요!</h3>
       <p class="goal">${drill.total}문장 중 어려웠던 문장 ${drill.hard}개. 어려웠던 문장은 다음 연습 때 먼저 나와요.</p>`;
     actions.innerHTML = `<button class="secondary" id="drill-again">한 번 더 연습</button>
+      ${drill.level === 'blank' ? '<button class="secondary" id="drill-level2">2단계 도전하기 (통째로 말하기)</button>' : ''}
       <button class="primary" id="drill-to-talk">대화 시작하기</button>`;
     $('#drill-again').addEventListener('click', startDrill);
+    if ($('#drill-level2')) $('#drill-level2').addEventListener('click', () => { drill.level = 'korean'; startDrill(); });
     $('#drill-to-talk').addEventListener('click', () => { show('detail'); beginTalk(); });
     return;
   }
@@ -567,8 +574,9 @@ function renderDrill() {
   const hint = parts.filter((p) => p.blank).map((p) => p.blank.split(/\s+/).map((w) => w[0] + '_'.repeat(Math.max(0, w.length - 1))).join(' ')).join(' · ');
 
   card.innerHTML = `
+    <p class="situation-label">상황</p>
     <p class="situation">${escapeHtml(d.situation)}</p>
-    ${sentence ? `<p class="sentence">${sentence}</p>` : ''}
+    ${sentence ? `<p class="sentence-label">${drill.revealed ? '정답' : '영어 문장'}</p><p class="sentence">${sentence}</p>` : ''}
     ${drill.revealed ? (d.pron ? `<p class="drill-pron">발음: ${escapeHtml(d.pron)}</p>` : '')
       : `<p class="drill-say">${drill.level === 'blank' ? '소리 내어 문장 전체를 말해 보세요.' : '영어 문장 전체를 소리 내어 말해 보세요.'}</p>
          ${drill.hintShown ? `<p class="drill-hint">${escapeHtml(hint)}</p>` : ''}`}`;
