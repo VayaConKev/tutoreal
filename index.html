@@ -85,8 +85,16 @@
       <h2>내 캐릭터</h2>
       <p class="hint history-note">마음에 드는 캐릭터를 골라 주세요. 다른 기기에서도 같은 캐릭터가 보여요.</p>
       <div class="avatar-grid" id="avatar-grid"></div>
-      <p class="hint" id="avatar-msg" role="alert"></p>
     </section>
+
+    <div class="modal" id="avatar-modal" hidden role="dialog" aria-modal="true" aria-labelledby="avatar-modal-title">
+      <div class="modal-card">
+        <span id="avatar-modal-pic"></span>
+        <h3 id="avatar-modal-title"></h3>
+        <p id="avatar-modal-text"></p>
+        <div class="modal-actions" id="avatar-modal-actions"></div>
+      </div>
+    </div>
 
     <section id="view-history" hidden>
       <button class="link" id="history-back">‹ 챕터 목록</button>

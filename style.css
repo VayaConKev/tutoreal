@@ -107,13 +107,15 @@ textarea {
 .choice.selected strong { color: var(--accent); }
 .review-actions { display: flex; gap: 8px; margin-top: 16px; }
 
-/* 프로필 자리: 캐릭터 그림이 있으면 그림, 없으면 이름 머리글자 */
+/* 프로필 자리: 캐릭터 그림이 있으면 그림, 없으면 이름 이니셜 */
 .avatar {
-  flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; overflow: hidden;
+  position: relative; flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; overflow: hidden;
   background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 15px;
 }
-#view-history .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* 그림은 동그라미에 딱 맞게 고정 (모든 화면). v0.22에서는 이 규칙이 내 기록 화면에만 걸려 다른 곳은 흰 배경만 보였다 */
+.avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .avatar.sm { width: 26px; height: 26px; font-size: 11px; display: inline-grid; vertical-align: middle; margin-right: 6px; }
+#who-avatar .avatar.sm { width: 34px; height: 34px; font-size: 13px; margin-right: 8px; }
 .avatar.lg { width: 56px; height: 56px; font-size: 18px; }
 .talk-who { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
 .avatar-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
@@ -124,7 +126,20 @@ textarea {
 .pick img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pick.selected { border: 3px solid var(--accent); }
 .pick.none { color: var(--muted); font: inherit; font-size: 13px; }
-#view-avatar .history-note, .history-note { text-align: left; margin: -4px 0 12px; }
+#view-history .history-note, #view-avatar .history-note { text-align: left; margin: -4px 0 12px; }
+
+/* 확인 창 (캐릭터 바꾸기) */
+.modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 24px 16px; background: rgba(10, 14, 20, 0.55); }
+.modal[hidden] { display: none; }   /* display: grid가 hidden을 덮어쓰지 않게 */
+.modal-card {
+  width: min(340px, 100%); background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+  padding: 24px 20px 18px; text-align: center; display: grid; justify-items: center; gap: 10px;
+}
+.modal-card .avatar.xl { width: 120px; height: 120px; font-size: 34px; }
+.modal-card h3 { margin: 4px 0 0; font-size: 19px; }
+.modal-card p { margin: 0; color: var(--muted); font-size: 15px; }
+.modal-actions { display: flex; gap: 8px; width: 100%; margin-top: 8px; }
+.modal-actions button { flex: 1; margin-top: 0; }
 .record {
   width: 100%; display: flex; align-items: center; gap: 12px; text-align: left;
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);

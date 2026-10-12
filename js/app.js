@@ -479,36 +479,64 @@ function renderMe() {
   $('#who-avatar').innerHTML = studentAvatar(me.name, me.avatar, 'sm');
 }
 
-/* 내 캐릭터 고르기 */
+/* 내 캐릭터 고르기: 누르면 "이 캐릭터로 바꿀까요?" → 예 → 저장 → "바꿨어요!" → 확인 → 챕터 목록 */
 function openAvatarPicker() {
   const ids = Object.keys(avatars.students).sort();
   const grid = $('#avatar-grid');
-  $('#avatar-msg').textContent = '';
   if (!ids.length) {
     grid.innerHTML = '<p class="state" style="grid-column:1/-1">캐릭터 그림을 준비 중이에요. 조금만 기다려 주세요!</p>';
   } else {
     grid.innerHTML = ids.map((id) => `<button class="pick${id === me.avatar ? ' selected' : ''}" data-avatar="${escapeHtml(id)}" aria-label="캐릭터 ${escapeHtml(id)}">
         <img src="img/avatars/${escapeHtml(avatars.students[id])}" alt="" loading="lazy"></button>`).join('') +
-      `<button class="pick none${me.avatar ? '' : ' selected'}" data-avatar="">머리<br>글자</button>`;
-    grid.querySelectorAll('.pick').forEach((b) => b.addEventListener('click', () => chooseAvatar(b.dataset.avatar)));
+      `<button class="pick none${me.avatar ? '' : ' selected'}" data-avatar="">이니셜</button>`;
+    grid.querySelectorAll('.pick').forEach((b) => b.addEventListener('click', () => confirmAvatar(b.dataset.avatar)));
   }
   show('avatar');
 }
 
-async function chooseAvatar(id) {
-  const before = me.avatar;
-  me.avatar = id;
-  document.querySelectorAll('.pick').forEach((b) => b.classList.toggle('selected', b.dataset.avatar === id));
-  renderMe();
+/** 확인 창 내용을 바꾼다. buttons: [{ label, cls, onClick }] */
+function avatarModal(id, title, text, buttons) {
+  $('#avatar-modal-pic').innerHTML = studentAvatar(me.name, id, 'xl');
+  $('#avatar-modal-title').textContent = title;
+  $('#avatar-modal-text').textContent = text;
+  const box = $('#avatar-modal-actions');
+  box.innerHTML = '';
+  buttons.forEach((b) => {
+    const el = document.createElement('button');
+    el.className = b.cls;
+    el.textContent = b.label;
+    if (b.disabled) el.disabled = true;
+    el.addEventListener('click', b.onClick);
+    box.append(el);
+  });
+  $('#avatar-modal').hidden = false;
+}
+const closeAvatarModal = () => { $('#avatar-modal').hidden = true; };
+
+function confirmAvatar(id) {
+  if (id === me.avatar) return;   // 지금 캐릭터를 다시 누름
+  avatarModal(id, id ? '이 캐릭터로 바꿀까요?' : '이니셜로 바꿀까요?', '다른 기기에서도 같은 캐릭터가 보여요.', [
+    { label: '아니요', cls: 'secondary', onClick: closeAvatarModal },
+    { label: '예, 바꿀게요', cls: 'primary', onClick: () => saveAvatar(id) }
+  ]);
+}
+
+async function saveAvatar(id) {
+  avatarModal(id, '바꾸는 중…', '잠시만 기다려 주세요.', [{ label: '저장 중…', cls: 'primary', disabled: true, onClick() {} }]);
   try {
     await setAvatar(loadCode(), id);
-    $('#avatar-msg').textContent = '저장했어요.';
+    me.avatar = id;
+    renderMe();
+    document.querySelectorAll('.pick').forEach((b) => b.classList.toggle('selected', b.dataset.avatar === id));
+    avatarModal(id, '프로필 캐릭터를 바꿨어요!', '이름 옆과 선생님 화면에 이 캐릭터가 보여요.', [
+      { label: '확인', cls: 'primary', onClick: () => { closeAvatarModal(); show('list'); } }
+    ]);
   } catch (err) {
     console.warn(err);
-    me.avatar = before;
-    renderMe();
-    document.querySelectorAll('.pick').forEach((b) => b.classList.toggle('selected', b.dataset.avatar === before));
-    $('#avatar-msg').textContent = `저장하지 못했어요. (${errorText(err)})`;
+    avatarModal(id, '바꾸지 못했어요', errorText(err), [
+      { label: '닫기', cls: 'secondary', onClick: closeAvatarModal },
+      { label: '다시 시도', cls: 'primary', onClick: () => saveAvatar(id) }
+    ]);
   }
 }
 
