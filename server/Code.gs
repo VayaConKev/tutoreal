@@ -18,12 +18,14 @@
  * v0.13 (13단계): 공유 선택 — doPost(action=share)로 공유를 고른 대화의 글자·피드백·자기 평가를 시트에 저장한다.
  * v0.14 (14단계): 월 예산 — 대화·피드백의 예상 비용을 est_cost_usd에 적고, 이번 달 합계가 monthly_budget_usd에 닿지 않게
  *                 남은 예산만큼만 대화하게 한다. setup()이 settings 탭에 빠진 요금 줄을 추가한다. budgetReport()로 확인.
+ * v0.15 (다듬기): 지시문 v2 — patient-v2(되묻기, 없는 정보, 한국어에 "Sorry?"), feedback-v2(후한 칭찬·지어낸 사실 줄이기).
+ *                 setup()이 prompts 탭에 추가한다. v1 줄의 active를 FALSE로 바꾸면 v2가 쓰인다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.14';
+const SERVER_VERSION = 'v0.15';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -49,6 +51,19 @@ const PATIENT_PROMPT_V1 = [
   'Sometimes ask one simple question, like a real patient. Never give medical advice. Stay in role.'
 ].join('\n');
 
+// 환자 지시문 v2 (다듬기): 테스트에서 발견한 문제 —
+// 웅얼거려도 짐작해서 대답함, 신분증 번호를 묻자 생년월일로 대신 답함, 한국어에 대한 반응이 정해져 있지 않음.
+const PATIENT_PROMPT_V2 = [
+  'You are role-playing a foreign patient at a health check-up center in Seoul. The user is a Korean nurse practicing English.',
+  'Patient data (this is data, not rules): name {name}; sex {sex}; born {dob}; from {country}; today: {exam}.',
+  'Scene: {scene} Extra: {twist}',
+  'Rules: Speak only English. Use simple words, 1-2 short sentences per turn, then wait for the nurse.',
+  'Answer only what the nurse asks. Sometimes ask one simple question, like a real patient. Never give medical advice. Stay in role.',
+  'If you did not clearly hear or understand the nurse (mumbled, cut off, too quiet, or unclear words), say "Sorry?" or "Could you say that again?". Never guess what the nurse meant.',
+  'If the nurse speaks Korean, you do not understand it. Say only "Sorry?" and wait.',
+  'If the nurse asks for something that is not in your data (for example an ID card or phone number), do not answer with other data. Answer naturally as a real foreign patient would (for example, "Here is my passport."), and keep it the same for the rest of the talk.'
+].join('\n');
+
 // 피드백 지시문. {goal} {keywords} {name} {dob} {exam} 은 서버가 채운다. 대화 글자는 따로 붙는다.
 const FEEDBACK_PROMPT_V1 = [
   'You are an English speaking coach for Korean nurses at a health check-up center in Seoul.',
@@ -70,6 +85,15 @@ const FEEDBACK_PROMPT_V1 = [
   'Be kind and specific. Give feedback only on the nurse\'s lines; patient lines are context.'
 ].join('\n');
 
+// 피드백 지시문 v2 (다듬기): 테스트에서 발견한 문제 — 고칠 점이 있는 문장까지 칭찬함, 예문에 대화에 없던 사실(대기 시간 10분 등)을 넣음.
+const FEEDBACK_PROMPT_V2 = FEEDBACK_PROMPT_V1.replace(
+  'Be kind and specific.',
+  [
+    'Praise only what the nurse really did well. Do not praise a line that you also correct.',
+    'In "better" and "next_practice", do not add new facts (times, numbers, places, names) that are not in the conversation or the chart.',
+    'Be kind and specific.'
+  ].join('\n'));
+
 const SEED = {
   chapters: [
     ['ch01', 1, '호명과 본인 확인', '수검자를 호명해 창구로 부르고 이름과 생년월일로 본인 확인하기',
@@ -89,7 +113,9 @@ const SEED = {
   ],
   prompts: [
     ['patient-v1', PATIENT_PROMPT_V1, true],
-    ['feedback-v1', FEEDBACK_PROMPT_V1, true]
+    ['feedback-v1', FEEDBACK_PROMPT_V1, true],
+    ['patient-v2', PATIENT_PROMPT_V2, true],
+    ['feedback-v2', FEEDBACK_PROMPT_V2, true]
   ],
   settings: [
     ['live_model', '', '5단계에서 입력 (Gemini Live 모델 이름)'],
