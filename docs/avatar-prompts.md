@@ -56,16 +56,21 @@ Square image, 1024 x 1024. The character must look friendly and ordinary, not li
 
 수검자는 건강검진을 받으러 온 외국인 성인이다. 나라를 드러내는 소품이나 고정관념적인 표현은 넣지 않는다.
 
-| 파일 | 캐릭터별 문구 |
-| --- | --- |
-| ch01-s01 | A man in his late 30s with short wavy light-brown hair and light stubble, friendly smile, casual navy jacket. |
-| ch01-s02 | A woman in her early 20s with long straight black hair and bangs, slightly nervous smile, beige hoodie. |
-| ch01-s03 | A man in his early 60s with short gray hair, gray mustache and kind wrinkles, warm smile, dark green sweater. |
-| ch02-s01 | A man in his late 40s with short blond hair and thin rectangular glasses, calm expression, light blue patient gown. |
-| ch02-s02 | A woman in her mid 30s with shoulder-length chestnut hair, slightly worried smile, light blue patient gown. |
-| ch02-s03 | A man in his mid 40s with short black hair neatly combed, polite smile, light blue patient gown. |
+**가운 색은 검사 종류(scenarios 탭의 `exam`)로 정한다 — 우리 병원 규칙.**
 
-시나리오를 새로 추가하면 같은 방식으로 한 장 더 만들고, 파일 이름을 시나리오 번호(scenario_id)로 한다.
+- 위내시경만 받는 수검자: 라떼색 환자 가운 → 문구 `a latte-colored (light milky brown) patient gown`
+- 대장내시경을 받는 수검자 (exam에 colonoscopy가 들어 있으면): 연두색 환자 가운 → 문구 `a light yellow-green (pastel lime) patient gown`
+
+| 파일 | 검사 | 캐릭터별 문구 |
+| --- | --- | --- |
+| ch01-s01 | 위내시경 | A man in his late 30s with short wavy light-brown hair and light stubble, friendly smile, wearing a latte-colored (light milky brown) patient gown. |
+| ch01-s02 | 위내시경 | A woman in her early 20s with long straight black hair and bangs, slightly nervous smile, wearing a latte-colored (light milky brown) patient gown. |
+| ch01-s03 | 대장내시경 | A man in his early 60s with short gray hair, gray mustache and kind wrinkles, warm smile, wearing a light yellow-green (pastel lime) patient gown. |
+| ch02-s01 | 위내시경 (수면) | A man in his late 40s with short blond hair and thin rectangular glasses, calm expression, wearing a latte-colored (light milky brown) patient gown. |
+| ch02-s02 | 위내시경 (수면) | A woman in her mid 30s with shoulder-length chestnut hair, slightly worried smile, wearing a latte-colored (light milky brown) patient gown. |
+| ch02-s03 | 대장내시경 (수면) | A man in his mid 40s with short black hair neatly combed, polite smile, wearing a light yellow-green (pastel lime) patient gown. |
+
+시나리오를 새로 추가하면 같은 방식으로 한 장 더 만들고, 파일 이름을 시나리오 번호(scenario_id)로 한다. 가운 색은 위 규칙대로 그 시나리오의 검사에 맞춘다.
 
 ## 파일 이름과 넣을 곳
 
