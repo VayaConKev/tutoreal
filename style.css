@@ -127,6 +127,27 @@ textarea {
 .record-head h3 { margin: 0; }
 #view-record .card + .card { margin-top: 12px; }
 #record-lines { margin-top: 8px; }
+
+/* 선생님 화면 */
+#view-teacher .teacher-period { text-align: left; margin: -4px 0 12px; }
+.t-card { margin-bottom: 12px; }
+.t-card h3 { font-size: 17px; margin: 0 0 6px; }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+.tile-n { display: block; font-size: 22px; font-weight: 700; }
+.tile-l { color: var(--muted); font-size: 13px; }
+.t-note { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+.trow {
+  width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left;
+  background: none; border: 0; border-top: 1px solid var(--line); padding: 10px 0; color: inherit; font: inherit; cursor: pointer;
+}
+.trow:first-of-type { border-top: 0; }
+.trow .t-meta { color: var(--muted); font-size: 14px; text-align: right; }
+.trow.static { cursor: default; }
+.kw { margin-bottom: 8px; }
+.kw-label { display: flex; justify-content: space-between; font-size: 14px; }
+.bar { height: 8px; border-radius: 4px; background: var(--accent-soft); overflow: hidden; margin-top: 3px; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.t-head { display: flex; align-items: center; gap: 12px; }
 .review-actions button { margin-top: 0; }
 .hint { color: var(--muted); font-size: 13px; text-align: center; margin: 10px 0 0; }
 .state { color: var(--muted); text-align: center; padding: 24px 0; margin: 0; }

@@ -26,19 +26,21 @@
  * v0.18 (18단계): 챕터별 AI 정리 — 요약 새로고침 때 공유된 피드백을 챕터별로 모아 '자주 틀린 표현'과 '수업 포인트'를
  *                 만든다 (prompts 탭의 insight-v1). 새로 공유된 대화가 없으면 저장해 둔 정리를 다시 쓴다.
  * v0.18.1: AI 정리를 만들지 못하면 그 이유를 summary 탭에 적는다 (전에는 아무 표시 없이 빠졌다).
+ * v0.19 (19단계): 선생님 화면 — students 탭의 role 칸(teacher)으로 구분. doPost(action=summary)가 선생님에게만 요약을 준다.
+ *                 setup()이 기존 탭에 빠진 칸 이름을 오른쪽 끝에 추가한다. summary 탭 칸 너비 상한과 줄바꿈.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.18.1';
+const SERVER_VERSION = 'v0.19';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
   chapters:       ['chapter_id', 'order', 'title', 'goal', 'keywords', 'scene', 'published', 'ai_captions'],
   scenarios:      ['scenario_id', 'chapter_id', 'name', 'sex', 'dob', 'country', 'exam', 'twist', 'level', 'active'],
   prompts:        ['prompt_id', 'text', 'active'],
-  students:       ['student_id', 'display_name', 'access_code', 'status', 'daily_limit_min', 'created_at'],
+  students:       ['student_id', 'display_name', 'access_code', 'status', 'daily_limit_min', 'created_at', 'role'],
   sessions:       ['session_id', 'student_id', 'started_at', 'duration_sec', 'chapter_id', 'scenario_id', 'shared',
                    'hints_used', 'korean_ratio', 'end_reason', 'est_cost_usd', 'confidence', 'difficulty_note', 'feedback'],
   keyword_checks: ['session_id', 'student_id', 'chapter_id', 'keyword', 'found'],
@@ -163,11 +165,19 @@ function setup() {
       log.push('탭 생성: ' + name);
     }
     const headers = SCHEMA[name];
-    const firstRow = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
+    const lastCol = Math.max(sheet.getLastColumn(), 1);
+    const firstRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h).trim(); });
     if (firstRow.join('') === '') {
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
       sheet.setFrozenRows(1);
       log.push('칸 이름 작성: ' + name);
+    } else {
+      // 새 버전에서 생긴 칸(예: students의 role)이 없으면 오른쪽 끝에 추가한다. 기존 칸은 건드리지 않는다.
+      const missing = headers.filter(function (h) { return firstRow.indexOf(h) < 0; });
+      if (missing.length) {
+        sheet.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]).setFontWeight('bold');
+        log.push('칸 추가 (' + name + '): ' + missing.join(', '));
+      }
     }
     // 생년월일은 날짜로 자동 변환되지 않도록 글자 형식으로 고정
     if (headers.indexOf('dob') >= 0) {
@@ -328,6 +338,11 @@ function doPost(e) {
     if (body.action === 'share') {
       return json_(share_(body.code, String(body.session_id || ''), body.confidence, body.difficulty, body.lines));
     }
+    if (body.action === 'summary') {
+      const result = teacherSummary_(body.code, body.refresh === true);
+      result.server = SERVER_VERSION;
+      return json_(result);
+    }
     if (body.action === 'end') {
       return json_(endSession_(body.code, String(body.session_id || ''), body.duration_sec, String(body.end_reason || ''), body.ai_audio_sec));
     }
@@ -342,7 +357,7 @@ function doPost(e) {
 function login_(code) {
   const auth = auth_(code);
   if (!auth.ok) return auth;
-  return { ok: true, name: String(auth.student.display_name || auth.student.student_id) };
+  return { ok: true, name: String(auth.student.display_name || auth.student.student_id), role: roleOf_(auth.student) };
 }
 
 /** 접속 코드를 확인하고 학생 정보(students 탭의 한 줄)를 돌려준다. 틀리면 실패 횟수를 센다. */
@@ -1036,7 +1051,7 @@ function buildSummary_() {
       confidence: avg(shared.map(confOf).filter(function (c) { return c !== null; })),
       keywords: kw,
       difficulties: shared.filter(function (s) { return String(s.difficulty_note || '').trim(); }).map(function (s) {
-        return { student: nameOf[String(s.student_id)] || String(s.student_id), text: String(s.difficulty_note).trim() };
+        return { student_id: String(s.student_id), student: nameOf[String(s.student_id)] || String(s.student_id), text: String(s.difficulty_note).trim() };
       })
     };
   });
@@ -1146,10 +1161,13 @@ function writeSummary_(sm) {
   const body = sheet.getRange(2, 1, grid.length, width);
   body.setNumberFormat('@').setHorizontalAlignment('left').setValues(grid);
   bold.forEach(function (i) { sheet.getRange(i + 2, 1, 1, width).setFontWeight('bold'); });
+  body.setWrap(true);   // 긴 문장(AI 정리 등)은 칸 안에서 줄바꿈
   SpreadsheetApp.flush();   // 다 적은 다음에 너비를 맞춰야 잘리지 않는다
   sheet.autoResizeColumns(1, width);
   for (let c = 1; c <= width; c++) {
-    if (sheet.getColumnWidth(c) < 110) sheet.setColumnWidth(c, 110);
+    const w = sheet.getColumnWidth(c);
+    if (w < 110) sheet.setColumnWidth(c, 110);
+    if (w > 360) sheet.setColumnWidth(c, 360);   // 너무 넓어져 옆 표가 밀리지 않게
   }
 }
 
@@ -1250,4 +1268,28 @@ function makeInsight_(chapter, stat, sessions) {
     teaching_points: (ai.data.teaching_points || []).slice(0, 3).map(function (p) { return cut(p, 200); }),
     cost: Math.round(ai.cost * 10000) / 10000
   };
+}
+
+
+/* ───────────────────────── 19단계: 선생님 화면 ───────────────────────── */
+
+/** students 탭의 role 칸: 'teacher'면 선생님, 그 밖(비어 있음 포함)은 학생. */
+function roleOf_(student) {
+  return String(student.role || '').trim().toLowerCase() === 'teacher' ? 'teacher' : 'student';
+}
+
+/**
+ * 선생님에게만 요약을 준다 (시트 summary 탭과 같은 계산). refresh면 AI 정리를 갱신하고 summary 탭도 새로 쓴다.
+ * 학생 상세 화면을 늘릴 때는 학생 한 명의 공유 기록을 주는 요청을 따로 추가한다 (이 응답을 무겁게 만들지 않도록).
+ */
+function teacherSummary_(code, refresh) {
+  const auth = auth_(code);
+  if (!auth.ok) return auth;
+  if (roleOf_(auth.student) !== 'teacher') return { ok: false, error: 'NOT_TEACHER' };
+  const summary = buildSummary_();
+  if (refresh) {
+    updateInsights_(summary);
+    writeSummary_(summary);
+  }
+  return { ok: true, summary: summary };
 }

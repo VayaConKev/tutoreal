@@ -11,7 +11,7 @@
     <header>
       <h1>Tutoreal</h1>
       <p>내시경실 영어 디지털 교과서</p>
-      <p class="who" id="who" hidden><span id="who-name"></span> · <button class="link" id="open-history">내 기록</button> · <button class="link" id="logout">코드 바꾸기</button></p>
+      <p class="who" id="who" hidden><span id="who-name"></span> · <button class="link" id="open-history">내 기록</button><span id="teacher-link" hidden> · <button class="link" id="open-teacher">선생님 요약</button></span> · <button class="link" id="logout">코드 바꾸기</button></p>
     </header>
 
     <section id="view-login" hidden>
@@ -80,6 +80,25 @@
         <h3>대화 전체</h3>
         <div class="transcript" id="record-lines"></div>
       </div>
+    </section>
+
+    <section id="view-teacher" hidden>
+      <button class="link" id="teacher-back">‹ 챕터 목록</button>
+      <h2>선생님 요약</h2>
+      <p class="hint teacher-period" id="teacher-period"></p>
+      <div id="teacher-body"></div>
+      <button class="secondary" id="teacher-refresh">새로 정리하기</button>
+      <p class="hint" id="teacher-msg" role="alert"></p>
+    </section>
+
+    <section id="view-tchapter" hidden>
+      <button class="link" id="tchapter-back">‹ 선생님 요약</button>
+      <div id="tchapter-body"></div>
+    </section>
+
+    <section id="view-tstudent" hidden>
+      <button class="link" id="tstudent-back">‹ 선생님 요약</button>
+      <div id="tstudent-body"></div>
     </section>
 
     <section id="view-review" hidden>

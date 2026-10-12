@@ -45,7 +45,7 @@ export async function getChapters() {
 
 export async function login(code) {
   const data = await postServer('login', { code });
-  return { name: data.name, server: data.server };
+  return { name: data.name, role: data.role || 'student', server: data.server };
 }
 
 export async function startTalk(code, chapterId) {
@@ -65,6 +65,12 @@ export async function getFeedback(code, sessionId, lines) {
 // '공유하기'를 고른 대화의 글자와 자기 평가를 시트에 저장한다. 피드백은 서버가 기억해 둔 것을 쓴다.
 export async function shareTalk(code, sessionId, confidence, difficulty, lines) {
   await postServer('share', { code, session_id: sessionId, confidence, difficulty, lines }, 30000);
+}
+
+// 선생님 요약 (선생님 코드만). refresh면 AI 정리를 새로 만들고 시트 summary 탭도 새로 쓴다 — 오래 걸릴 수 있다.
+export async function getSummary(code, refresh = false) {
+  const data = await postServer('summary', { code, refresh }, refresh ? 180000 : 30000);
+  return data.summary;
 }
 
 // 대화가 끝났음을 알린다 (사용 시간 기록). 답은 기다리지 않는다.
