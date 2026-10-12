@@ -1,4 +1,31 @@
 {
-  "students": {},
-  "patients": {}
+  "students": {
+    "s01": "students/s01.jpg",
+    "s02": "students/s02.jpg",
+    "s03": "students/s03.jpg",
+    "s04": "students/s04.jpg",
+    "s05": "students/s05.jpg",
+    "s06": "students/s06.jpg",
+    "s07": "students/s07.jpg",
+    "s08": "students/s08.jpg",
+    "s09": "students/s09.jpg",
+    "s10": "students/s10.jpg",
+    "s11": "students/s11.jpg",
+    "s12": "students/s12.jpg",
+    "s13": "students/s13.jpg",
+    "s14": "students/s14.jpg",
+    "s15": "students/s15.jpg",
+    "s16": "students/s16.jpg",
+    "s17": "students/s17.jpg",
+    "s18": "students/s18.jpg",
+    "s19": "students/s19.jpg"
+  },
+  "patients": {
+    "ch01-s01": "patients/ch01-s01.jpg",
+    "ch01-s02": "patients/ch01-s02.jpg",
+    "ch01-s03": "patients/ch01-s03.jpg",
+    "ch02-s01": "patients/ch02-s01.jpg",
+    "ch02-s02": "patients/ch02-s02.jpg",
+    "ch02-s03": "patients/ch02-s03.jpg"
+  }
 }

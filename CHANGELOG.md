@@ -200,3 +200,8 @@
 - 그림이 없으면 머리글자 배지 그대로. 그림 목록은 img/avatars/manifest.json (학생 s01…, 수검자는 시나리오 번호)
 - docs/avatar-prompts.md: 이미지 생성 도구에 넣을 공통 스타일 문구 + 학생 24개·수검자 6개 캐릭터별 문구
 - 서버 v0.22: students 탭 avatar 칸 (setup()으로 추가), doPost(action=set_avatar), 로그인·선생님 요약에 avatar 포함
+
+## v0.22.1 (2026-10-12)
+- 캐릭터 그림 추가: 학생 19개(s01~s19), 수검자 6개(시나리오별, 위내시경 라떼색·대장내시경 연두색 가운). 원본 2048px을 256px JPG로 줄여 img/avatars/에 넣고 manifest.json 갱신
+- 원본은 img/avatars/originals/에 보관하고 커밋에서 제외 (.gitignore 추가, .DS_Store도 제외)
+- 앱·서버 코드는 바뀌지 않음
