@@ -4,12 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tutoreal</title>
+  <script>
+    // 고른 화면 모드(라이트/다크)를 그리기 전에 먼저 적용한다 — 잠깐 다른 색이 번쩍이지 않게
+    try { var t = localStorage.getItem('tutoreal.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
   <link rel="stylesheet" href="style.css">
+  <!-- 홈 화면에 추가했을 때의 아이콘과 이름 -->
+  <link rel="apple-touch-icon" href="img/icon-180.png">
+  <link rel="icon" type="image/png" href="img/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="apple-mobile-web-app-title" content="Tutoreal">
 </head>
 <body>
   <div class="wrap">
     <header>
       <h1 class="brand"><img src="img/logo.jpg" alt="Tutoreal" width="900" height="237"></h1>
+      <button class="theme-btn" id="theme-btn" type="button"></button>
     </header>
 
     <section id="view-login" hidden>

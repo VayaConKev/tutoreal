@@ -1,10 +1,18 @@
+/* 색: 라이트가 기본. 다크는 ① 휴대폰이 다크 모드이고 앱에서 '라이트'를 고르지 않았을 때, ② 앱에서 '다크'를 골랐을 때 */
 :root {
   --bg: #f5f6f8; --card: #ffffff; --text: #1d2430; --muted: #687385; --line: #e3e6eb;
   --accent: #2563c9; --accent-soft: #e8f0fc; --radius: 14px; --nav-bg: #eaf0f9;
+  color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #12151a; --card: #1b2028; --text: #e6e9ee; --muted: #9aa4b2; --line: #2a313c;
-          --accent: #6e9ef0; --accent-soft: #1f2b40; --nav-bg: #1a2230; }
+  :root:not([data-theme="light"]) {
+    --bg: #12151a; --card: #1b2028; --text: #e6e9ee; --muted: #9aa4b2; --line: #2a313c;
+    --accent: #6e9ef0; --accent-soft: #1f2b40; --nav-bg: #1a2230; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12151a; --card: #1b2028; --text: #e6e9ee; --muted: #9aa4b2; --line: #2a313c;
+  --accent: #6e9ef0; --accent-soft: #1f2b40; --nav-bg: #1a2230; color-scheme: dark;
 }
 * { box-sizing: border-box; }
 body {
@@ -14,6 +22,14 @@ body {
 }
 .wrap { max-width: 560px; margin: 0 auto; padding: 24px 16px 40px; }
 header h1 { margin: 0 0 16px; font-size: 22px; letter-spacing: -0.02em; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 16px; }
+header h1 { margin: 0; }
+/* 라이트/다크 전환 버튼 */
+.theme-btn {
+  display: flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--card); color: var(--muted); font: inherit; font-size: 13px;
+}
+.theme-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 /* 로고: 원본 그림의 체크무늬 배경을 잘라 낸 흰 알약 모양. 모서리를 둥글게 잘라 남은 배경을 가린다 */
 .brand img { display: block; height: 40px; width: auto; border-radius: 999px; box-shadow: 0 1px 4px rgba(20, 30, 50, 0.10); }
 

@@ -955,6 +955,34 @@ function openStudent(id) {
   show('tstudent');
 }
 
+/* ── 화면 모드: 자동(휴대폰 설정) → 라이트 → 다크. 이 휴대폰에만 기억한다 (index.html이 그리기 전에 먼저 적용) ── */
+
+const THEME_KEY = 'tutoreal.theme';
+const THEMES = {
+  auto: { label: '자동', next: 'light', icon: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/>' },
+  light: { label: '라이트', next: 'dark', icon: '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/>' },
+  dark: { label: '다크', next: 'auto', icon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>' }
+};
+
+function currentTheme() {
+  const t = document.documentElement.dataset.theme;
+  return t === 'light' || t === 'dark' ? t : 'auto';
+}
+
+function renderThemeBtn() {
+  const t = THEMES[currentTheme()];
+  $('#theme-btn').innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${t.icon}</svg><span>${t.label}</span>`;
+  $('#theme-btn').setAttribute('aria-label', `화면 모드: ${t.label}. 눌러서 ${THEMES[t.next].label}(으)로 바꾸기`);
+}
+
+function nextTheme() {
+  const next = THEMES[currentTheme()].next;
+  if (next === 'auto') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = next;
+  try { next === 'auto' ? localStorage.removeItem(THEME_KEY) : localStorage.setItem(THEME_KEY, next); } catch { /* 기억 못 해도 동작 */ }
+  renderThemeBtn();
+}
+
 /* ── 시작 ── */
 
 $('#login-form').addEventListener('submit', (e) => {
@@ -998,6 +1026,8 @@ $('#talk-next').addEventListener('click', openReview);
 window.addEventListener('pagehide', () => { if (live) { talk.endReason = 'left'; live.stop(''); } });
 
 setVersion();
+renderThemeBtn();
+$('#theme-btn').addEventListener('click', nextTheme);
 loadAvatars().then(renderMe);
 show('login');
 const saved = loadCode();
