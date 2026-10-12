@@ -29,12 +29,14 @@
  * v0.19 (19단계): 선생님 화면 — students 탭의 role 칸(teacher)으로 구분. doPost(action=summary)가 선생님에게만 요약을 준다.
  *                 setup()이 기존 탭에 빠진 칸 이름을 오른쪽 끝에 추가한다. summary 탭 칸 너비 상한과 줄바꿈.
  * v0.20 (20단계): 문장 연습 — drills 탭(빈칸 문장)을 만들고, 챕터 목록에 챕터별 문장을 함께 보낸다.
+ * v0.21 (21단계): 발음 코칭 — doPost(action=pronounce)가 학생이 말한 소리(WAV)를 텍스트 모델로 보내 코칭을 받는다.
+ *                 기준은 drills 탭의 문장과 pron 칸, 지시문은 prompts 탭의 pron-v1. pron_checks 탭에 결과·비용만 기록.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.20';
+const SERVER_VERSION = 'v0.21';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -50,7 +52,9 @@ const SCHEMA = {
   settings:       ['key', 'value', 'note'],
   summary:        ['item', 'value'],
   // 문장 연습: sentence의 [대괄호] 부분이 빈칸. pron은 어려운 단어의 발음 안내 (21단계 발음 코칭에서 기준으로 쓴다)
-  drills:         ['drill_id', 'chapter_id', 'order', 'situation', 'sentence', 'pron', 'active']
+  drills:         ['drill_id', 'chapter_id', 'order', 'situation', 'sentence', 'pron', 'active'],
+  // 발음 코칭 기록: 소리와 들린 글자는 저장하지 않는다. 하루 횟수 한도와 월 예산 계산에 쓴다.
+  pron_checks:    ['at', 'student_id', 'chapter_id', 'drill_id', 'level', 'overall', 'cost_usd']
 };
 
 const PATIENT_PROMPT_V1 = [
@@ -116,6 +120,22 @@ const INSIGHT_PROMPT_V1 = [
   'Use only the given items. Do not invent mistakes or facts.'
 ].join('\n');
 
+// 발음 코칭 지시문. {sentence} {keywords} {pron} {mode} 는 서버가 채운다. 학생의 소리는 따로 붙는다.
+const PRON_PROMPT_V1 = [
+  'You are a friendly English pronunciation coach for Korean nurses at a health check-up center in Seoul.',
+  'Listen to the audio of a nurse trying to say this target sentence: "{sentence}"',
+  'Key words to check closely: {keywords}',
+  "Teacher's pronunciation notes (use them as the reference when relevant): {pron}",
+  'Mode: {mode}',
+  'Return:',
+  '- heard: what you heard, in English letters, word for word. Keep the nurse\'s mistakes. Do not correct them.',
+  '- said_target: true if the nurse said the target sentence or a natural sentence with the same meaning.',
+  '- overall: "great" if clear and correct, "good" if understandable with small issues, "retry" if hard to understand, a different sentence, or not speech.',
+  '- message: one short, kind sentence in Korean.',
+  '- words: up to 3 words that need work, key words first. For each: word, tip (Korean, what to change: stress, a sound, a missing word), respelling (like "glaw-KOH-muh", stressed part in capitals). Empty list if everything is fine.',
+  'Be honest but encouraging. Do not invent problems you did not hear. If the audio is silent or not speech, overall is "retry" and say so in message.'
+].join('\n');
+
 const SEED = {
   chapters: [
     ['ch01', 1, '호명과 본인 확인', '수검자를 호명해 창구로 부르고 이름과 생년월일로 본인 확인하기',
@@ -138,7 +158,8 @@ const SEED = {
     ['feedback-v1', FEEDBACK_PROMPT_V1, true],
     ['patient-v2', PATIENT_PROMPT_V2, true],
     ['feedback-v2', FEEDBACK_PROMPT_V2, true],
-    ['insight-v1', INSIGHT_PROMPT_V1, true]
+    ['insight-v1', INSIGHT_PROMPT_V1, true],
+    ['pron-v1', PRON_PROMPT_V1, true]
   ],
   // 문장 연습 초안 (Claude 작성) — 간호 현장에 맞는지 Kevin이 검토해 시트에서 고친다.
   drills: [
@@ -170,7 +191,8 @@ const SEED = {
     ['live_out_usd_per_min', 0.018, 'Live 음성 출력 요금 (분당 달러)'],
     ['text_in_usd_per_m', 0.75, '텍스트 모델 입력 요금 (100만 토큰당 달러). 2027-01-01부터 1.50'],
     ['text_out_usd_per_m', 3.75, '텍스트 모델 출력 요금 (100만 토큰당, 생각 포함). 2027-01-01부터 7.50'],
-    ['cost_safety_factor', 1.5, '예상 비용에 곱하는 여유 배수 (지시문·받아쓰기 글자 등 문서에 없는 비용 대비)']
+    ['cost_safety_factor', 1.5, '예상 비용에 곱하는 여유 배수 (지시문·받아쓰기 글자 등 문서에 없는 비용 대비)'],
+    ['daily_pron_limit', 50, '학생 1명당 하루 발음 코칭 횟수 상한']
   ]
 };
 
@@ -375,6 +397,9 @@ function doPost(e) {
       const result = teacherSummary_(body.code, body.refresh === true);
       result.server = SERVER_VERSION;
       return json_(result);
+    }
+    if (body.action === 'pronounce') {
+      return json_(pronounce_(body.code, String(body.drill_id || ''), body.level === 'korean' ? 'korean' : 'blank', String(body.audio || '')));
     }
     if (body.action === 'end') {
       return json_(endSession_(body.code, String(body.session_id || ''), body.duration_sec, String(body.end_reason || ''), body.ai_audio_sec));
@@ -778,7 +803,8 @@ function callTextModel_(system, userText, schema, what) {
     headers: { 'x-goog-api-key': key },
     payload: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: 'user', parts: [{ text: userText }] }],
+      // userText는 글자, 또는 소리 등이 들어간 parts 배열
+      contents: [{ role: 'user', parts: Array.isArray(userText) ? userText : [{ text: userText }] }],
       generationConfig: {
         responseMimeType: 'application/json',
         responseSchema: schema,
@@ -955,6 +981,10 @@ function monthSpent_(r) {
       ? Number(s.duration_sec) || 0
       : Math.min((Date.now() - s.started_at.getTime()) / 1000, LIVE_SESSION_MAX_MIN * 60);
     total += liveCost_(sec, sec, r);
+  });
+  // 발음 코칭 비용 (21단계)
+  readTable_('pron_checks').forEach(function (p) {
+    if (p.at instanceof Date && Utilities.formatDate(p.at, tz, 'yyyy-MM') === month) total += Number(p.cost_usd) || 0;
   });
   return total;
 }
@@ -1325,4 +1355,111 @@ function teacherSummary_(code, refresh) {
     writeSummary_(summary);
   }
   return { ok: true, summary: summary };
+}
+
+
+/* ───────────────────────── 21단계: 발음 코칭 ───────────────────────── */
+
+const PRON_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    heard: { type: 'STRING' },
+    said_target: { type: 'BOOLEAN' },
+    overall: { type: 'STRING' },   // great / good / retry — 서버가 값을 검사한다
+    message: { type: 'STRING' },
+    words: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: { word: { type: 'STRING' }, tip: { type: 'STRING' }, respelling: { type: 'STRING' } },
+        required: ['word', 'tip', 'respelling']
+      }
+    }
+  },
+  required: ['heard', 'said_target', 'overall', 'message', 'words']
+};
+const PRON_MAX_B64 = 1500000;   // 약 1.1MB 소리 (16kHz WAV로 30초 남짓). 앱은 12초에서 멈춘다.
+
+/**
+ * 학생이 말한 소리(WAV, base64)로 발음 코칭을 받는다. 문장·발음 안내는 앱이 보낸 값이 아니라 drills 탭에서 찾는다.
+ * 하루 횟수 한도(settings의 daily_pron_limit)와 월 예산을 확인하고, pron_checks 탭에 결과와 비용만 남긴다.
+ */
+function pronounce_(code, drillId, level, audio) {
+  const auth = auth_(code);
+  if (!auth.ok) return auth;
+  if (!audio || audio.length > PRON_MAX_B64) return { ok: false, error: 'BAD_AUDIO' };
+
+  const drill = readTable_('drills').filter(function (d) { return String(d.drill_id) === drillId && isTrue_(d.active); })[0];
+  if (!drill) return { ok: false, error: 'NO_DRILL' };
+
+  const sid = String(auth.student.student_id);
+  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+  const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const used = readTable_('pron_checks').filter(function (p) {
+    return String(p.student_id) === sid && p.at instanceof Date && Utilities.formatDate(p.at, tz, 'yyyy-MM-dd') === today;
+  }).length;
+  if (used >= (Number(getSettings_().daily_pron_limit) || 50)) return { ok: false, error: 'DAILY_PRON_LIMIT' };
+  const budget = checkBudget_();
+  if (!budget.ok) return budget;
+
+  const prompt = activePrompt_('pron');
+  if (!prompt) return { ok: false, error: 'NO_PROMPT' };
+  const sentence = String(drill.sentence).replace(/\[([^\]]+)\]/g, '$1');
+  const keywords = (String(drill.sentence).match(/\[([^\]]+)\]/g) || []).map(function (k) { return k.slice(1, -1); });
+  const system = String(prompt.text)
+    .replace(/\{sentence\}/g, sentence)
+    .replace(/\{keywords\}/g, keywords.join(', ') || '(none)')
+    .replace(/\{pron\}/g, String(drill.pron || '').trim() || '(none)')
+    .replace(/\{mode\}/g, level === 'korean'
+      ? 'The nurse saw only the Korean situation and had to make the whole English sentence.'
+      : 'The nurse saw the sentence with the key words blank.');
+
+  const ai = callTextModel_(system, [
+    { text: "Here is the nurse's audio." },
+    { inlineData: { mimeType: 'audio/wav', data: audio } }
+  ], PRON_SCHEMA, '발음 코칭');
+
+  const r = ai.ok ? ai.data : null;
+  const overall = r && ['great', 'good', 'retry'].indexOf(r.overall) >= 0 ? r.overall : '';
+  appendRow_('pron_checks', {
+    at: new Date(), student_id: sid, chapter_id: String(drill.chapter_id), drill_id: drillId, level: level,
+    overall: overall || 'failed', cost_usd: Math.round((ai.cost || 0) * 10000) / 10000
+  });
+  if (!ai.ok) return { ok: false, error: ai.error === 'AI_FAILED' ? 'PRON_FAILED' : ai.error };
+
+  return {
+    ok: true,
+    coach: {
+      heard: String(r.heard || '').slice(0, 300),
+      said_target: r.said_target === true,
+      overall: overall || 'retry',
+      message: String(r.message || '').slice(0, 200),
+      words: (r.words || []).filter(function (w) { return w && String(w.word || '').trim(); }).slice(0, 3).map(function (w) {
+        return { word: String(w.word).slice(0, 40), tip: String(w.tip || '').slice(0, 160), respelling: String(w.respelling || '').slice(0, 60) };
+      })
+    }
+  };
+}
+
+/** 편집기에서 실행: 1초짜리 무음 WAV로 발음 코칭 요청이 받아들여지는지 확인한다 (결과는 retry가 정상). */
+function testPronounce() {
+  const rate = 16000, n = rate;
+  const bytes = [];
+  const push32 = function (v) { bytes.push(v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >> 24) & 255); };
+  const push16 = function (v) { bytes.push(v & 255, (v >> 8) & 255); };
+  'RIFF'.split('').forEach(function (c) { bytes.push(c.charCodeAt(0)); }); push32(36 + n * 2);
+  'WAVEfmt '.split('').forEach(function (c) { bytes.push(c.charCodeAt(0)); }); push32(16); push16(1); push16(1);
+  push32(rate); push32(rate * 2); push16(2); push16(16);
+  'data'.split('').forEach(function (c) { bytes.push(c.charCodeAt(0)); }); push32(n * 2);
+  for (let i = 0; i < n * 2; i++) bytes.push(0);
+  const audio = Utilities.base64Encode(bytes.map(function (b) { return b > 127 ? b - 256 : b; }));
+
+  const drill = readTable_('drills').filter(function (d) { return isTrue_(d.active); })[0];
+  const prompt = activePrompt_('pron');
+  if (!drill || !prompt) { console.log('실패: drills 탭이나 pron 지시문이 없어요. setup을 먼저 실행해 주세요.'); return; }
+  const system = String(prompt.text).replace(/\{sentence\}/g, String(drill.sentence).replace(/\[|\]/g, ''))
+    .replace(/\{keywords\}/g, '').replace(/\{pron\}/g, '(none)').replace(/\{mode\}/g, 'test');
+  const ai = callTextModel_(system, [{ text: "Here is the nurse's audio." }, { inlineData: { mimeType: 'audio/wav', data: audio } }], PRON_SCHEMA, '발음 코칭 시험');
+  if (ai.ok) console.log('OK: 발음 코칭 요청 성공 (무음이라 retry가 정상)\n' + JSON.stringify(ai.data, null, 2));
+  else console.log('실패: ' + ai.error + ' — 바로 위에 빨간 오류 줄이 있으면 그 내용을 Claude에게 알려 주세요.');
 }

@@ -1,7 +1,8 @@
 // 화면 전환과 전체 흐름을 담당한다.
 import { APP_VERSION } from './config.js';
-import { getChapters, login, startTalk, endTalk, getFeedback, shareTalk, getSummary } from './api.js';
+import { getChapters, login, startTalk, endTalk, getFeedback, shareTalk, getSummary, checkPronunciation } from './api.js';
 import { LiveSession } from './live.js';
+import { Recorder } from './recorder.js';
 
 const $ = (sel) => document.querySelector(sel);
 const views = {
@@ -38,7 +39,10 @@ const ERROR_TEXT = {
   DAILY_CONNECT_LIMIT: '오늘 대화 횟수를 다 썼어요. 내일 다시 만나요.',
   DAILY_TIME_LIMIT: '오늘 사용 시간을 다 썼어요. 내일 다시 만나요.',
   MONTHLY_BUDGET: '이번 달 사용할 수 있는 시간을 모두 썼어요. 선생님께 알려 주세요.',
-  NOT_TEACHER: '선생님 코드로만 볼 수 있어요.'
+  NOT_TEACHER: '선생님 코드로만 볼 수 있어요.',
+  DAILY_PRON_LIMIT: '오늘 발음 코칭 횟수를 다 썼어요. "정답 보기"로 계속 연습할 수 있어요.',
+  PRON_FAILED: '발음 확인에 실패했어요. 잠시 뒤 다시 해 주세요.',
+  BAD_AUDIO: '녹음이 제대로 되지 않았어요. 다시 해 주세요.'
 };
 const LIMIT_TEXT = {
   daily: '오늘 사용 시간을 다 써서 대화를 마쳤어요.',
@@ -502,7 +506,16 @@ function openRecord(e) {
    '어려웠어요'를 누른 문장은 그 회차 끝에 한 번 더 나오고, 다음 회차에는 먼저 나온다 (이 휴대폰에 기억). */
 
 const DRILL_KEY = 'tutoreal.drills';
-const drill = { level: 'blank', queue: [], pos: 0, revealed: false, hintShown: false, hard: 0, total: 0 };
+const drill = {
+  level: 'blank', queue: [], pos: 0, revealed: false, hintShown: false, hard: 0, total: 0,
+  phase: 'idle', rec: null, timer: null, coach: null, coachError: ''   // 발음 코칭: idle / recording / checking
+};
+const REC_MAX_MS = 12000;   // 12초가 지나면 녹음을 자동으로 멈춘다
+const COACH_TITLE = {
+  great: '정확하게 발음했어요! 🎉',
+  good: '잘 들려요! 조금만 다듬어 볼까요?',
+  retry: '다시 한 번 해 볼까요?'
+};
 const LEVEL_DESC = {
   blank: '문장 틀을 보면서 핵심 단어를 떠올려요.',
   korean: '상황만 보고 영어 문장을 처음부터 말해요. 실전처럼!'
@@ -534,6 +547,9 @@ function startDrill() {
   drill.pos = 0;
   drill.hard = 0;
   drill.total = list.length;
+  drill.coach = null;
+  drill.coachError = '';
+  cancelRecording();
   $('#drill-back').textContent = `‹ ${currentChapter.order}장`;
   renderDrill();
   show('drill');
@@ -573,27 +589,103 @@ function renderDrill() {
   }
   const hint = parts.filter((p) => p.blank).map((p) => p.blank.split(/\s+/).map((w) => w[0] + '_'.repeat(Math.max(0, w.length - 1))).join(' ')).join(' · ');
 
+  const c = drill.coach;
+  const coachHtml = c ? `<div class="coach ${c.overall}">
+      <p class="coach-title">${COACH_TITLE[c.overall] || COACH_TITLE.retry}</p>
+      ${c.message ? `<p class="coach-msg">${escapeHtml(c.message)}</p>` : ''}
+      ${c.heard ? `<p class="coach-heard">들린 문장: "${escapeHtml(c.heard)}"</p>` : ''}
+      ${c.words.map((w) => `<p class="coach-word"><b>${escapeHtml(w.word)}</b> → <span class="resp">${escapeHtml(w.respelling)}</span>
+        <span class="tip">${escapeHtml(w.tip)}</span></p>`).join('')}
+    </div>` : '';
+
   card.innerHTML = `
+    ${coachHtml}
     <p class="situation-label">상황</p>
     <p class="situation">${escapeHtml(d.situation)}</p>
     ${sentence ? `<p class="sentence-label">${drill.revealed ? '정답' : '영어 문장'}</p><p class="sentence">${sentence}</p>` : ''}
     ${drill.revealed ? (d.pron ? `<p class="drill-pron">발음: ${escapeHtml(d.pron)}</p>` : '')
+      : drill.phase === 'recording' ? '<p class="recording">● 듣고 있어요. 문장을 말한 뒤 "다 말했어요"를 눌러 주세요.</p>'
+      : drill.phase === 'checking' ? '<p class="drill-say">발음을 확인하는 중…</p>'
       : `<p class="drill-say">${drill.level === 'blank' ? '소리 내어 문장 전체를 말해 보세요.' : '영어 문장 전체를 소리 내어 말해 보세요.'}</p>
-         ${drill.hintShown ? `<p class="drill-hint">${escapeHtml(hint)}</p>` : ''}`}`;
+         ${drill.hintShown ? `<p class="drill-hint">${escapeHtml(hint)}</p>` : ''}`}
+    ${drill.coachError ? `<p class="hint">${escapeHtml(drill.coachError)}</p>` : ''}`;
 
-  if (!drill.revealed) {
-    actions.innerHTML = `${drill.hintShown ? '' : '<button class="secondary" id="drill-hint">힌트 (첫 글자)</button>'}
-      <button class="primary" id="drill-reveal">정답 보기</button>`;
+  if (drill.phase === 'recording') {
+    actions.innerHTML = '<button class="primary" id="rec-stop">다 말했어요</button><button class="secondary" id="rec-cancel">취소</button>';
+    $('#rec-stop').addEventListener('click', stopCoach);
+    $('#rec-cancel').addEventListener('click', () => { cancelRecording(); renderDrill(); });
+  } else if (drill.phase === 'checking') {
+    actions.innerHTML = '';
+  } else if (!drill.revealed) {
+    actions.innerHTML = `<button class="primary" id="rec-start">🎤 말하고 확인받기</button>
+      <div class="row">${drill.hintShown ? '' : '<button class="secondary" id="drill-hint">힌트 (첫 글자)</button>'}
+      <button class="secondary" id="drill-reveal">정답 보기</button></div>`;
+    $('#rec-start').addEventListener('click', startCoach);
     if ($('#drill-hint')) $('#drill-hint').addEventListener('click', () => { drill.hintShown = true; renderDrill(); });
-    $('#drill-reveal').addEventListener('click', () => { drill.revealed = true; renderDrill(); speak(plainSentence(d.sentence)); });
+    $('#drill-reveal').addEventListener('click', () => { drill.revealed = true; drill.coachError = ''; renderDrill(); speak(plainSentence(d.sentence)); });
   } else {
-    actions.innerHTML = `<button class="secondary" id="drill-listen">🔊 다시 듣기</button>
+    actions.innerHTML = `<div class="row"><button class="secondary" id="drill-listen">🔊 다시 듣기</button>
+      <button class="secondary" id="rec-start">🎤 다시 말해 보기</button></div>
       <div class="row"><button class="secondary" id="drill-hard">어려웠어요</button>
       <button class="primary" id="drill-easy">바로 떠올랐어요</button></div>`;
     $('#drill-listen').addEventListener('click', () => speak(plainSentence(d.sentence)));
+    $('#rec-start').addEventListener('click', startCoach);
     $('#drill-hard').addEventListener('click', () => nextDrill(true));
     $('#drill-easy').addEventListener('click', () => nextDrill(false));
   }
+}
+
+/* 발음 코칭: 녹음 → 서버 → AI 코칭. 소리는 저장하지 않는다. */
+async function startCoach() {
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  drill.coachError = '';
+  const rec = new Recorder();
+  drill.rec = rec;
+  drill.phase = 'recording';
+  renderDrill();
+  try {
+    await rec.start();
+    if (drill.rec !== rec) return rec.cancel();   // 그사이 취소됨
+    drill.timer = setTimeout(stopCoach, REC_MAX_MS);
+  } catch (err) {
+    console.warn(err);
+    cancelRecording();
+    drill.coachError = errorText(err);
+    renderDrill();
+  }
+}
+
+async function stopCoach() {
+  const rec = drill.rec;
+  if (!rec || drill.phase !== 'recording') return;
+  clearTimeout(drill.timer);
+  drill.rec = null;
+  const { base64, seconds } = rec.stop();
+  if (seconds < 0.5) {
+    drill.phase = 'idle';
+    drill.coachError = '목소리가 거의 녹음되지 않았어요. 다시 해 주세요.';
+    return renderDrill();
+  }
+  const d = drill.queue[drill.pos];
+  drill.phase = 'checking';
+  renderDrill();
+  try {
+    drill.coach = await checkPronunciation(loadCode(), d.drill_id, drill.level, base64);
+    drill.revealed = true;   // 코칭과 함께 정답 문장을 보여 준다
+  } catch (err) {
+    console.warn(err);
+    drill.coachError = errorText(err);
+  }
+  if (drill.queue[drill.pos] !== d) return;   // 그사이 다른 문장으로 넘어감
+  drill.phase = 'idle';
+  renderDrill();
+}
+
+function cancelRecording() {
+  clearTimeout(drill.timer);
+  if (drill.rec) drill.rec.cancel();
+  drill.rec = null;
+  drill.phase = 'idle';
 }
 
 function nextDrill(hard) {
@@ -605,6 +697,8 @@ function nextDrill(hard) {
   drill.pos++;
   drill.revealed = false;
   drill.hintShown = false;
+  drill.coach = null;
+  drill.coachError = '';
   renderDrill();
 }
 
@@ -763,11 +857,14 @@ $('#login-form').addEventListener('submit', (e) => {
 $('#logout').addEventListener('click', logout);
 $('#open-history').addEventListener('click', openHistory);
 $('#drill-open').addEventListener('click', startDrill);
-$('#drill-back').addEventListener('click', () => { if (window.speechSynthesis) speechSynthesis.cancel(); show('detail'); });
+$('#drill-back').addEventListener('click', () => { if (window.speechSynthesis) speechSynthesis.cancel(); cancelRecording(); show('detail'); });
 document.querySelectorAll('.level').forEach((b) => b.addEventListener('click', () => {
+  cancelRecording();
   drill.level = b.dataset.level;
   drill.revealed = false;
   drill.hintShown = false;
+  drill.coach = null;
+  drill.coachError = '';
   renderDrill();
 }));
 $('#open-teacher').addEventListener('click', () => openTeacher(false));

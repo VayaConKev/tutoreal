@@ -148,6 +148,16 @@ textarea {
 .drill-hint { color: var(--accent); font-size: 16px; font-weight: 700; margin: 8px 0 0; letter-spacing: 0.05em; }
 .drill-pron { color: var(--muted); font-size: 14px; margin: 10px 0 0; }
 .drill-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.recording { color: #d64545; font-weight: 700; margin: 16px 0 0; }
+.coach { border-radius: 12px; padding: 12px 14px; margin: 0 0 14px; background: var(--accent-soft); }
+.coach.retry { background: transparent; border: 1px solid var(--line); }
+.coach-title { font-weight: 800; font-size: 17px; margin: 0 0 4px; color: var(--accent); }
+.coach.retry .coach-title { color: var(--text); }
+.coach-msg { margin: 0 0 6px; }
+.coach-heard { color: var(--muted); font-size: 14px; margin: 0 0 6px; }
+.coach-word { margin: 8px 0 0; font-size: 15px; }
+.coach-word .resp { color: var(--accent); font-weight: 800; letter-spacing: 0.03em; }
+.coach-word .tip { display: block; color: var(--muted); font-size: 14px; }
 .drill-actions .row { display: flex; gap: 8px; }
 .drill-actions button { margin-top: 0; }
 

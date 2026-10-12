@@ -73,6 +73,12 @@ export async function getSummary(code, refresh = false) {
   return data.summary;
 }
 
+// 발음 코칭: 녹음한 소리(WAV base64)를 보내 코칭을 받는다. 문장은 서버가 시트에서 찾는다.
+export async function checkPronunciation(code, drillId, level, audio) {
+  const data = await postServer('pronounce', { code, drill_id: drillId, level, audio }, 60000);
+  return data.coach;
+}
+
 // 대화가 끝났음을 알린다 (사용 시간 기록). 답은 기다리지 않는다.
 // v0.9의 sendBeacon은 구글 로그인 정보(쿠키)를 함께 보내 기록이 남지 않았다 → 다른 요청과 같은 방식 + keepalive.
 // aiAudioSec: 앱이 받은 AI 목소리 길이(초) — 예상 비용 계산에 쓴다.
