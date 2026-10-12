@@ -23,12 +23,14 @@
  * v0.17 (17단계): 선생님용 요약 — buildSummary_()가 기간 안의 기록을 학생별·챕터별로 정리하고,
  *                 시트 메뉴 'Tutoreal → 요약 새로고침'(refreshSummary)이 summary 탭에 적는다.
  * v0.17.1: summary 탭 읽기 쉽게 — 칸 너비, 왼쪽 정렬, 공유된 대화가 없는 챕터는 한 줄로.
+ * v0.18 (18단계): 챕터별 AI 정리 — 요약 새로고침 때 공유된 피드백을 챕터별로 모아 '자주 틀린 표현'과 '수업 포인트'를
+ *                 만든다 (prompts 탭의 insight-v1). 새로 공유된 대화가 없으면 저장해 둔 정리를 다시 쓴다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.17.1';
+const SERVER_VERSION = 'v0.18';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -97,6 +99,17 @@ const FEEDBACK_PROMPT_V2 = FEEDBACK_PROMPT_V1.replace(
     'Be kind and specific.'
   ].join('\n'));
 
+// 챕터별 AI 정리 지시문. {chapter} {goal} {keywords} 는 서버가 채운다. 피드백 항목은 따로 붙는다.
+const INSIGHT_PROMPT_V1 = [
+  'You help a teacher prepare an English class for Korean nurses at a health check-up center in Seoul.',
+  'Below are feedback items from several practice conversations in one lesson. Each item shows what a nurse said, a better sentence, and why.',
+  'Lesson: {chapter}. Goal (Korean): {goal}. Key expressions: {keywords}.',
+  'Group similar mistakes and write:',
+  '- common_mistakes: up to 5, most frequent first. "point" = the mistake pattern in Korean (one short line), "example" = one real nurse sentence from the items, "better" = the better English sentence, "count" = how many items show this pattern.',
+  '- teaching_points: 2-3 short points in Korean the teacher can use in class. You may use the missed key expressions and the difficulties the nurses wrote.',
+  'Use only the given items. Do not invent mistakes or facts.'
+].join('\n');
+
 const SEED = {
   chapters: [
     ['ch01', 1, '호명과 본인 확인', '수검자를 호명해 창구로 부르고 이름과 생년월일로 본인 확인하기',
@@ -118,7 +131,8 @@ const SEED = {
     ['patient-v1', PATIENT_PROMPT_V1, true],
     ['feedback-v1', FEEDBACK_PROMPT_V1, true],
     ['patient-v2', PATIENT_PROMPT_V2, true],
-    ['feedback-v2', FEEDBACK_PROMPT_V2, true]
+    ['feedback-v2', FEEDBACK_PROMPT_V2, true],
+    ['insight-v1', INSIGHT_PROMPT_V1, true]
   ],
   settings: [
     ['live_model', '', '5단계에서 입력 (Gemini Live 모델 이름)'],
@@ -667,10 +681,6 @@ function makeFeedback_(chapter, scenario, lines) {
 
   const prompt = activePrompt_('feedback');
   if (!prompt) return { ok: false, error: 'NO_PROMPT' };
-  const model = String(getSettings_().text_model || '').trim().replace(/^models\//, '');
-  if (!model) return { ok: false, error: 'NO_TEXT_MODEL' };
-  const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-  if (!key) return { ok: false, error: 'NO_API_KEY' };
 
   const keywords = String(chapter.keywords || '').split(',').map(function (k) { return k.trim(); }).filter(Boolean);
   const system = String(prompt.text)
@@ -681,48 +691,10 @@ function makeFeedback_(chapter, scenario, lines) {
     .replace(/\{exam\}/g, String(scenario.exam || ''));
   const transcript = 'Transcript:\n' + lines.map(function (l) { return (l.who === 'me' ? 'Nurse: ' : 'Patient: ') + l.text; }).join('\n');
 
-  const request = {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { 'x-goog-api-key': key },
-    payload: JSON.stringify({
-      systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: 'user', parts: [{ text: transcript }] }],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        responseSchema: FEEDBACK_SCHEMA,
-        thinkingConfig: { thinkingLevel: 'low' },   // 빠르고 저렴하게
-        maxOutputTokens: 4096
-      }
-    }),
-    muteHttpExceptions: true
-  };
-  // 모델이 붐비면(503) 또는 잠시 요청이 많으면(429, 500) 잠깐 기다렸다 다시 시도한다: 2초, 4초 뒤 최대 2번 더.
-  let res;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt) Utilities.sleep(2000 * attempt);
-    res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent', request);
-    if ([429, 500, 503].indexOf(res.getResponseCode()) < 0) break;
-  }
-  if (res.getResponseCode() !== 200) {
-    console.error('피드백 실패 (응답 코드 ' + res.getResponseCode() + '): ' + res.getContentText().slice(0, 800));
-    return { ok: false, error: 'FEEDBACK_FAILED' };
-  }
-
-  let fb;
-  let cost = 0;
-  try {
-    const body = JSON.parse(res.getContentText());
-    cost = textCost_(body.usageMetadata);   // Gemini가 알려 주는 실제 토큰 수로 계산
-    const cand = (body.candidates || [])[0] || {};
-    const text = ((cand.content && cand.content.parts) || [])
-      .filter(function (p) { return !p.thought; })
-      .map(function (p) { return p.text || ''; }).join('');
-    fb = JSON.parse(text);
-  } catch (err) {
-    console.error('피드백 결과를 읽지 못함: ' + res.getContentText().slice(0, 800));
-    return { ok: false, error: 'FEEDBACK_FAILED', cost: cost };
-  }
+  const ai = callTextModel_(system, transcript, FEEDBACK_SCHEMA, '피드백');
+  if (!ai.ok) return { ok: false, error: ai.error === 'AI_FAILED' ? 'FEEDBACK_FAILED' : ai.error, cost: ai.cost };
+  const fb = ai.data;
+  const cost = ai.cost;
 
   // 핵심 단어는 챕터의 목록 순서 그대로, 빠진 단어는 '안 씀'으로 맞춘다.
   const used = {};
@@ -738,6 +710,58 @@ function makeFeedback_(chapter, scenario, lines) {
       next_practice: (fb.next_practice || []).slice(0, 2).map(function (n) { return { en: String(n.en || ''), ko: String(n.ko || '') }; })
     }
   };
+}
+
+/**
+ * 텍스트 모델(settings의 text_model)을 generateContent + JSON 형식으로 부른다. 피드백과 챕터별 AI 정리가 함께 쓴다.
+ * 모델이 붐비면(503) 또는 잠시 요청이 많으면(429, 500) 2초, 4초 기다렸다 최대 2번 더 시도한다.
+ * 결과: { ok, data(JSON), cost(달러) } 또는 { ok: false, error, cost }
+ */
+function callTextModel_(system, userText, schema, what) {
+  const model = String(getSettings_().text_model || '').trim().replace(/^models\//, '');
+  if (!model) return { ok: false, error: 'NO_TEXT_MODEL' };
+  const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!key) return { ok: false, error: 'NO_API_KEY' };
+
+  const request = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'x-goog-api-key': key },
+    payload: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: 'user', parts: [{ text: userText }] }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: schema,
+        thinkingConfig: { thinkingLevel: 'low' },   // 빠르고 저렴하게
+        maxOutputTokens: 4096
+      }
+    }),
+    muteHttpExceptions: true
+  };
+  let res;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) Utilities.sleep(2000 * attempt);
+    res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent', request);
+    if ([429, 500, 503].indexOf(res.getResponseCode()) < 0) break;
+  }
+  if (res.getResponseCode() !== 200) {
+    console.error(what + ' 실패 (응답 코드 ' + res.getResponseCode() + '): ' + res.getContentText().slice(0, 800));
+    return { ok: false, error: 'AI_FAILED', cost: 0 };
+  }
+  let cost = 0;
+  try {
+    const body = JSON.parse(res.getContentText());
+    cost = textCost_(body.usageMetadata);   // Gemini가 알려 주는 실제 토큰 수로 계산
+    const cand = (body.candidates || [])[0] || {};
+    const text = ((cand.content && cand.content.parts) || [])
+      .filter(function (p) { return !p.thought; })
+      .map(function (p) { return p.text || ''; }).join('');
+    return { ok: true, data: JSON.parse(text), cost: cost };
+  } catch (err) {
+    console.error(what + ' 결과를 읽지 못함: ' + res.getContentText().slice(0, 800));
+    return { ok: false, error: 'AI_FAILED', cost: cost };
+  }
 }
 
 /** 편집기에서 실행: 예시 대화로 피드백이 만들어지는지 확인한다. */
@@ -916,9 +940,10 @@ function onOpen() {
     .addToUi();
 }
 
-/** 메뉴에서 실행: 요약을 계산해 summary 탭에 적는다. */
+/** 메뉴에서 실행: 요약을 계산하고 챕터별 AI 정리를 붙여 summary 탭에 적는다. */
 function refreshSummary() {
   const summary = buildSummary_();
+  updateInsights_(summary);
   writeSummary_(summary);
   SpreadsheetApp.getActiveSpreadsheet().toast('요약을 새로 만들었어요 (' + summary.period.label + ')', 'Tutoreal');
 }
@@ -1002,6 +1027,7 @@ function buildSummary_() {
     });
     return {
       chapter_id: c.chapter_id, order: c.order, title: c.title,
+      insight: storedInsight_(c.chapter_id, period, shared.length),
       students: Object.keys(list.reduce(function (m, s) { m[String(s.student_id)] = 1; return m; }, {})).length,
       count: list.length,
       minutes: Math.round(list.reduce(function (a, s) { return a + sec(s); }, 0) / 60),
@@ -1088,9 +1114,17 @@ function writeSummary_(sm) {
     rows.push(['연습', '학생 ' + c.students + '명 · ' + c.count + '회 · ' + c.minutes + '분']);
     rows.push(['공유된 대화', c.shared ? c.shared + '개' : '공유된 대화가 없어요']);
     if (c.shared) {
-      rows.push(['자기 평가 평균 (1 어려움 ~ 3 자신)', c.confidence === null ? '–' : c.confidence]);
+      rows.push(['자기 평가 평균 (1~3)', c.confidence === null ? '–' : c.confidence]);
       c.keywords.forEach(function (k) { rows.push(['핵심 단어: ' + k.keyword, pct(k)]); });
       c.difficulties.forEach(function (d) { rows.push(['어려웠던 점 (' + d.student + ')', d.text]); });
+      if (c.insight) {
+        rows.push(['AI 정리', '공유된 대화 ' + c.insight.shared + '개 기준 · ' + c.insight.at]);
+        c.insight.common_mistakes.forEach(function (m, i) {
+          rows.push(['자주 틀린 표현 ' + (i + 1), m.point + ' (' + m.count + '회)']);
+          rows.push(['', '예: ' + m.example + '  →  ' + m.better]);
+        });
+        c.insight.teaching_points.forEach(function (p, i) { rows.push([i ? '' : '수업 포인트', p]); });
+      }
     }
     blank();
   });
@@ -1115,4 +1149,97 @@ function writeSummary_(sm) {
   for (let c = 1; c <= width; c++) {
     if (sheet.getColumnWidth(c) < 110) sheet.setColumnWidth(c, 110);
   }
+}
+
+
+/* ───────────────────────── 18단계: 챕터별 AI 정리 ───────────────────────── */
+
+const INSIGHT_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    common_mistakes: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: { point: { type: 'STRING' }, example: { type: 'STRING' }, better: { type: 'STRING' }, count: { type: 'INTEGER' } },
+        required: ['point', 'example', 'better', 'count']
+      }
+    },
+    teaching_points: { type: 'ARRAY', items: { type: 'STRING' } }
+  },
+  required: ['common_mistakes', 'teaching_points']
+};
+
+/**
+ * 저장해 둔 챕터별 정리(스크립트 속성 insight_챕터번호)를 읽는다. 같은 기간 시작일이고 공유된 대화 수가 같을 때만 쓴다.
+ * 스크립트 속성 한 칸은 9KB까지라 글자 길이를 줄여서 저장한다.
+ */
+function storedInsight_(chapterId, period, sharedCount) {
+  const raw = PropertiesService.getScriptProperties().getProperty('insight_' + chapterId);
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    return v.from === period.from && v.shared === sharedCount ? v : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+/** 공유된 대화가 있고 저장된 정리가 없거나 낡은 챕터만 AI로 새로 정리한다. */
+function updateInsights_(sm) {
+  const chapters = readTable_('chapters');
+  const shared = readTable_('sessions').filter(function (s) {
+    return isTrue_(s.shared) && s.started_at instanceof Date &&
+      Utilities.formatDate(s.started_at, SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), 'yyyy-MM-dd') >= sm.period.from;
+  });
+  sm.chapterStats.forEach(function (c) {
+    if (!c.shared || c.insight) return;
+    const chapter = chapters.filter(function (x) { return String(x.chapter_id) === c.chapter_id; })[0];
+    const list = shared.filter(function (s) { return String(s.chapter_id) === c.chapter_id; });
+    const insight = makeInsight_(chapter, c, list);
+    if (!insight) return;
+    insight.from = sm.period.from;
+    insight.shared = c.shared;
+    insight.at = sm.generated_at;
+    PropertiesService.getScriptProperties().setProperty('insight_' + c.chapter_id, JSON.stringify(insight));
+    c.insight = insight;
+  });
+}
+
+function makeInsight_(chapter, stat, sessions) {
+  const prompt = activePrompt_('insight');
+  if (!prompt || !chapter) return null;
+
+  const items = [];
+  sessions.forEach(function (s) {
+    let fb = null;
+    try { fb = JSON.parse(String(s.feedback || '')); } catch (err) { fb = null; }
+    ((fb && fb.fixes) || []).forEach(function (f) {
+      if (items.length < 40) items.push('Said: ' + f.said + ' | Better: ' + f.better + ' | Why: ' + f.why);
+    });
+  });
+  if (!items.length) return null;
+
+  const missed = stat.keywords.filter(function (k) { return k.total && k.used < k.total; })
+    .map(function (k) { return k.keyword + ' (used ' + k.used + '/' + k.total + ')'; });
+  const notes = stat.difficulties.map(function (d) { return d.text; });
+  const userText = 'Feedback items:\n' + items.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n') +
+    (missed.length ? '\n\nKey expressions often missed: ' + missed.join(', ') : '') +
+    (notes.length ? '\n\nDifficulties written by nurses (Korean): ' + notes.join(' / ') : '');
+
+  const system = String(prompt.text)
+    .replace(/\{chapter\}/g, stat.order + '. ' + stat.title)
+    .replace(/\{goal\}/g, String(chapter.goal || ''))
+    .replace(/\{keywords\}/g, String(chapter.keywords || ''));
+  const ai = callTextModel_(system, userText, INSIGHT_SCHEMA, '챕터 정리');
+  if (!ai.ok) return null;
+
+  const cut = function (v, n) { return String(v || '').slice(0, n); };
+  return {
+    common_mistakes: (ai.data.common_mistakes || []).slice(0, 5).map(function (m) {
+      return { point: cut(m.point, 100), example: cut(m.example, 160), better: cut(m.better, 160), count: Number(m.count) || 1 };
+    }),
+    teaching_points: (ai.data.teaching_points || []).slice(0, 3).map(function (p) { return cut(p, 200); }),
+    cost: Math.round(ai.cost * 10000) / 10000
+  };
 }
