@@ -22,12 +22,13 @@
  *                 setup()이 prompts 탭에 추가한다. v1 줄의 active를 FALSE로 바꾸면 v2가 쓰인다.
  * v0.17 (17단계): 선생님용 요약 — buildSummary_()가 기간 안의 기록을 학생별·챕터별로 정리하고,
  *                 시트 메뉴 'Tutoreal → 요약 새로고침'(refreshSummary)이 summary 탭에 적는다.
+ * v0.17.1: summary 탭 읽기 쉽게 — 칸 너비, 왼쪽 정렬, 공유된 대화가 없는 챕터는 한 줄로.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.17';
+const SERVER_VERSION = 'v0.17.1';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -1085,10 +1086,12 @@ function writeSummary_(sm) {
     bold.push(rows.length);
     rows.push([label(c)]);
     rows.push(['연습', '학생 ' + c.students + '명 · ' + c.count + '회 · ' + c.minutes + '분']);
-    rows.push(['공유된 대화', c.shared]);
-    rows.push(['자기 평가 평균 (1 어려움 ~ 3 자신)', c.confidence === null ? '–' : c.confidence]);
-    c.keywords.forEach(function (k) { rows.push(['핵심 단어: ' + k.keyword, pct(k)]); });
-    c.difficulties.forEach(function (d) { rows.push(['어려웠던 점 (' + d.student + ')', d.text]); });
+    rows.push(['공유된 대화', c.shared ? c.shared + '개' : '공유된 대화가 없어요']);
+    if (c.shared) {
+      rows.push(['자기 평가 평균 (1 어려움 ~ 3 자신)', c.confidence === null ? '–' : c.confidence]);
+      c.keywords.forEach(function (k) { rows.push(['핵심 단어: ' + k.keyword, pct(k)]); });
+      c.difficulties.forEach(function (d) { rows.push(['어려웠던 점 (' + d.student + ')', d.text]); });
+    }
     blank();
   });
 
@@ -1099,11 +1102,17 @@ function writeSummary_(sm) {
     rows.push([st.name, st.count, st.minutes, st.chapters.join(', ') || '–', st.confidence === null ? '–' : st.confidence, st.shared]);
   });
 
+  // 모두 글자로 적는다: 날짜·숫자로 바뀌어 정렬이 섞이지 않게
   const width = rows.reduce(function (w, r) { return Math.max(w, r.length); }, 2);
-  const grid = rows.map(function (r) { return r.concat(Array(width - r.length).fill('')); });
+  const grid = rows.map(function (r) { return r.concat(Array(width - r.length).fill('')).map(String); });
   const last = Math.max(sheet.getLastRow(), 2);
   sheet.getRange(2, 1, last, Math.max(sheet.getLastColumn(), width)).clearContent().setFontWeight('normal');
-  sheet.getRange(2, 1, grid.length, width).setValues(grid);
+  const body = sheet.getRange(2, 1, grid.length, width);
+  body.setNumberFormat('@').setHorizontalAlignment('left').setValues(grid);
   bold.forEach(function (i) { sheet.getRange(i + 2, 1, 1, width).setFontWeight('bold'); });
+  SpreadsheetApp.flush();   // 다 적은 다음에 너비를 맞춰야 잘리지 않는다
   sheet.autoResizeColumns(1, width);
+  for (let c = 1; c <= width; c++) {
+    if (sheet.getColumnWidth(c) < 110) sheet.setColumnWidth(c, 110);
+  }
 }
