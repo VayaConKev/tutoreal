@@ -28,12 +28,13 @@
  * v0.18.1: AI 정리를 만들지 못하면 그 이유를 summary 탭에 적는다 (전에는 아무 표시 없이 빠졌다).
  * v0.19 (19단계): 선생님 화면 — students 탭의 role 칸(teacher)으로 구분. doPost(action=summary)가 선생님에게만 요약을 준다.
  *                 setup()이 기존 탭에 빠진 칸 이름을 오른쪽 끝에 추가한다. summary 탭 칸 너비 상한과 줄바꿈.
+ * v0.20 (20단계): 문장 연습 — drills 탭(빈칸 문장)을 만들고, 챕터 목록에 챕터별 문장을 함께 보낸다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.19';
+const SERVER_VERSION = 'v0.20';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -47,7 +48,9 @@ const SCHEMA = {
   transcripts:    ['session_id', 'seq', 'speaker', 'text', 'at'],
   quality:        ['at', 'session_id', 'kind', 'note'],
   settings:       ['key', 'value', 'note'],
-  summary:        ['item', 'value']
+  summary:        ['item', 'value'],
+  // 문장 연습: sentence의 [대괄호] 부분이 빈칸. pron은 어려운 단어의 발음 안내 (21단계 발음 코칭에서 기준으로 쓴다)
+  drills:         ['drill_id', 'chapter_id', 'order', 'situation', 'sentence', 'pron', 'active']
 };
 
 const PATIENT_PROMPT_V1 = [
@@ -136,6 +139,24 @@ const SEED = {
     ['patient-v2', PATIENT_PROMPT_V2, true],
     ['feedback-v2', FEEDBACK_PROMPT_V2, true],
     ['insight-v1', INSIGHT_PROMPT_V1, true]
+  ],
+  // 문장 연습 초안 (Claude 작성) — 간호 현장에 맞는지 Kevin이 검토해 시트에서 고친다.
+  drills: [
+    ['ch01-d01', 'ch01', 1, '수검자를 창구로 부를 때', 'Mr. Martin, please come to [counter] number three.', '', true],
+    ['ch01-d02', 'ch01', 2, '수검자의 성함을 물어볼 때', 'Could you tell me your [full name], please?', '', true],
+    ['ch01-d03', 'ch01', 3, '성(last name)의 철자를 확인할 때', 'Could you [spell] your last name, please?', '', true],
+    ['ch01-d04', 'ch01', 4, '생년월일을 물어볼 때', 'May I have your [date of birth], please?', '', true],
+    ['ch01-d05', 'ch01', 5, '들은 정보가 맞는지 다시 확인할 때', 'Your date of birth is May 11th, 2003. [Is that right]?', '', true],
+    ['ch01-d06', 'ch01', 6, '앉아서 기다려 달라고 할 때', 'Please [have a seat] and wait a moment.', '', true],
+    ['ch02-d01', 'ch02', 1, '왼쪽으로 누워 달라고 할 때', 'Please lie on your [left side].', '', true],
+    ['ch02-d02', 'ch02', 2, '무릎을 구부려 달라고 할 때', 'Please bend your [knees] toward your chest.', '', true],
+    ['ch02-d03', 'ch02', 3, '조금 뒤로 가 달라고 할 때', 'Could you [move back] a little, please?', '', true],
+    ['ch02-d04', 'ch02', 4, '녹내장이 있는지 물어볼 때', 'Do you have [glaucoma]?', 'glaucoma: glaw-KOH-muh 또는 glou-KOH-muh (강세는 KOH)', true],
+    ['ch02-d05', 'ch02', 5, '전립선 문제가 있는지 물어볼 때', 'Do you have any [prostate] problems?', 'prostate: PROS-tayt (강세는 PROS, prostrate와 다른 단어)', true],
+    ['ch02-d06', 'ch02', 6, '팔에 주사(정맥 라인)를 놓는다고 할 때', "I'll put an [IV] line in your arm.", '', true],
+    ['ch02-d07', 'ch02', 7, '마우스피스를 물어 달라고 할 때', 'Please [bite] gently on this mouthpiece.', '', true],
+    ['ch02-d08', 'ch02', 8, '약이 들어갈 때 따끔할 수 있다고 할 때', 'The medicine may [sting] a little.', '', true],
+    ['ch02-d09', 'ch02', 9, '잠들 때까지 눈을 뜨고 있어 달라고 할 때', 'Please keep your [eyes open] for now.', '', true]
   ],
   settings: [
     ['live_model', '', '5단계에서 입력 (Gemini Live 모델 이름)'],
@@ -292,6 +313,17 @@ function captionMode_(v) {
 
 /** 공개(published)된 챕터만 순서(order)대로. 학생 화면에 필요한 칸만 보낸다. */
 function listChapters_() {
+  // 문장 연습: 챕터별로 active인 문장을 순서대로 붙인다 (drills 탭이 없으면 빈 목록)
+  const drills = {};
+  readTable_('drills')
+    .filter(function (d) { return d.drill_id && d.sentence && isTrue_(d.active); })
+    .sort(function (a, b) { return Number(a.order) - Number(b.order); })
+    .forEach(function (d) {
+      const id = String(d.chapter_id);
+      (drills[id] = drills[id] || []).push({
+        drill_id: String(d.drill_id), situation: String(d.situation || ''), sentence: String(d.sentence), pron: String(d.pron || '')
+      });
+    });
   return readTable_('chapters')
     .filter(function (c) { return c.chapter_id && isTrue_(c.published); })
     .sort(function (a, b) { return Number(a.order) - Number(b.order); })
@@ -302,7 +334,8 @@ function listChapters_() {
         title: String(c.title || ''),
         goal: String(c.goal || ''),
         keywords: String(c.keywords || '').split(',').map(function (k) { return k.trim(); }).filter(Boolean),
-        ai_captions: captionMode_(c.ai_captions)
+        ai_captions: captionMode_(c.ai_captions),
+        drills: drills[String(c.chapter_id)] || []
       };
     });
 }

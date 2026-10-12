@@ -7,7 +7,8 @@ const $ = (sel) => document.querySelector(sel);
 const views = {
   login: $('#view-login'), list: $('#view-list'), detail: $('#view-detail'), talk: $('#view-talk'), review: $('#view-review'),
   history: $('#view-history'), record: $('#view-record'),
-  teacher: $('#view-teacher'), tchapter: $('#view-tchapter'), tstudent: $('#view-tstudent')
+  teacher: $('#view-teacher'), tchapter: $('#view-tchapter'), tstudent: $('#view-tstudent'),
+  drill: $('#view-drill')
 };
 let chapters = [];
 let currentChapter = null;
@@ -125,6 +126,9 @@ function openChapter(id) {
   $('#detail-goal').textContent = c.goal;
   $('#detail-keywords').innerHTML = c.keywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join('');
   currentChapter = c;
+  const n = (c.drills || []).length;
+  $('#drill-open').hidden = !n;
+  $('#drill-open').textContent = `문장 연습 · ${n}문장`;
   show('detail');
 }
 
@@ -493,6 +497,119 @@ function openRecord(e) {
   show('record');
 }
 
+/* ── 문장 연습: 핵심 단어 자리가 빈칸인 문장을 소리 내어 말해 보고 정답을 확인한다 (AI를 쓰지 않음) ──
+   sentence의 [대괄호] 부분이 빈칸. 단계: blank(빈칸) / korean(한국어 상황만 보고 문장 전체).
+   '어려웠어요'를 누른 문장은 그 회차 끝에 한 번 더 나오고, 다음 회차에는 먼저 나온다 (이 휴대폰에 기억). */
+
+const DRILL_KEY = 'tutoreal.drills';
+const drill = { level: 'blank', queue: [], pos: 0, revealed: false, hintShown: false, hard: 0, total: 0 };
+
+function loadDrillMarks() {
+  try { return JSON.parse(localStorage.getItem(DRILL_KEY) || '{}'); } catch { return {}; }
+}
+function saveDrillMark(id, hard) {
+  try {
+    const marks = loadDrillMarks();
+    marks[id] = { hard, at: Date.now() };
+    localStorage.setItem(DRILL_KEY, JSON.stringify(marks));
+  } catch { /* 저장 못 해도 진행 */ }
+}
+
+/** 'Could you tell me your [full name], please?' → [{ text }, { blank: 'full name' }, { text }] */
+function parseSentence(s) {
+  return s.split(/\[([^\]]+)\]/).map((part, i) => (i % 2 ? { blank: part } : { text: part })).filter((p) => p.blank || p.text);
+}
+const plainSentence = (s) => s.replace(/\[([^\]]+)\]/g, '$1');
+
+function startDrill() {
+  const marks = loadDrillMarks();
+  const list = (currentChapter.drills || []).slice();
+  // 지난번에 '어려웠어요'였던 문장을 먼저 (나머지는 시트 순서)
+  list.sort((a, b) => Number(!!(marks[b.drill_id] || {}).hard) - Number(!!(marks[a.drill_id] || {}).hard));
+  drill.queue = list.map((d) => ({ ...d, again: false }));
+  drill.pos = 0;
+  drill.hard = 0;
+  drill.total = list.length;
+  $('#drill-back').textContent = `‹ ${currentChapter.order}장`;
+  renderDrill();
+  show('drill');
+}
+
+function renderDrill() {
+  document.querySelectorAll('.level').forEach((b) => b.classList.toggle('on', b.dataset.level === drill.level));
+  const card = $('#drill-card');
+  const actions = $('#drill-actions');
+  if (drill.pos >= drill.queue.length) {
+    $('#drill-count').textContent = '';
+    card.innerHTML = `<h3>다 했어요!</h3>
+      <p class="goal">${drill.total}문장 중 어려웠던 문장 ${drill.hard}개. 어려웠던 문장은 다음 연습 때 먼저 나와요.</p>`;
+    actions.innerHTML = `<button class="secondary" id="drill-again">한 번 더 연습</button>
+      <button class="primary" id="drill-to-talk">대화 시작하기</button>`;
+    $('#drill-again').addEventListener('click', startDrill);
+    $('#drill-to-talk').addEventListener('click', () => { show('detail'); beginTalk(); });
+    return;
+  }
+  const d = drill.queue[drill.pos];
+  const parts = parseSentence(d.sentence);
+  const firstRound = drill.queue.filter((x) => !x.again).length;
+  $('#drill-count').textContent = d.again ? '한 번 더' : `${Math.min(drill.pos + 1, firstRound)} / ${firstRound}`;
+
+  let sentence;
+  if (drill.revealed) {
+    sentence = parts.map((p) => (p.blank ? `<span class="filled">${escapeHtml(p.blank)}</span>` : escapeHtml(p.text))).join('');
+  } else if (drill.level === 'blank') {
+    sentence = parts.map((p) => (p.blank
+      ? p.blank.split(/\s+/).map((w) => `<span class="blank" style="width:${Math.max(2, w.length * 0.6)}em" aria-label="빈칸"></span>`).join(' ')
+      : escapeHtml(p.text))).join('');
+  } else {
+    sentence = '';
+  }
+  const hint = parts.filter((p) => p.blank).map((p) => p.blank.split(/\s+/).map((w) => w[0] + '_'.repeat(Math.max(0, w.length - 1))).join(' ')).join(' · ');
+
+  card.innerHTML = `
+    <p class="situation">${escapeHtml(d.situation)}</p>
+    ${sentence ? `<p class="sentence">${sentence}</p>` : ''}
+    ${drill.revealed ? (d.pron ? `<p class="drill-pron">발음: ${escapeHtml(d.pron)}</p>` : '')
+      : `<p class="drill-say">${drill.level === 'blank' ? '소리 내어 문장 전체를 말해 보세요.' : '영어 문장 전체를 소리 내어 말해 보세요.'}</p>
+         ${drill.hintShown ? `<p class="drill-hint">${escapeHtml(hint)}</p>` : ''}`}`;
+
+  if (!drill.revealed) {
+    actions.innerHTML = `${drill.hintShown ? '' : '<button class="secondary" id="drill-hint">힌트 (첫 글자)</button>'}
+      <button class="primary" id="drill-reveal">정답 보기</button>`;
+    if ($('#drill-hint')) $('#drill-hint').addEventListener('click', () => { drill.hintShown = true; renderDrill(); });
+    $('#drill-reveal').addEventListener('click', () => { drill.revealed = true; renderDrill(); speak(plainSentence(d.sentence)); });
+  } else {
+    actions.innerHTML = `<button class="secondary" id="drill-listen">🔊 다시 듣기</button>
+      <div class="row"><button class="secondary" id="drill-hard">어려웠어요</button>
+      <button class="primary" id="drill-easy">바로 떠올랐어요</button></div>`;
+    $('#drill-listen').addEventListener('click', () => speak(plainSentence(d.sentence)));
+    $('#drill-hard').addEventListener('click', () => nextDrill(true));
+    $('#drill-easy').addEventListener('click', () => nextDrill(false));
+  }
+}
+
+function nextDrill(hard) {
+  const d = drill.queue[drill.pos];
+  if (!d.again) {
+    saveDrillMark(d.drill_id, hard);
+    if (hard) { drill.hard++; drill.queue.push({ ...d, again: true }); }   // 어려웠던 문장은 끝에 한 번 더
+  }
+  drill.pos++;
+  drill.revealed = false;
+  drill.hintShown = false;
+  renderDrill();
+}
+
+/** 휴대폰에 들어 있는 영어 읽기 음성으로 문장을 읽어 준다 (무료, 인터넷 불필요). */
+function speak(text) {
+  if (!('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'en-US';
+  u.rate = 0.9;
+  speechSynthesis.speak(u);
+}
+
 /* ── 선생님 화면: 시트 summary 탭과 같은 계산 결과 (선생님 코드만) ── */
 // 학생 상세는 지금은 요약에 있는 숫자로만 그린다. 나중에 학생 한 명의 공유 기록(피드백·대화)을 주는 요청을 따로 추가해
 // openStudent() 아래에 '공유된 대화' 목록을 붙인다 (모양은 내 기록 보기와 같게).
@@ -637,6 +754,14 @@ $('#login-form').addEventListener('submit', (e) => {
 });
 $('#logout').addEventListener('click', logout);
 $('#open-history').addEventListener('click', openHistory);
+$('#drill-open').addEventListener('click', startDrill);
+$('#drill-back').addEventListener('click', () => { if (window.speechSynthesis) speechSynthesis.cancel(); show('detail'); });
+document.querySelectorAll('.level').forEach((b) => b.addEventListener('click', () => {
+  drill.level = b.dataset.level;
+  drill.revealed = false;
+  drill.hintShown = false;
+  renderDrill();
+}));
 $('#open-teacher').addEventListener('click', () => openTeacher(false));
 $('#teacher-back').addEventListener('click', () => show('list'));
 $('#teacher-refresh').addEventListener('click', () => openTeacher(true));
