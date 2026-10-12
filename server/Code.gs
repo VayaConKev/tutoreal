@@ -25,12 +25,13 @@
  * v0.17.1: summary 탭 읽기 쉽게 — 칸 너비, 왼쪽 정렬, 공유된 대화가 없는 챕터는 한 줄로.
  * v0.18 (18단계): 챕터별 AI 정리 — 요약 새로고침 때 공유된 피드백을 챕터별로 모아 '자주 틀린 표현'과 '수업 포인트'를
  *                 만든다 (prompts 탭의 insight-v1). 새로 공유된 대화가 없으면 저장해 둔 정리를 다시 쓴다.
+ * v0.18.1: AI 정리를 만들지 못하면 그 이유를 summary 탭에 적는다 (전에는 아무 표시 없이 빠졌다).
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.18';
+const SERVER_VERSION = 'v0.18.1';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -1117,6 +1118,7 @@ function writeSummary_(sm) {
       rows.push(['자기 평가 평균 (1~3)', c.confidence === null ? '–' : c.confidence]);
       c.keywords.forEach(function (k) { rows.push(['핵심 단어: ' + k.keyword, pct(k)]); });
       c.difficulties.forEach(function (d) { rows.push(['어려웠던 점 (' + d.student + ')', d.text]); });
+      if (c.insightError) rows.push(['AI 정리', '만들지 못했어요 — ' + c.insightError]);
       if (c.insight) {
         rows.push(['AI 정리', '공유된 대화 ' + c.insight.shared + '개 기준 · ' + c.insight.at]);
         c.insight.common_mistakes.forEach(function (m, i) {
@@ -1197,7 +1199,7 @@ function updateInsights_(sm) {
     const chapter = chapters.filter(function (x) { return String(x.chapter_id) === c.chapter_id; })[0];
     const list = shared.filter(function (s) { return String(s.chapter_id) === c.chapter_id; });
     const insight = makeInsight_(chapter, c, list);
-    if (!insight) return;
+    if (insight.error) { c.insightError = insight.error; return; }
     insight.from = sm.period.from;
     insight.shared = c.shared;
     insight.at = sm.generated_at;
@@ -1206,9 +1208,11 @@ function updateInsights_(sm) {
   });
 }
 
+/** 결과: 정리 객체, 또는 만들지 못한 이유 { error: '…' } */
 function makeInsight_(chapter, stat, sessions) {
   const prompt = activePrompt_('insight');
-  if (!prompt || !chapter) return null;
+  if (!prompt) return { error: 'prompts 탭에 insight 지시문이 없어요. 편집기에서 setup을 실행해 주세요.' };
+  if (!chapter) return { error: '챕터 정보를 찾지 못했어요.' };
 
   const items = [];
   sessions.forEach(function (s) {
@@ -1218,7 +1222,7 @@ function makeInsight_(chapter, stat, sessions) {
       if (items.length < 40) items.push('Said: ' + f.said + ' | Better: ' + f.better + ' | Why: ' + f.why);
     });
   });
-  if (!items.length) return null;
+  if (!items.length) return { error: '공유된 피드백에 고칠 문장이 없어요.' };
 
   const missed = stat.keywords.filter(function (k) { return k.total && k.used < k.total; })
     .map(function (k) { return k.keyword + ' (used ' + k.used + '/' + k.total + ')'; });
@@ -1232,7 +1236,11 @@ function makeInsight_(chapter, stat, sessions) {
     .replace(/\{goal\}/g, String(chapter.goal || ''))
     .replace(/\{keywords\}/g, String(chapter.keywords || ''));
   const ai = callTextModel_(system, userText, INSIGHT_SCHEMA, '챕터 정리');
-  if (!ai.ok) return null;
+  if (!ai.ok) {
+    return { error: ai.error === 'AI_FAILED'
+      ? 'AI 호출에 실패했어요. 잠시 뒤 다시 새로고침해 주세요. (자세한 내용: 편집기 실행 기록)'
+      : '설정을 확인해 주세요 (' + ai.error + ').' };
+  }
 
   const cut = function (v, n) { return String(v || '').slice(0, n); };
   return {
