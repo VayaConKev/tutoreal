@@ -1,10 +1,10 @@
 :root {
   --bg: #f5f6f8; --card: #ffffff; --text: #1d2430; --muted: #687385; --line: #e3e6eb;
-  --accent: #2563c9; --accent-soft: #e8f0fc; --radius: 14px;
+  --accent: #2563c9; --accent-soft: #e8f0fc; --radius: 14px; --nav-bg: #eaf0f9;
 }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #12151a; --card: #1b2028; --text: #e6e9ee; --muted: #9aa4b2; --line: #2a313c;
-          --accent: #6e9ef0; --accent-soft: #1f2b40; }
+          --accent: #6e9ef0; --accent-soft: #1f2b40; --nav-bg: #1a2230; }
 }
 * { box-sizing: border-box; }
 body {
@@ -13,10 +13,31 @@ body {
   line-height: 1.55; -webkit-text-size-adjust: 100%;
 }
 .wrap { max-width: 560px; margin: 0 auto; padding: 24px 16px 40px; }
-header h1 { margin: 0; font-size: 26px; letter-spacing: -0.02em; }
-header p { margin: 2px 0 20px; color: var(--muted); font-size: 15px; }
-header .who { margin: -12px 0 20px; font-size: 14px; color: var(--muted); }
-header .who .link { margin: 0; font-size: 14px; }
+header h1 { margin: 0 0 16px; font-size: 22px; letter-spacing: -0.02em; }
+
+/* 첫 화면 인사 */
+.greet { display: flex; align-items: center; gap: 14px; margin: 0 0 24px; }
+.greet-pic { flex: none; padding: 0; border: 0; background: none; border-radius: 50%; cursor: pointer; }
+.greet-pic .avatar { width: 64px; height: 64px; font-size: 22px; }
+.greet-text { min-width: 0; }
+.greet-hi { margin: 0; font-size: 22px; font-weight: 800; line-height: 1.3; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.greet-sub { margin: 2px 0 0; color: var(--muted); font-size: 15px; }
+
+/* 아래쪽 탭 바 */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: flex; justify-content: center;
+  background: var(--nav-bg); border-top: 1px solid var(--line);
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+}
+.tabbar[hidden] { display: none; }
+.tab {
+  flex: 1; max-width: 120px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: none; border: 0; border-radius: 12px; padding: 6px 2px; color: var(--muted); font: inherit; font-size: 11.5px; cursor: pointer;
+}
+.tab[hidden] { display: none; }
+.tab svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tab.on { color: var(--accent); background: var(--accent-soft); font-weight: 700; }
+body.has-tabbar .wrap { padding-bottom: 104px; }
 h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin: 0 0 10px; }
 
 .chapter {

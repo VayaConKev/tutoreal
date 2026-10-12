@@ -51,9 +51,18 @@ const LIMIT_TEXT = {
 };
 const errorText = (err) => ERROR_TEXT[err.name] || ERROR_TEXT[err.message] || `연결에 문제가 있어요. (${err.message})`;
 
+// 탭 바: 화면마다 어느 탭에 속하는지. 여기에 없는 화면(로그인, 대화, 돌아보기, 문장 연습)에서는 탭 바를 숨긴다.
+const TAB_OF = {
+  list: 'list', detail: 'list', history: 'history', record: 'history', avatar: 'avatar',
+  teacher: 'teacher', tchapter: 'teacher', tstudent: 'teacher'
+};
+
 function show(name) {
   Object.entries(views).forEach(([key, el]) => { el.hidden = key !== name; });
-  $('#who').hidden = !['list', 'detail'].includes(name);
+  const tab = TAB_OF[name];
+  $('#tabbar').hidden = !tab;
+  document.body.classList.toggle('has-tabbar', !!tab);
+  document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   window.scrollTo(0, 0);
 }
 
@@ -78,8 +87,7 @@ async function enter(code) {
     me.name = name;
     me.avatar = avatar;
     renderMe();
-    $('#who-name').textContent = `${name} 님`;
-    $('#teacher-link').hidden = role !== 'teacher';   // 화면에서만 숨긴다. 서버도 요청마다 역할을 확인한다.
+    $('#tab-teacher').hidden = role !== 'teacher';   // 화면에서만 숨긴다. 서버도 요청마다 역할을 확인한다.
     setVersion(server);
     show('list');
     loadChapters();
@@ -96,7 +104,7 @@ async function enter(code) {
 
 function logout() {
   saveCode('');
-  $('#teacher-link').hidden = true;
+  $('#tab-teacher').hidden = true;
   $('#login-code').value = '';
   $('#login-msg').textContent = '';
   show('login');
@@ -475,8 +483,10 @@ function avatarHtml(entry) {
   return patientAvatar(entry.patient && entry.patient.name, entry.scenarioId);
 }
 
+/** 첫 화면 인사: 큰 캐릭터 + 'Kevin, nice to see you!' */
 function renderMe() {
-  $('#who-avatar').innerHTML = studentAvatar(me.name, me.avatar, 'sm');
+  $('#greet-avatar').innerHTML = studentAvatar(me.name, me.avatar);
+  $('#greet-hi').textContent = me.name ? `${me.name}, nice to see you!` : '';
 }
 
 /* 내 캐릭터 고르기: 누르면 "이 캐릭터로 바꿀까요?" → 예 → 저장 → "바꿨어요!" → 확인 → 챕터 목록 */
@@ -494,12 +504,12 @@ function openAvatarPicker() {
   show('avatar');
 }
 
-/** 확인 창 내용을 바꾼다. buttons: [{ label, cls, onClick }] */
-function avatarModal(id, title, text, buttons) {
-  $('#avatar-modal-pic').innerHTML = studentAvatar(me.name, id, 'xl');
-  $('#avatar-modal-title').textContent = title;
-  $('#avatar-modal-text').textContent = text;
-  const box = $('#avatar-modal-actions');
+/** 확인 창. pic: 위에 보여 줄 그림 HTML(없으면 ''), buttons: [{ label, cls, onClick, disabled }] */
+function showModal(pic, title, text, buttons) {
+  $('#modal-pic').innerHTML = pic;
+  $('#modal-title').textContent = title;
+  $('#modal-text').textContent = text;
+  const box = $('#modal-actions');
   box.innerHTML = '';
   buttons.forEach((b) => {
     const el = document.createElement('button');
@@ -509,9 +519,19 @@ function avatarModal(id, title, text, buttons) {
     el.addEventListener('click', b.onClick);
     box.append(el);
   });
-  $('#avatar-modal').hidden = false;
+  $('#modal').hidden = false;
 }
-const closeAvatarModal = () => { $('#avatar-modal').hidden = true; };
+const closeModal = () => { $('#modal').hidden = true; };
+const avatarModal = (id, title, text, buttons) => showModal(studentAvatar(me.name, id, 'xl'), title, text, buttons);
+const closeAvatarModal = closeModal;
+
+/** 아래쪽 탭 바의 '코드 바꾸기': 실수로 누르기 쉬워서 한 번 묻는다 */
+function confirmLogout() {
+  showModal('', '코드를 바꿀까요?', '이 휴대폰에서 로그아웃되고, 접속 코드를 다시 입력해야 해요. 내 기록은 그대로 남아요.', [
+    { label: '아니요', cls: 'secondary', onClick: closeModal },
+    { label: '코드 바꾸기', cls: 'primary', onClick: () => { closeModal(); logout(); } }
+  ]);
+}
 
 function confirmAvatar(id) {
   if (id === me.avatar) return;   // 지금 캐릭터를 다시 누름
@@ -946,10 +966,13 @@ $('#login-form').addEventListener('submit', (e) => {
   }
   enter(code);
 });
-$('#logout').addEventListener('click', logout);
-$('#open-history').addEventListener('click', openHistory);
-$('#open-avatar').addEventListener('click', openAvatarPicker);
-$('#avatar-back').addEventListener('click', () => show('list'));
+// 아래쪽 탭 바
+const TAB_ACTION = {
+  list: () => show('list'), history: openHistory, avatar: openAvatarPicker,
+  teacher: () => openTeacher(false), logout: confirmLogout
+};
+document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => TAB_ACTION[b.dataset.tab]()));
+$('#greet-avatar').addEventListener('click', openAvatarPicker);
 $('#drill-open').addEventListener('click', startDrill);
 $('#drill-back').addEventListener('click', () => { if (window.speechSynthesis) speechSynthesis.cancel(); cancelRecording(); show('detail'); });
 document.querySelectorAll('.level').forEach((b) => b.addEventListener('click', () => {
@@ -961,12 +984,11 @@ document.querySelectorAll('.level').forEach((b) => b.addEventListener('click', (
   drill.coachError = '';
   renderDrill();
 }));
-$('#open-teacher').addEventListener('click', () => openTeacher(false));
-$('#teacher-back').addEventListener('click', () => show('list'));
+
 $('#teacher-refresh').addEventListener('click', () => openTeacher(true));
 $('#tchapter-back').addEventListener('click', () => show('teacher'));
 $('#tstudent-back').addEventListener('click', () => show('teacher'));
-$('#history-back').addEventListener('click', () => show('list'));
+
 $('#record-back').addEventListener('click', openHistory);
 $('#back').addEventListener('click', () => show('list'));
 $('#talk-start').addEventListener('click', beginTalk);
