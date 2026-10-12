@@ -28,7 +28,8 @@
         <p class="goal">선생님께 받은 접속 코드를 입력해 주세요.</p>
         <input id="login-code" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
                aria-label="접속 코드" placeholder="접속 코드">
-        <button class="primary" type="submit" id="login-submit">들어가기</button>
+        <label class="auto-login"><input type="checkbox" id="auto-login"> 다음부터 자동 로그인</label>
+        <button class="primary" type="submit" id="login-submit">로그인</button>
         <p class="hint" id="login-msg" role="alert"></p>
       </form>
     </section>
@@ -37,7 +38,7 @@
       <div class="greet">
         <button class="greet-pic" id="greet-avatar" aria-label="내 캐릭터 바꾸기"></button>
         <div class="greet-text">
-          <p class="greet-hi" id="greet-hi"></p>
+          <p class="greet-hi"><span class="greet-name" id="greet-name"></span><span class="greet-nice">nice to see you!</span></p>
           <p class="greet-sub">오늘도 한 문장씩 연습해 봐요.</p>
         </div>
       </div>

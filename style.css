@@ -47,7 +47,10 @@ header h1 { margin: 0; }
 .greet-pic { flex: none; padding: 0; border: 0; background: none; border-radius: 50%; cursor: pointer; }
 .greet-pic .avatar { width: 64px; height: 64px; font-size: 22px; }
 .greet-text { min-width: 0; }
-.greet-hi { margin: 0; font-size: 22px; font-weight: 800; line-height: 1.3; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+/* 인사 두 줄: 'Kevin 님,' (주 색, 24px) / 'nice to see you!' (22px) — 이름이 길어도 줄바꿈이 어색하지 않게 */
+.greet-hi { margin: 0; font-weight: 800; line-height: 1.25; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.greet-name { display: block; font-size: 24px; color: var(--accent); }
+.greet-nice { display: block; font-size: 22px; }
 .greet-sub { margin: 2px 0 0; color: var(--muted); font-size: 15px; }
 
 /* 아래쪽 탭 바 */
@@ -80,6 +83,13 @@ h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin: 0 0 10px; }
 .chapter-text { flex: 1; min-width: 0; }
 .chapter-title { display: block; font-weight: 700; font-size: 17px; }
 .chapter-goal { display: block; color: var(--muted); font-size: 14px; }
+/* 학습 개요를 글머리표로 (시트의 goal 칸을 줄바꿈 또는 '-'로 나눈 경우) */
+.goal-list { margin: 2px 0 0; padding-left: 18px; }
+.goal-list li { margin: 0; }
+.chapter-goal .goal-list { font-size: 14px; }
+#detail-goal .goal-list { margin: 0; }
+.auto-login { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 15px; margin: -4px 0 12px; cursor: pointer; }
+.auto-login input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
 .chevron { color: var(--muted); font-size: 24px; }
 
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }

@@ -25,6 +25,14 @@ function loadCode() {
 function saveCode(code) {
   try { code ? localStorage.setItem(CODE_KEY, code) : localStorage.removeItem(CODE_KEY); } catch { /* 저장 못 해도 동작 */ }
 }
+// 자동 로그인: 사용자가 직접 체크했을 때만 (기본 꺼짐). 꺼져 있으면 코드만 미리 채우고 '로그인'을 눌러야 들어간다.
+const AUTO_KEY = 'tutoreal.autologin';
+function loadAuto() {
+  try { return localStorage.getItem(AUTO_KEY) === '1'; } catch { return false; }
+}
+function saveAuto(on) {
+  try { on ? localStorage.setItem(AUTO_KEY, '1') : localStorage.removeItem(AUTO_KEY); } catch { /* 저장 못 해도 동작 */ }
+}
 
 const ERROR_TEXT = {
   INVALID_CODE: '접속 코드가 맞지 않아요.',
@@ -70,6 +78,22 @@ function setVersion(server) {
   $('#version').textContent = server ? `앱 ${APP_VERSION} · 서버 ${server}` : `앱 ${APP_VERSION}`;
 }
 
+/**
+ * 학습 개요(시트의 goal 칸): 줄바꿈이나 '-'·'•'로 나눈 여러 항목이면 글머리표 목록, 한 문장이면 그대로.
+ * 예) '-수검자 호명하기 -이름과 생년월일 확인하기' 또는 칸 안에서 줄바꿈(⌘+Enter)
+ */
+function goalItems(goal) {
+  const text = String(goal || '').trim();
+  let parts = text.split(/\r?\n/);
+  if (parts.length === 1 && /^[-•]/.test(text)) parts = text.split(/(?:^|\s)[-•]\s*/);
+  return parts.map((p) => p.replace(/^[-•]\s*/, '').replace(/[.。]\s*$/, '').trim()).filter(Boolean);
+}
+function goalHtml(goal) {
+  const items = goalItems(goal);
+  if (items.length <= 1) return escapeHtml(items[0] || '');
+  return `<ul class="goal-list">${items.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`;
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -98,7 +122,7 @@ async function enter(code) {
     show('login');
   } finally {
     submit.disabled = false;
-    submit.textContent = '들어가기';
+    submit.textContent = '로그인';
   }
 }
 
@@ -124,7 +148,7 @@ function renderList() {
       <span class="chapter-no">${escapeHtml(c.order)}</span>
       <span class="chapter-text">
         <span class="chapter-title">${escapeHtml(c.title)}</span>
-        <span class="chapter-goal">${escapeHtml(c.goal)}</span>
+        <span class="chapter-goal">${goalHtml(c.goal)}</span>
       </span>
       <span class="chevron" aria-hidden="true">›</span>
     </button>`).join('');
@@ -138,7 +162,7 @@ function openChapter(id) {
   if (!c) return;
   $('#detail-no').textContent = `${c.order}장`;
   $('#detail-title').textContent = c.title;
-  $('#detail-goal').textContent = c.goal;
+  $('#detail-goal').innerHTML = goalHtml(c.goal);
   $('#detail-keywords').innerHTML = c.keywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join('');
   currentChapter = c;
   const n = (c.drills || []).length;
@@ -483,10 +507,10 @@ function avatarHtml(entry) {
   return patientAvatar(entry.patient && entry.patient.name, entry.scenarioId);
 }
 
-/** 첫 화면 인사: 큰 캐릭터 + 'Kevin, nice to see you!' */
+/** 첫 화면 인사: 큰 캐릭터 + 'Kevin 님,' / 'nice to see you!' */
 function renderMe() {
   $('#greet-avatar').innerHTML = studentAvatar(me.name, me.avatar);
-  $('#greet-hi').textContent = me.name ? `${me.name}, nice to see you!` : '';
+  $('#greet-name').textContent = me.name ? `${me.name} 님,` : '';
 }
 
 /* 내 캐릭터 고르기: 누르면 "이 캐릭터로 바꿀까요?" → 예 → 저장 → "바꿨어요!" → 확인 → 챕터 목록 */
@@ -1030,8 +1054,11 @@ renderThemeBtn();
 $('#theme-btn').addEventListener('click', nextTheme);
 loadAvatars().then(renderMe);
 show('login');
+// 저장된 코드는 입력칸에 채워 두기만 한다. '다음부터 자동 로그인'을 체크한 사람만 바로 들어간다.
 const saved = loadCode();
+$('#auto-login').checked = loadAuto();
+$('#auto-login').addEventListener('change', (e) => saveAuto(e.target.checked));
 if (saved) {
   $('#login-code').value = saved;
-  enter(saved);
+  if (loadAuto()) enter(saved);
 }
