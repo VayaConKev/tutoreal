@@ -11,7 +11,7 @@
     <header>
       <h1>Tutoreal</h1>
       <p>내시경실 영어 디지털 교과서</p>
-      <p class="who" id="who" hidden><span id="who-name"></span> · <button class="link" id="logout">코드 바꾸기</button></p>
+      <p class="who" id="who" hidden><span id="who-name"></span> · <button class="link" id="open-history">내 기록</button> · <button class="link" id="logout">코드 바꾸기</button></p>
     </header>
 
     <section id="view-login" hidden>
@@ -59,6 +59,26 @@
         <button class="primary" id="talk-end">대화 끝내기</button>
         <button class="primary" id="talk-next" hidden>다음</button>
         <button class="secondary" id="talk-back" hidden>챕터로 돌아가기</button>
+      </div>
+    </section>
+
+    <section id="view-history" hidden>
+      <button class="link" id="history-back">‹ 챕터 목록</button>
+      <h2>내 기록</h2>
+      <p class="hint history-note">이 휴대폰에만 저장돼요 (최근 30개). Safari 데이터를 지우면 사라져요.</p>
+      <div id="history-list"></div>
+    </section>
+
+    <section id="view-record" hidden>
+      <button class="link" id="record-back">‹ 내 기록</button>
+      <div class="card record-head" id="record-head"></div>
+      <div class="card">
+        <h3>피드백</h3>
+        <div id="record-feedback"></div>
+      </div>
+      <div class="card">
+        <h3>대화 전체</h3>
+        <div class="transcript" id="record-lines"></div>
       </div>
     </section>
 

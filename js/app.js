@@ -5,12 +5,13 @@ import { LiveSession } from './live.js';
 
 const $ = (sel) => document.querySelector(sel);
 const views = {
-  login: $('#view-login'), list: $('#view-list'), detail: $('#view-detail'), talk: $('#view-talk'), review: $('#view-review')
+  login: $('#view-login'), list: $('#view-list'), detail: $('#view-detail'), talk: $('#view-talk'), review: $('#view-review'),
+  history: $('#view-history'), record: $('#view-record')
 };
 let chapters = [];
 let currentChapter = null;
 let live = null;        // 진행 중인 음성 대화
-let talk = null;        // 진행 중인 대화의 정보 { sessionId, patient, readyAt, endReason, reported, limitSec, limitKind, aiSec }
+let talk = null;        // 진행 중인 대화의 정보 { sessionId, scenarioId, patient, readyAt, endReason, reported, limitSec, limitKind, aiSec }
 let clock = null;       // 경과 시간 타이머
 
 // 접속 코드는 이 기기의 브라우저에만 기억한다 (다음에 열 때 다시 입력하지 않도록).
@@ -45,7 +46,7 @@ const errorText = (err) => ERROR_TEXT[err.name] || ERROR_TEXT[err.message] || `�
 
 function show(name) {
   Object.entries(views).forEach(([key, el]) => { el.hidden = key !== name; });
-  $('#who').hidden = name === 'login' || name === 'talk' || name === 'review';
+  $('#who').hidden = !['list', 'detail'].includes(name);
   window.scrollTo(0, 0);
 }
 
@@ -206,7 +207,7 @@ function reportEnd(t) {
 
 async function beginTalk() {
   if (live || !currentChapter) return;
-  const t = { sessionId: null, patient: null, readyAt: 0, endReason: '', reported: false, limitSec: 0, limitKind: '' };
+  const t = { sessionId: null, scenarioId: '', patient: null, readyAt: 0, endReason: '', reported: false, limitSec: 0, limitKind: '' };
   talk = t;
   // 오디오는 버튼을 누른 이 순간에 켜야 한다 (iOS). 그래서 다른 일보다 먼저 만든다.
   live = new LiveSession({
@@ -240,8 +241,9 @@ async function beginTalk() {
     await session.openMic();
     if (session.ended) return;   // 준비 중에 '끝내기'를 누른 경우
     setTalkStatus('수검자를 부르는 중…');
-    const { token, model, patient, sessionId, server, limitSec, limitKind } = await startTalk(loadCode(), currentChapter.chapter_id);
+    const { token, model, patient, sessionId, scenarioId, server, limitSec, limitKind } = await startTalk(loadCode(), currentChapter.chapter_id);
     t.sessionId = sessionId;
+    t.scenarioId = scenarioId || '';
     t.patient = patient;
     t.limitSec = limitSec || 0;
     t.limitKind = limitKind || '';
@@ -269,7 +271,10 @@ function endedTalk(reason, info, t) {
   else setTalkStatus(reason ? `대화가 끝났어요. ${reason}` : '대화가 끝났어요. 수고하셨어요!');
   // 내가 한 말이 있으면 대화 후 화면(1/3 자기 평가)으로 이어지고, 없으면 챕터로 돌아간다.
   const spoke = transcript.lines.some((l) => l.who === 'me' && l.text.trim());
-  review.data = spoke ? { sessionId: t.sessionId, chapter: currentChapter, patient: t.patient, lines: transcript.lines.slice() } : null;
+  review.data = spoke ? {
+    sessionId: t.sessionId, scenarioId: t.scenarioId, chapter: currentChapter, patient: t.patient, lines: transcript.lines.slice(),
+    durationSec: t.readyAt ? Math.round((Date.now() - t.readyAt) / 1000) : 0
+  } : null;
   $('#talk-end').hidden = true;
   $('#talk-next').hidden = !spoke;
   $('#talk-back').hidden = spoke;
@@ -277,7 +282,7 @@ function endedTalk(reason, info, t) {
 }
 
 /* ── 대화 후 화면: 1/3 자기 평가 → 2/3 피드백 → 3/3 공유 선택 ── */
-// review.data: { sessionId, chapter, patient, lines, confidence(1~3), difficulty, feedback, shared }
+// review.data: { sessionId, scenarioId, chapter, patient, lines, durationSec, confidence(1~3), difficulty, feedback, shared }
 
 const review = { step: 1, data: null };
 
@@ -300,7 +305,7 @@ async function loadFeedback() {
   try {
     const lines = data.lines.map((l) => ({ who: l.who, text: l.text }));
     data.feedback = await getFeedback(loadCode(), data.sessionId, lines);
-    if (review.data === data) renderFeedback(data.feedback);
+    if (review.data === data) $('#feedback').innerHTML = feedbackHtml(data.feedback);
   } catch (err) {
     console.warn(err);
     if (review.data !== data) return;
@@ -311,9 +316,9 @@ async function loadFeedback() {
   }
 }
 
-function renderFeedback(fb) {
+function feedbackHtml(fb) {
   const used = fb.keywords.filter((k) => k.used).length;
-  $('#feedback').innerHTML = `
+  return `
     <p class="fb-summary">${escapeHtml(fb.summary)}</p>
     ${fb.strengths.length ? `<p class="fb-title">잘한 점</p>
       <ul class="fb-list">${fb.strengths.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>` : ''}
@@ -357,7 +362,8 @@ const HISTORY_MAX = 30;
 
 function saveLocal(d) {
   const entry = {
-    sessionId: d.sessionId, chapterId: d.chapter.chapter_id, chapterTitle: d.chapter.title, at: new Date().toISOString(),
+    sessionId: d.sessionId, scenarioId: d.scenarioId, chapterId: d.chapter.chapter_id, chapterOrder: d.chapter.order,
+    chapterTitle: d.chapter.title, at: new Date().toISOString(), durationSec: d.durationSec,
     patient: d.patient, confidence: d.confidence, difficulty: d.difficulty, shared: d.shared,
     lines: d.lines.map((l) => ({ who: l.who, text: l.text })), feedback: d.feedback || null
   };
@@ -411,6 +417,74 @@ document.querySelectorAll('.choice').forEach((btn) => {
 $('#review-next').addEventListener('click', nextStep);
 $('#review-prev').addEventListener('click', () => goStep(review.step - 1));
 
+/* ── 내 기록 보기: 이 휴대폰에 저장된 지난 대화 (최근 30개) ── */
+
+const CONFIDENCE = { 1: '😣 어려웠어요', 2: '🙂 보통이에요', 3: '😄 자신 있어요' };
+
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
+}
+
+/** 프로필 자리: 지금은 이름 머리글자 (예: Lucas Martin → LM). 나중에 scenarioId로 수검자 이미지를 넣는다. */
+function avatarHtml(entry) {
+  const name = (entry.patient && entry.patient.name) || '?';
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
+  return `<span class="avatar" aria-hidden="true">${escapeHtml(initials)}</span>`;
+}
+
+function chapterNo(entry) {
+  const order = entry.chapterOrder || (chapters.find((c) => c.chapter_id === entry.chapterId) || {}).order;
+  return order ? `${order}장` : escapeHtml(entry.chapterTitle || '');
+}
+
+function recordMeta(entry) {
+  const d = new Date(entry.at);
+  const when = `${d.getMonth() + 1}월 ${d.getDate()}일 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const parts = [when];
+  if (entry.durationSec) parts.push(`${Math.max(1, Math.round(entry.durationSec / 60))}분`);
+  if (CONFIDENCE[entry.confidence]) parts.push(CONFIDENCE[entry.confidence]);
+  return parts.join(' · ');
+}
+
+function openHistory() {
+  const list = loadHistory();
+  const box = $('#history-list');
+  if (!list.length) {
+    box.innerHTML = '<p class="state">아직 기록이 없어요. 챕터를 골라 대화를 시작해 보세요.</p>';
+  } else {
+    box.innerHTML = list.map((e, i) => `
+      <button class="record" data-i="${i}">
+        ${avatarHtml(e)}
+        <span class="record-text">
+          <span class="record-title">${chapterNo(e)} · ${escapeHtml((e.patient && e.patient.name) || '')}</span>
+          <span class="record-meta">${escapeHtml(recordMeta(e))}</span>
+        </span>
+        <span class="tag${e.shared ? '' : ' private'}">${e.shared ? '공유' : '나만'}</span>
+      </button>`).join('');
+    box.querySelectorAll('.record').forEach((btn) => {
+      btn.addEventListener('click', () => openRecord(list[Number(btn.dataset.i)]));
+    });
+  }
+  show('history');
+}
+
+function openRecord(e) {
+  $('#record-head').innerHTML = `${avatarHtml(e)}
+    <div>
+      <p class="eyebrow">${chapterNo(e)} · ${escapeHtml(e.chapterTitle || '')}</p>
+      <h3>${escapeHtml((e.patient && e.patient.name) || '')}</h3>
+      <p class="talk-meta">${escapeHtml(recordMeta(e))}</p>
+      ${e.difficulty ? `<p class="talk-meta">어려웠던 점: ${escapeHtml(e.difficulty)}</p>` : ''}
+    </div>`;
+  $('#record-feedback').innerHTML = e.feedback ? feedbackHtml(e.feedback) : '<p class="state">이 대화는 피드백이 없어요.</p>';
+  // 다시 보는 화면이므로 환자 말도 가리지 않고 모두 보여 준다.
+  $('#record-lines').innerHTML = (e.lines || []).map((l) => `
+    <div class="line ${l.who === 'me' ? 'me' : 'ai'}">
+      <span class="who">${l.who === 'me' ? '나' : '환자'}</span><span class="text">${escapeHtml(l.text)}</span>
+    </div>`).join('');
+  show('record');
+}
+
 /* ── 시작 ── */
 
 $('#login-form').addEventListener('submit', (e) => {
@@ -423,6 +497,9 @@ $('#login-form').addEventListener('submit', (e) => {
   enter(code);
 });
 $('#logout').addEventListener('click', logout);
+$('#open-history').addEventListener('click', openHistory);
+$('#history-back').addEventListener('click', () => show('list'));
+$('#record-back').addEventListener('click', openHistory);
 $('#back').addEventListener('click', () => show('list'));
 $('#talk-start').addEventListener('click', beginTalk);
 $('#talk-end').addEventListener('click', () => { if (live) { talk.endReason = 'user'; live.stop(''); } });

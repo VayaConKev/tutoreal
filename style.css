@@ -106,6 +106,27 @@ textarea {
 .choice.selected { border: 2px solid var(--accent); background: var(--accent-soft); }
 .choice.selected strong { color: var(--accent); }
 .review-actions { display: flex; gap: 8px; margin-top: 16px; }
+
+/* 내 기록: 동그란 프로필 자리는 지금은 이름 머리글자, 나중에 수검자 프로필 이미지로 바꾼다 */
+.avatar {
+  flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; overflow: hidden;
+  background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 15px;
+}
+#view-history .history-note { text-align: left; margin: -4px 0 12px; }
+.record {
+  width: 100%; display: flex; align-items: center; gap: 12px; text-align: left;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 12px 14px; margin-bottom: 8px; color: inherit; font: inherit; cursor: pointer;
+}
+.record-text { flex: 1; min-width: 0; }
+.record-title { display: block; font-weight: 700; }
+.record-meta { display: block; color: var(--muted); font-size: 13px; }
+.tag { flex: none; font-size: 12px; border-radius: 6px; padding: 2px 8px; background: var(--accent-soft); color: var(--accent); }
+.tag.private { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+.record-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.record-head h3 { margin: 0; }
+#view-record .card + .card { margin-top: 12px; }
+#record-lines { margin-top: 8px; }
 .review-actions button { margin-top: 0; }
 .hint { color: var(--muted); font-size: 13px; text-align: center; margin: 10px 0 0; }
 .state { color: var(--muted); text-align: center; padding: 24px 0; margin: 0; }
