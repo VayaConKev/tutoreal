@@ -31,19 +31,20 @@
  * v0.20 (20단계): 문장 연습 — drills 탭(빈칸 문장)을 만들고, 챕터 목록에 챕터별 문장을 함께 보낸다.
  * v0.21 (21단계): 발음 코칭 — doPost(action=pronounce)가 학생이 말한 소리(WAV)를 텍스트 모델로 보내 코칭을 받는다.
  *                 기준은 drills 탭의 문장과 pron 칸, 지시문은 prompts 탭의 pron-v1. pron_checks 탭에 결과·비용만 기록.
+ * v0.22 (22단계): 프로필 캐릭터 — students 탭의 avatar 칸에 학생이 고른 캐릭터(s01 등)를 저장한다 (doPost action=set_avatar).
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.21';
+const SERVER_VERSION = 'v0.22';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
   chapters:       ['chapter_id', 'order', 'title', 'goal', 'keywords', 'scene', 'published', 'ai_captions'],
   scenarios:      ['scenario_id', 'chapter_id', 'name', 'sex', 'dob', 'country', 'exam', 'twist', 'level', 'active'],
   prompts:        ['prompt_id', 'text', 'active'],
-  students:       ['student_id', 'display_name', 'access_code', 'status', 'daily_limit_min', 'created_at', 'role'],
+  students:       ['student_id', 'display_name', 'access_code', 'status', 'daily_limit_min', 'created_at', 'role', 'avatar'],
   sessions:       ['session_id', 'student_id', 'started_at', 'duration_sec', 'chapter_id', 'scenario_id', 'shared',
                    'hints_used', 'korean_ratio', 'end_reason', 'est_cost_usd', 'confidence', 'difficulty_note', 'feedback'],
   keyword_checks: ['session_id', 'student_id', 'chapter_id', 'keyword', 'found'],
@@ -401,6 +402,9 @@ function doPost(e) {
     if (body.action === 'pronounce') {
       return json_(pronounce_(body.code, String(body.drill_id || ''), body.level === 'korean' ? 'korean' : 'blank', String(body.audio || '')));
     }
+    if (body.action === 'set_avatar') {
+      return json_(setAvatar_(body.code, String(body.avatar || '')));
+    }
     if (body.action === 'end') {
       return json_(endSession_(body.code, String(body.session_id || ''), body.duration_sec, String(body.end_reason || ''), body.ai_audio_sec));
     }
@@ -415,7 +419,10 @@ function doPost(e) {
 function login_(code) {
   const auth = auth_(code);
   if (!auth.ok) return auth;
-  return { ok: true, name: String(auth.student.display_name || auth.student.student_id), role: roleOf_(auth.student) };
+  return {
+    ok: true, name: String(auth.student.display_name || auth.student.student_id),
+    role: roleOf_(auth.student), avatar: String(auth.student.avatar || '').trim()
+  };
 }
 
 /** 접속 코드를 확인하고 학생 정보(students 탭의 한 줄)를 돌려준다. 틀리면 실패 횟수를 센다. */
@@ -1052,7 +1059,11 @@ function buildSummary_() {
   const period = summaryPeriod_(tz);
   const students = readTable_('students').filter(function (s) { return s.student_id && String(s.status).trim().toLowerCase() === 'active'; });
   const nameOf = {};
-  students.forEach(function (s) { nameOf[String(s.student_id)] = String(s.display_name || s.student_id); });
+  const avatarOf = {};
+  students.forEach(function (s) {
+    nameOf[String(s.student_id)] = String(s.display_name || s.student_id);
+    avatarOf[String(s.student_id)] = String(s.avatar || '').trim();
+  });
 
   // 기간 안의 모든 대화(비용 계산용)와, 그중 활성 학생의 대화(나머지 통계용)
   const allInPeriod = readTable_('sessions').filter(function (s) {
@@ -1127,7 +1138,7 @@ function buildSummary_() {
       .filter(function (x) { return x.n; }).sort(function (a, b) { return b.n - a.n; })
       .map(function (x) { return x.c.order + '장'; });
     return {
-      student_id: sid, name: nameOf[sid],
+      student_id: sid, name: nameOf[sid], avatar: avatarOf[sid] || '',
       count: list.length,
       minutes: Math.round(list.reduce(function (a, s) { return a + sec(s); }, 0) / 60),
       chapters: top,
@@ -1462,4 +1473,32 @@ function testPronounce() {
   const ai = callTextModel_(system, [{ text: "Here is the nurse's audio." }, { inlineData: { mimeType: 'audio/wav', data: audio } }], PRON_SCHEMA, '발음 코칭 시험');
   if (ai.ok) console.log('OK: 발음 코칭 요청 성공 (무음이라 retry가 정상)\n' + JSON.stringify(ai.data, null, 2));
   else console.log('실패: ' + ai.error + ' — 바로 위에 빨간 오류 줄이 있으면 그 내용을 Claude에게 알려 주세요.');
+}
+
+
+/* ───────────────────────── 22단계: 프로필 캐릭터 ───────────────────────── */
+
+/**
+ * 학생이 고른 캐릭터 번호(예: s07)를 students 탭의 avatar 칸에 저장한다. 빈 값이면 머리글자로 돌아간다.
+ * 그림 파일은 웹앱 저장소의 img/avatars/ 에 있고, 서버는 번호만 기억한다.
+ */
+function setAvatar_(code, avatar) {
+  const auth = auth_(code);
+  if (!auth.ok) return auth;
+  avatar = avatar.trim();
+  if (avatar && !/^[a-z0-9-]{1,20}$/.test(avatar)) return { ok: false, error: 'BAD_AVATAR' };
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('students');
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(function (h) { return String(h).trim(); });
+  const idCol = headers.indexOf('student_id');
+  const avCol = headers.indexOf('avatar');
+  if (avCol < 0) return { ok: false, error: 'NO_AVATAR_COLUMN' };   // setup을 아직 실행하지 않음
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][idCol]) === String(auth.student.student_id)) {
+      sheet.getRange(i + 1, avCol + 1).setValue(avatar);
+      return { ok: true, avatar: avatar };
+    }
+  }
+  return { ok: false, error: 'NO_STUDENT' };
 }

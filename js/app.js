@@ -1,6 +1,6 @@
 // 화면 전환과 전체 흐름을 담당한다.
 import { APP_VERSION } from './config.js';
-import { getChapters, login, startTalk, endTalk, getFeedback, shareTalk, getSummary, checkPronunciation } from './api.js';
+import { getChapters, login, startTalk, endTalk, getFeedback, shareTalk, getSummary, checkPronunciation, setAvatar } from './api.js';
 import { LiveSession } from './live.js';
 import { Recorder } from './recorder.js';
 
@@ -9,7 +9,7 @@ const views = {
   login: $('#view-login'), list: $('#view-list'), detail: $('#view-detail'), talk: $('#view-talk'), review: $('#view-review'),
   history: $('#view-history'), record: $('#view-record'),
   teacher: $('#view-teacher'), tchapter: $('#view-tchapter'), tstudent: $('#view-tstudent'),
-  drill: $('#view-drill')
+  drill: $('#view-drill'), avatar: $('#view-avatar')
 };
 let chapters = [];
 let currentChapter = null;
@@ -73,8 +73,11 @@ async function enter(code) {
   submit.textContent = '확인 중…';
   $('#login-msg').textContent = '';
   try {
-    const { name, role, server } = await login(code);
+    const { name, role, avatar, server } = await login(code);
     saveCode(code);
+    me.name = name;
+    me.avatar = avatar;
+    renderMe();
     $('#who-name').textContent = `${name} 님`;
     $('#teacher-link').hidden = role !== 'teacher';   // 화면에서만 숨긴다. 서버도 요청마다 역할을 확인한다.
     setVersion(server);
@@ -235,6 +238,7 @@ async function beginTalk() {
   $('#talk-head').hidden = false;
   $('#talk-chapter').textContent = `${currentChapter.order}장 · ${currentChapter.title}`;
   $('#talk-name').textContent = '수검자 준비 중…';
+  $('#talk-avatar').innerHTML = '';
   $('#talk-dob').textContent = '–';
   $('#talk-exam').textContent = '–';
   $('#talk-time').textContent = '0:00';
@@ -262,6 +266,7 @@ async function beginTalk() {
     if (session.ended) return reportEnd(t);   // 준비 중에 끝난 경우에도 시작 기록을 마무리한다
     setVersion(server);
     $('#talk-name').textContent = patient.name;
+    $('#talk-avatar').innerHTML = patientAvatar(patient.name, scenarioId);
     $('#talk-dob').textContent = patient.dob;
     $('#talk-exam').textContent = patient.exam;
     setTalkStatus('연결 중…');
@@ -437,15 +442,74 @@ function loadHistory() {
   try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
 }
 
-/** 이름 머리글자 배지 (예: Lucas Martin → LM) */
-function initialsHtml(name) {
+/** 이름 머리글자 배지 (예: Lucas Martin → LM). size: '' / 'sm' / 'lg' */
+function initialsHtml(name, size = '') {
   const initials = String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
-  return `<span class="avatar" aria-hidden="true">${escapeHtml(initials)}</span>`;
+  return `<span class="avatar ${size}" aria-hidden="true">${escapeHtml(initials)}</span>`;
 }
 
-/** 프로필 자리: 지금은 이름 머리글자. 나중에 scenarioId로 수검자 이미지를 넣는다. */
+/* 프로필 캐릭터: 그림 목록은 img/avatars/manifest.json (학생: s01…, 수검자: 시나리오 번호).
+   그림이 없으면 머리글자 배지를 쓴다. */
+const avatars = { students: {}, patients: {} };
+const me = { name: '', avatar: '' };
+
+async function loadAvatars() {
+  try {
+    const res = await fetch('img/avatars/manifest.json');
+    const data = await res.json();
+    avatars.students = data.students || {};
+    avatars.patients = data.patients || {};
+  } catch { /* 목록이 없어도 머리글자로 동작 */ }
+}
+
+function pictureHtml(path, name, size = '') {
+  return path
+    ? `<span class="avatar ${size}" aria-hidden="true"><img src="img/avatars/${escapeHtml(path)}" alt=""></span>`
+    : initialsHtml(name, size);
+}
+const studentAvatar = (name, id, size) => pictureHtml(avatars.students[id], name, size);
+const patientAvatar = (name, scenarioId, size) => pictureHtml(avatars.patients[scenarioId], name, size);
+
+/** 내 기록의 프로필 자리: 그 대화의 수검자 캐릭터 */
 function avatarHtml(entry) {
-  return initialsHtml(entry.patient && entry.patient.name);
+  return patientAvatar(entry.patient && entry.patient.name, entry.scenarioId);
+}
+
+function renderMe() {
+  $('#who-avatar').innerHTML = studentAvatar(me.name, me.avatar, 'sm');
+}
+
+/* 내 캐릭터 고르기 */
+function openAvatarPicker() {
+  const ids = Object.keys(avatars.students).sort();
+  const grid = $('#avatar-grid');
+  $('#avatar-msg').textContent = '';
+  if (!ids.length) {
+    grid.innerHTML = '<p class="state" style="grid-column:1/-1">캐릭터 그림을 준비 중이에요. 조금만 기다려 주세요!</p>';
+  } else {
+    grid.innerHTML = ids.map((id) => `<button class="pick${id === me.avatar ? ' selected' : ''}" data-avatar="${escapeHtml(id)}" aria-label="캐릭터 ${escapeHtml(id)}">
+        <img src="img/avatars/${escapeHtml(avatars.students[id])}" alt="" loading="lazy"></button>`).join('') +
+      `<button class="pick none${me.avatar ? '' : ' selected'}" data-avatar="">머리<br>글자</button>`;
+    grid.querySelectorAll('.pick').forEach((b) => b.addEventListener('click', () => chooseAvatar(b.dataset.avatar)));
+  }
+  show('avatar');
+}
+
+async function chooseAvatar(id) {
+  const before = me.avatar;
+  me.avatar = id;
+  document.querySelectorAll('.pick').forEach((b) => b.classList.toggle('selected', b.dataset.avatar === id));
+  renderMe();
+  try {
+    await setAvatar(loadCode(), id);
+    $('#avatar-msg').textContent = '저장했어요.';
+  } catch (err) {
+    console.warn(err);
+    me.avatar = before;
+    renderMe();
+    document.querySelectorAll('.pick').forEach((b) => b.classList.toggle('selected', b.dataset.avatar === before));
+    $('#avatar-msg').textContent = `저장하지 못했어요. (${errorText(err)})`;
+  }
 }
 
 function chapterNo(entry) {
@@ -761,7 +825,7 @@ function renderTeacher() {
       <h3>학생</h3>
       ${s.studentStats.map((st) => `
         <button class="trow" data-student="${escapeHtml(st.student_id)}">
-          <span>${escapeHtml(st.name)} ›</span>
+          <span>${studentAvatar(st.name, st.avatar, 'sm')}${escapeHtml(st.name)} ›</span>
           <span class="t-meta">${st.count ? `${st.count}회 ${st.minutes}분 · ${escapeHtml(st.chapters.join(', '))}` : '연습 없음'}</span>
         </button>`).join('')}
     </div>
@@ -823,7 +887,7 @@ function openStudent(id) {
     .forEach((d) => notes.push(`${c.order}장: ${d.text}`)));
   $('#tstudent-body').innerHTML = `
     <div class="card t-card t-head">
-      ${initialsHtml(st.name)}
+      ${studentAvatar(st.name, st.avatar, 'lg')}
       <div>
         <h3>${escapeHtml(st.name)}</h3>
         <p class="talk-meta">${st.count}회 · ${st.minutes}분 · 자기 평가 ${confText(st.confidence)} · 공유 ${st.shared}개</p>
@@ -856,6 +920,8 @@ $('#login-form').addEventListener('submit', (e) => {
 });
 $('#logout').addEventListener('click', logout);
 $('#open-history').addEventListener('click', openHistory);
+$('#open-avatar').addEventListener('click', openAvatarPicker);
+$('#avatar-back').addEventListener('click', () => show('list'));
 $('#drill-open').addEventListener('click', startDrill);
 $('#drill-back').addEventListener('click', () => { if (window.speechSynthesis) speechSynthesis.cancel(); cancelRecording(); show('detail'); });
 document.querySelectorAll('.level').forEach((b) => b.addEventListener('click', () => {
@@ -882,6 +948,7 @@ $('#talk-next').addEventListener('click', openReview);
 window.addEventListener('pagehide', () => { if (live) { talk.endReason = 'left'; live.stop(''); } });
 
 setVersion();
+loadAvatars().then(renderMe);
 show('login');
 const saved = loadCode();
 if (saved) {

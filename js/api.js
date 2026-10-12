@@ -45,7 +45,7 @@ export async function getChapters() {
 
 export async function login(code) {
   const data = await postServer('login', { code });
-  return { name: data.name, role: data.role || 'student', server: data.server };
+  return { name: data.name, role: data.role || 'student', avatar: data.avatar || '', server: data.server };
 }
 
 export async function startTalk(code, chapterId) {
@@ -77,6 +77,11 @@ export async function getSummary(code, refresh = false) {
 export async function checkPronunciation(code, drillId, level, audio) {
   const data = await postServer('pronounce', { code, drill_id: drillId, level, audio }, 60000);
   return data.coach;
+}
+
+// 내가 고른 캐릭터 번호(예: s07)를 저장한다. 빈 값이면 머리글자로 돌아간다.
+export async function setAvatar(code, avatar) {
+  await postServer('set_avatar', { code, avatar });
 }
 
 // 대화가 끝났음을 알린다 (사용 시간 기록). 답은 기다리지 않는다.
