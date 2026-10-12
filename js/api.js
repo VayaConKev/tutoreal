@@ -69,7 +69,8 @@ export async function shareTalk(code, sessionId, confidence, difficulty, lines) 
 
 // 대화가 끝났음을 알린다 (사용 시간 기록). 답은 기다리지 않는다.
 // v0.9의 sendBeacon은 구글 로그인 정보(쿠키)를 함께 보내 기록이 남지 않았다 → 다른 요청과 같은 방식 + keepalive.
-export function endTalk(code, sessionId, durationSec, endReason) {
-  postServer('end', { code, session_id: sessionId, duration_sec: durationSec, end_reason: endReason }, 15000, true)
+// aiAudioSec: 앱이 받은 AI 목소리 길이(초) — 예상 비용 계산에 쓴다.
+export function endTalk(code, sessionId, durationSec, endReason, aiAudioSec) {
+  postServer('end', { code, session_id: sessionId, duration_sec: durationSec, end_reason: endReason, ai_audio_sec: aiAudioSec }, 15000, true)
     .catch((err) => console.warn('사용 시간 기록 실패', err));
 }

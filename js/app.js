@@ -10,7 +10,7 @@ const views = {
 let chapters = [];
 let currentChapter = null;
 let live = null;        // 진행 중인 음성 대화
-let talk = null;        // 진행 중인 대화의 정보 { sessionId, patient, readyAt, endReason, reported, limitSec, limitKind }
+let talk = null;        // 진행 중인 대화의 정보 { sessionId, patient, readyAt, endReason, reported, limitSec, limitKind, aiSec }
 let clock = null;       // 경과 시간 타이머
 
 // 접속 코드는 이 기기의 브라우저에만 기억한다 (다음에 열 때 다시 입력하지 않도록).
@@ -33,10 +33,12 @@ const ERROR_TEXT = {
   FEEDBACK_FAILED: '피드백을 만들지 못했어요.',
   FEEDBACK_LIMIT: '이 대화의 피드백을 여러 번 실패했어요. 다음 대화에서 다시 받아 보세요.',
   DAILY_CONNECT_LIMIT: '오늘 대화 횟수를 다 썼어요. 내일 다시 만나요.',
-  DAILY_TIME_LIMIT: '오늘 사용 시간을 다 썼어요. 내일 다시 만나요.'
+  DAILY_TIME_LIMIT: '오늘 사용 시간을 다 썼어요. 내일 다시 만나요.',
+  MONTHLY_BUDGET: '이번 달 사용할 수 있는 시간을 모두 썼어요. 선생님께 알려 주세요.'
 };
 const LIMIT_TEXT = {
   daily: '오늘 사용 시간을 다 써서 대화를 마쳤어요.',
+  budget: '이번 달 사용할 수 있는 시간에 맞춰 대화를 마쳤어요.',
   session: '대화 한 번은 최대 15분이에요.'
 };
 const errorText = (err) => ERROR_TEXT[err.name] || ERROR_TEXT[err.message] || `연결에 문제가 있어요. (${err.message})`;
@@ -199,7 +201,7 @@ function reportEnd(t) {
   t.reported = true;
   const sec = t.readyAt ? Math.round((Date.now() - t.readyAt) / 1000) : 0;
   const reason = t.endReason || (t.readyAt ? 'closed' : 'error');
-  endTalk(loadCode(), t.sessionId, sec, reason);
+  endTalk(loadCode(), t.sessionId, sec, reason, Math.round(t.aiSec || 0));
 }
 
 async function beginTalk() {
@@ -212,7 +214,7 @@ async function beginTalk() {
       if (s === 'ready') { t.readyAt = Date.now(); setTalkStatus('연결됐어요. 먼저 말을 걸어 보세요.'); startClock(t); }
       if (s === 'goaway') setTalkStatus('곧 연결이 끝나요.');
     },
-    onEnd: (reason, info) => { endedTalk(reason, info, t); reportEnd(t); },
+    onEnd: (reason, info) => { t.aiSec = session.recv; endedTalk(reason, info, t); reportEnd(t); },
     onText: addText,
     onTurnEnd: endTurn
   });

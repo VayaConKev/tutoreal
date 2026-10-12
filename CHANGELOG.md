@@ -117,3 +117,10 @@
 - 공유하기: 서버 v0.13의 doPost(action=share)가 sessions(shared=TRUE, confidence 1~3, difficulty_note, feedback), transcripts(대화 한 줄씩, nurse/patient), keyword_checks(핵심 단어별 사용 여부)에 저장. 피드백은 서버가 만들어 기억해 둔 것을 씀. 같은 대화는 한 번만 저장
 - 나만 보기: 시트에 아무것도 추가하지 않음 (shared=FALSE 그대로)
 - 어느 쪽이든 이 휴대폰(브라우저)에 최근 30개까지 기록 저장 (나중에 '내 기록 보기'에서 사용). 저장 공간이 모자라면 오래된 것부터 지움
+
+## v0.14 (2026-10-12)
+- 14단계: 월 예산 보호 — 대화가 끝나면 예상 비용을 sessions의 est_cost_usd에 기록 (학생 말 = 대화 시간, AI 말 = 앱이 받은 소리 길이, 분당 요금 × 여유 배수). 피드백 비용은 Gemini가 알려 준 실제 토큰 수로 계산해 더함
+- 대화를 시작할 때 이번 달 합계를 계산해 남은 예산만큼만 대화하게 함 (1분 미만이면 시작하지 않음). 비용이 없는 대화(끝 기록 없음, v0.14 이전)는 최악의 경우로 셈
+- settings 탭에 요금 줄 추가 (setup()을 다시 실행): live_in_usd_per_min 0.005, live_out_usd_per_min 0.018, text_in_usd_per_m 0.75, text_out_usd_per_m 3.75 (2027-01-01부터 두 배), cost_safety_factor 1.5. 요금은 2026-10 공식 요금표(유료 등급) 기준
+- budgetReport() 추가 — 편집기에서 이번 달 예상 비용과 남은 예산 확인
+- 이것은 예상치. 실제 청구 금액은 Google Cloud 예산 알림으로 함께 확인

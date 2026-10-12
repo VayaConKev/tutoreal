@@ -16,12 +16,14 @@
  * v0.12 (12단계): AI 피드백 — doPost(action=feedback)가 대화 글자를 텍스트 모델(settings의 text_model)로 보내 피드백을 만든다.
  *                 setup()이 prompts 탭에 빠진 지시문(feedback-v1)을 추가한다. testFeedback()으로 편집기에서 확인한다.
  * v0.13 (13단계): 공유 선택 — doPost(action=share)로 공유를 고른 대화의 글자·피드백·자기 평가를 시트에 저장한다.
+ * v0.14 (14단계): 월 예산 — 대화·피드백의 예상 비용을 est_cost_usd에 적고, 이번 달 합계가 monthly_budget_usd에 닿지 않게
+ *                 남은 예산만큼만 대화하게 한다. setup()이 settings 탭에 빠진 요금 줄을 추가한다. budgetReport()로 확인.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.13';
+const SERVER_VERSION = 'v0.14';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -96,7 +98,12 @@ const SEED = {
     ['daily_connect_limit', 20, '학생 1명당 하루 연결 횟수 상한'],
     ['default_daily_limit_min', 30, '학생 1명당 하루 사용 시간 상한 (분)'],
     ['last_class_date', '', '최근 수업일 (화요일 요약 기간 시작)'],
-    ['next_class_date', '', '다음 수업일']
+    ['next_class_date', '', '다음 수업일'],
+    ['live_in_usd_per_min', 0.005, 'Live 음성 입력 요금 (분당 달러, 공식 요금표 2026-10 기준)'],
+    ['live_out_usd_per_min', 0.018, 'Live 음성 출력 요금 (분당 달러)'],
+    ['text_in_usd_per_m', 0.75, '텍스트 모델 입력 요금 (100만 토큰당 달러). 2027-01-01부터 1.50'],
+    ['text_out_usd_per_m', 3.75, '텍스트 모델 출력 요금 (100만 토큰당, 생각 포함). 2027-01-01부터 7.50'],
+    ['cost_safety_factor', 1.5, '예상 비용에 곱하는 여유 배수 (지시문·받아쓰기 글자 등 문서에 없는 비용 대비)']
   ]
 };
 
@@ -126,13 +133,13 @@ function setup() {
       const rows = SEED[name];
       sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
       log.push('예시 내용 ' + rows.length + '줄: ' + name);
-    } else if (name === 'prompts') {
-      // 새 버전에서 생긴 지시문(예: feedback-v1)이 없으면 추가한다. 이미 있는 줄은 건드리지 않는다.
-      const have = readTable_('prompts').map(function (p) { return String(p.prompt_id); });
-      SEED.prompts.forEach(function (row) {
+    } else if (name === 'prompts' || name === 'settings') {
+      // 새 버전에서 생긴 줄(예: 지시문 feedback-v1, 요금 설정)이 없으면 추가한다. 이미 있는 줄은 값을 바꾸지 않는다.
+      const have = sheet.getRange(1, 1, sheet.getLastRow(), 1).getValues().map(function (r) { return String(r[0]).trim(); });
+      SEED[name].forEach(function (row) {
         if (have.indexOf(row[0]) < 0) {
           sheet.appendRow(row);
-          log.push('지시문 추가: ' + row[0]);
+          log.push('줄 추가 (' + name + '): ' + row[0]);
         }
       });
     }
@@ -278,7 +285,7 @@ function doPost(e) {
       return json_(share_(body.code, String(body.session_id || ''), body.confidence, body.difficulty, body.lines));
     }
     if (body.action === 'end') {
-      return json_(endSession_(body.code, String(body.session_id || ''), body.duration_sec, String(body.end_reason || '')));
+      return json_(endSession_(body.code, String(body.session_id || ''), body.duration_sec, String(body.end_reason || ''), body.ai_audio_sec));
     }
     return json_({ ok: false, error: 'UNKNOWN_ACTION' });
   } catch (err) {
@@ -345,12 +352,15 @@ function startTalk_(code, chapterId) {
   if (!auth.ok) return auth;
   const limit = checkDailyLimit_(auth.student);
   if (!limit.ok) return limit;
-  const maxSec = Math.min(limit.remainingSec, LIVE_SESSION_MAX_MIN * 60);
+  const budget = checkBudget_();
+  if (!budget.ok) return budget;
+  const maxSec = Math.min(limit.remainingSec, budget.remainingSec, LIVE_SESSION_MAX_MIN * 60);
   const result = createLiveToken_(chapterId, maxSec);
   if (result.ok) {
     result.session_id = logSessionStart_(auth.student, chapterId, result.scenario_id);
     result.limit_sec = maxSec;                                       // 이 대화에서 쓸 수 있는 최대 시간(초)
-    result.limit_kind = maxSec < LIVE_SESSION_MAX_MIN * 60 ? 'daily' : 'session';
+    result.limit_kind = maxSec === LIVE_SESSION_MAX_MIN * 60 ? 'session'
+      : maxSec === budget.remainingSec ? 'budget' : 'daily';
   }
   return result;
 }
@@ -495,7 +505,7 @@ function logSessionStart_(student, chapterId, scenarioId) {
  * 대화가 끝나면 사용 시간(초)과 끝난 이유를 채운다. 이미 채워진 줄은 바꾸지 않는다.
  * 앱이 보낸 시간이 실제로 흐른 시간이나 대화 최대 시간보다 길면 그 값으로 자른다.
  */
-function endSession_(code, sessionId, durationSec, endReason) {
+function endSession_(code, sessionId, durationSec, endReason, aiAudioSec) {
   const auth = auth_(code);
   if (!auth.ok) return auth;
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('sessions');
@@ -514,6 +524,9 @@ function endSession_(code, sessionId, durationSec, endReason) {
     const sec = Math.round(Math.max(0, Math.min(Number(durationSec) || 0, elapsed, LIVE_SESSION_MAX_MIN * 60)));
     sheet.getRange(i + 1, col('duration_sec') + 1).setValue(sec);
     sheet.getRange(i + 1, col('end_reason') + 1).setValue(END_REASONS.indexOf(endReason) >= 0 ? endReason : 'unknown');
+    // 예상 비용: 학생 말은 대화 전체 시간, AI 말은 앱이 받은 소리 길이(대화 시간을 넘지 않게).
+    const aiSec = Math.max(0, Math.min(Number(aiAudioSec) || 0, sec));
+    addCost_(sessionId, liveCost_(sec, aiSec));
     return { ok: true };
   }
   return { ok: false, error: 'NO_SESSION' };
@@ -607,6 +620,8 @@ function feedback_(code, sessionId, lines) {
   if (!chapter || !scenario) return { ok: false, error: 'NO_CHAPTER' };
 
   const result = makeFeedback_(chapter, scenario, cleanLines_(lines));
+  if (result.cost) addCost_(sessionId, result.cost);
+  delete result.cost;
   if (result.ok) cache.put('fb_' + sessionId, JSON.stringify(result.feedback), FEEDBACK_CACHE_SEC);
   return result;
 }
@@ -666,15 +681,18 @@ function makeFeedback_(chapter, scenario, lines) {
   }
 
   let fb;
+  let cost = 0;
   try {
-    const cand = (JSON.parse(res.getContentText()).candidates || [])[0] || {};
+    const body = JSON.parse(res.getContentText());
+    cost = textCost_(body.usageMetadata);   // Gemini가 알려 주는 실제 토큰 수로 계산
+    const cand = (body.candidates || [])[0] || {};
     const text = ((cand.content && cand.content.parts) || [])
       .filter(function (p) { return !p.thought; })
       .map(function (p) { return p.text || ''; }).join('');
     fb = JSON.parse(text);
   } catch (err) {
     console.error('피드백 결과를 읽지 못함: ' + res.getContentText().slice(0, 800));
-    return { ok: false, error: 'FEEDBACK_FAILED' };
+    return { ok: false, error: 'FEEDBACK_FAILED', cost: cost };
   }
 
   // 핵심 단어는 챕터의 목록 순서 그대로, 빠진 단어는 '안 씀'으로 맞춘다.
@@ -682,6 +700,7 @@ function makeFeedback_(chapter, scenario, lines) {
   (fb.keywords || []).forEach(function (k) { used[String(k.keyword).trim().toLowerCase()] = k.used === true; });
   return {
     ok: true,
+    cost: cost,
     feedback: {
       summary: String(fb.summary || ''),
       strengths: (fb.strengths || []).map(String).slice(0, 3),
@@ -762,4 +781,98 @@ function share_(code, sessionId, confidence, difficulty, lines) {
   } finally {
     lock.releaseLock();
   }
+}
+
+
+/* ───────────────────────── 14단계: 월 예산 ───────────────────────── */
+
+/** settings 탭의 요금. 비어 있으면 2026-10 공식 요금표 값. */
+function rates_() {
+  const s = getSettings_();
+  const num = function (key, dflt) { const v = Number(s[key]); return isFinite(v) && s[key] !== '' && s[key] !== undefined ? v : dflt; };
+  return {
+    budget: num('monthly_budget_usd', 15),
+    liveIn: num('live_in_usd_per_min', 0.005),
+    liveOut: num('live_out_usd_per_min', 0.018),
+    textIn: num('text_in_usd_per_m', 0.75),
+    textOut: num('text_out_usd_per_m', 3.75),
+    factor: num('cost_safety_factor', 1.5)
+  };
+}
+
+/** 음성 대화의 예상 비용(달러): 학생 말 sec초 + AI 말 aiSec초, 여유 배수 포함. */
+function liveCost_(sec, aiSec, r) {
+  r = r || rates_();
+  return (sec / 60 * r.liveIn + aiSec / 60 * r.liveOut) * r.factor;
+}
+
+/** 피드백의 비용(달러): Gemini가 알려 준 토큰 수(입력, 출력 + 생각)로 계산, 여유 배수 포함. */
+function textCost_(usage) {
+  if (!usage) return 0;
+  const r = rates_();
+  const inTok = Number(usage.promptTokenCount) || 0;
+  const outTok = (Number(usage.candidatesTokenCount) || 0) + (Number(usage.thoughtsTokenCount) || 0);
+  return (inTok * r.textIn + outTok * r.textOut) / 1e6 * r.factor;
+}
+
+/** sessions 탭의 그 대화 줄의 est_cost_usd에 비용을 더한다. */
+function addCost_(sessionId, usd) {
+  if (!(usd > 0)) return;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('sessions');
+    const values = sheet.getDataRange().getValues();
+    const headers = values[0].map(function (h) { return String(h).trim(); });
+    const c = headers.indexOf('est_cost_usd');
+    const id = headers.indexOf('session_id');
+    if (c < 0) return;
+    for (let i = values.length - 1; i >= 1; i--) {
+      if (String(values[i][id]) !== sessionId) continue;
+      const before = Number(values[i][c]) || 0;
+      sheet.getRange(i + 1, c + 1).setValue(Math.round((before + usd) * 10000) / 10000);
+      return;
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * 이번 달(시트 시간대 기준) 모든 학생의 예상 비용 합계.
+ * 비용이 적히지 않은 대화(끝 기록이 없거나 v0.14 이전)는 최악의 경우(학생 말·AI 말 모두 전체 시간)로 센다.
+ */
+function monthSpent_(r) {
+  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+  const month = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
+  let total = 0;
+  readTable_('sessions').forEach(function (s) {
+    if (!(s.started_at instanceof Date) || Utilities.formatDate(s.started_at, tz, 'yyyy-MM') !== month) return;
+    if (s.est_cost_usd !== '' && s.est_cost_usd !== undefined) { total += Number(s.est_cost_usd) || 0; return; }
+    const sec = s.duration_sec !== ''
+      ? Number(s.duration_sec) || 0
+      : Math.min((Date.now() - s.started_at.getTime()) / 1000, LIVE_SESSION_MAX_MIN * 60);
+    total += liveCost_(sec, sec, r);
+  });
+  return total;
+}
+
+/** 남은 예산으로 대화할 수 있는 시간(초). 최악의 경우(AI가 내내 말함)로 계산한다. 1분도 안 되면 막는다. */
+function checkBudget_() {
+  const r = rates_();
+  const left = r.budget - monthSpent_(r);
+  const perSec = liveCost_(1, 1, r);
+  const remainingSec = Math.floor(left / perSec);
+  if (remainingSec < 60) return { ok: false, error: 'MONTHLY_BUDGET' };
+  return { ok: true, remainingSec: remainingSec };
+}
+
+/** 편집기에서 실행: 이번 달 예상 비용과 남은 예산을 보여 준다. */
+function budgetReport() {
+  const r = rates_();
+  const spent = monthSpent_(r);
+  const worstMin = Math.max(0, (r.budget - spent) / liveCost_(60, 60, r));
+  console.log('이번 달 예상 비용: $' + spent.toFixed(2) + ' / 예산 $' + r.budget +
+    '\n남은 예산: $' + Math.max(0, r.budget - spent).toFixed(2) + ' (AI가 내내 말하는 최악의 경우 약 ' + Math.floor(worstMin) + '분 대화 가능)' +
+    '\n요금: 음성 입력 $' + r.liveIn + '/분, 출력 $' + r.liveOut + '/분, 여유 배수 ' + r.factor);
 }
