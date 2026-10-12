@@ -124,3 +124,4 @@
 - settings 탭에 요금 줄 추가 (setup()을 다시 실행): live_in_usd_per_min 0.005, live_out_usd_per_min 0.018, text_in_usd_per_m 0.75, text_out_usd_per_m 3.75 (2027-01-01부터 두 배), cost_safety_factor 1.5. 요금은 2026-10 공식 요금표(유료 등급) 기준
 - budgetReport() 추가 — 편집기에서 이번 달 예상 비용과 남은 예산 확인
 - 이것은 예상치. 실제 청구 금액은 Google Cloud 예산 알림으로 함께 확인
+- (문서) README 데이터 원칙에 '현재 무료 등급 — 동료에게 열기 전에 유료 등급으로 전환' 안내 추가 (앱·서버 변경 없음)
