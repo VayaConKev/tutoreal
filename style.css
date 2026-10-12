@@ -14,6 +14,8 @@ body {
 }
 .wrap { max-width: 560px; margin: 0 auto; padding: 24px 16px 40px; }
 header h1 { margin: 0 0 16px; font-size: 22px; letter-spacing: -0.02em; }
+/* 로고: 원본 그림의 체크무늬 배경을 잘라 낸 흰 알약 모양. 모서리를 둥글게 잘라 남은 배경을 가린다 */
+.brand img { display: block; height: 40px; width: auto; border-radius: 999px; box-shadow: 0 1px 4px rgba(20, 30, 50, 0.10); }
 
 /* 첫 화면 인사 */
 .greet { display: flex; align-items: center; gap: 14px; margin: 0 0 24px; }
