@@ -717,6 +717,8 @@ const LEVEL_DESC = {
   blank: '문장 틀을 보면서 핵심 단어를 떠올려요.',
   korean: '상황만 보고 영어 문장을 처음부터 말해요. 실전처럼!'
 };
+// 과정 언어 이름 (문장 연습 문구에 쓴다)
+const langName = () => (me.course === 'zh' ? '중국어' : '영어');
 
 function loadDrillMarks() {
   try { return JSON.parse(localStorage.getItem(DRILL_KEY) || '{}'); } catch { return {}; }
@@ -754,7 +756,7 @@ function startDrill() {
 
 function renderDrill() {
   document.querySelectorAll('.level').forEach((b) => b.classList.toggle('on', b.dataset.level === drill.level));
-  $('#level-desc').textContent = LEVEL_DESC[drill.level];
+  $('#level-desc').textContent = LEVEL_DESC[drill.level].replace('영어', langName());
   const card = $('#drill-card');
   const actions = $('#drill-actions');
   if (drill.pos >= drill.queue.length) {
@@ -784,13 +786,20 @@ function renderDrill() {
   } else {
     sentence = '';
   }
-  const hint = parts.filter((p) => p.blank).map((p) => p.blank.split(/\s+/).map((w) => w[0] + '_'.repeat(Math.max(0, w.length - 1))).join(' ')).join(' · ');
+  const zh = me.course === 'zh';
+  // 힌트: 영어는 첫 글자(f___ n___), 중국어는 빈칸 단어의 병음
+  const hint = parts.filter((p) => p.blank).map((p) => (zh ? localPinyin(p.blank)
+    : p.blank.split(/\s+/).map((w) => w[0] + '_'.repeat(Math.max(0, w.length - 1))).join(' '))).join(' · ');
+  // 중국어 1단계: 빈칸이 아닌 부분의 병음을 문장 아래에 (빈칸 자리는 비워 둔다)
+  const blankPy = zh && !drill.revealed && drill.level === 'blank'
+    ? parts.map((p) => (p.blank ? '<span class="blank py-blank" aria-label="빈칸"></span>' : escapeHtml(localPinyin(p.text)))).join(' ')
+    : '';
 
   const c = drill.coach;
   const coachHtml = c ? `<div class="coach ${c.overall}">
       <p class="coach-title">${COACH_TITLE[c.overall] || COACH_TITLE.retry}</p>
       ${c.message ? `<p class="coach-msg">${escapeHtml(c.message)}</p>` : ''}
-      ${c.heard ? `<p class="coach-heard">들린 문장: "${escapeHtml(c.heard)}"</p>` : ''}
+      ${c.heard ? `<p class="coach-heard">${zh ? '들린 발음' : '들린 문장'}: "${escapeHtml(c.heard)}"</p>` : ''}
       ${c.words.map((w) => `<p class="coach-word"><b>${escapeHtml(w.word)}</b> → <span class="resp">${escapeHtml(w.respelling)}</span>
         <span class="tip">${escapeHtml(w.tip)}</span></p>`).join('')}
     </div>` : '';
@@ -799,11 +808,12 @@ function renderDrill() {
     ${coachHtml}
     <p class="situation-label">상황</p>
     <p class="situation">${escapeHtml(d.situation)}</p>
-    ${sentence ? `<p class="sentence-label">${drill.revealed ? '정답' : '영어 문장'}</p><p class="sentence">${sentence}</p>` : ''}
-    ${drill.revealed ? (d.pron ? `<p class="drill-pron">발음: ${escapeHtml(d.pron)}</p>` : '')
+    ${sentence ? `<p class="sentence-label">${drill.revealed ? '정답' : `${langName()} 문장`}</p><p class="sentence">${sentence}</p>` : ''}
+    ${blankPy ? `<p class="drill-py">${blankPy}</p>` : ''}
+    ${drill.revealed ? (d.pron ? (zh ? `<p class="drill-py">${escapeHtml(d.pron)}</p>` : `<p class="drill-pron">발음: ${escapeHtml(d.pron)}</p>`) : '')
       : drill.phase === 'recording' ? '<p class="recording">● 듣고 있어요. 문장을 말한 뒤 "다 말했어요"를 눌러 주세요.</p>'
       : drill.phase === 'checking' ? '<p class="drill-say">발음을 확인하는 중…</p>'
-      : `<p class="drill-say">${drill.level === 'blank' ? '소리 내어 문장 전체를 말해 보세요.' : '영어 문장 전체를 소리 내어 말해 보세요.'}</p>
+      : `<p class="drill-say">${drill.level === 'blank' ? '소리 내어 문장 전체를 말해 보세요.' : `${langName()} 문장 전체를 소리 내어 말해 보세요.`}</p>
          ${drill.hintShown ? `<p class="drill-hint">${escapeHtml(hint)}</p>` : ''}`}
     ${drill.coachError ? `<p class="hint">${escapeHtml(drill.coachError)}</p>` : ''}`;
 
@@ -815,7 +825,7 @@ function renderDrill() {
     actions.innerHTML = '';
   } else if (!drill.revealed) {
     actions.innerHTML = `<button class="primary" id="rec-start">🎤 말하고 확인받기</button>
-      <div class="row">${drill.hintShown ? '' : '<button class="secondary" id="drill-hint">힌트 (첫 글자)</button>'}
+      <div class="row">${drill.hintShown ? '' : `<button class="secondary" id="drill-hint">${zh ? '힌트 (병음)' : '힌트 (첫 글자)'}</button>`}
       <button class="secondary" id="drill-reveal">정답 보기</button></div>`;
     $('#rec-start').addEventListener('click', startCoach);
     if ($('#drill-hint')) $('#drill-hint').addEventListener('click', () => { drill.hintShown = true; renderDrill(); });
@@ -904,8 +914,9 @@ function speak(text) {
   if (!('speechSynthesis' in window)) return;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
-  u.lang = 'en-US';
-  u.rate = 0.9;
+  // 중국어 과정은 휴대폰의 중국어 음성으로 조금 더 천천히
+  u.lang = me.course === 'zh' ? 'zh-CN' : 'en-US';
+  u.rate = me.course === 'zh' ? 0.8 : 0.9;
   speechSynthesis.speak(u);
 }
 

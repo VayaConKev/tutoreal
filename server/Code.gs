@@ -41,12 +41,14 @@
  * v0.25 (25단계): 중국어 자막 도우미 — doPost(action=gloss)가 상대의 말 한 줄을 텍스트 모델로 보내
  *                 교과서식 병음과 한국어 뜻을 받는다 (prompts 탭의 zh-gloss-v1). 비용은 그 대화에 더한다.
  * v0.26 (26단계): 중국어 피드백 — zh-feedback-v1 지시문, 더 좋은 표현과 다음 연습 문장에 병음(better_py, py)을 더한다.
+ * v0.27 (27단계): 중국어 문장 연습 — 성조 코칭 지시문 zh-pron-v1 (drills의 pron 칸 = 문장 전체 병음이 기준).
+ *                 addChineseSample()이 챕터 ①~④의 문장 연습(단어 → 짧은 문장)도 추가한다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.26';
+const SERVER_VERSION = 'v0.27';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -200,6 +202,23 @@ const ZH_FEEDBACK_PROMPT_V1 = [
   'Be kind and specific. Give feedback only on the learner\'s lines; partner lines are context.'
 ].join('\n');
 
+// 중국어 발음(성조) 코칭 지시문 (27단계). {sentence} {pron} {keywords} {mode} 는 서버가 채운다. 학생의 소리는 따로 붙는다.
+const ZH_PRON_PROMPT_V1 = [
+  'You are a friendly Mandarin Chinese pronunciation coach for a Korean beginner (about HSK 2). Focus on tones.',
+  'Listen to the audio of the learner trying to say this target: "{sentence}"',
+  'Pinyin of the target (the reference, with tone marks): {pron}',
+  'Key words to check closely: {keywords}',
+  'Mode: {mode}',
+  'Return:',
+  '- heard: what you heard, written in pinyin with tone marks as the learner actually said it, syllable by syllable. Keep the learner\'s mistakes (wrong tones, wrong sounds). Do not correct them.',
+  '- said_target: true if the learner said the target or a natural sentence with the same meaning.',
+  '- overall: "great" if the tones and sounds are clear and correct, "good" if understandable with 1-2 small tone or sound issues, "retry" if hard to understand, a different sentence, many wrong tones, or not speech.',
+  '- message: one short, kind sentence in Korean.',
+  '- words: up to 3 words that need work, key words first. For each: word (the Chinese characters), respelling (the correct pinyin with tone marks), tip (Korean: what to change, naming the tone with a simple description: 1성(높고 평평하게), 2성(아래에서 위로 올리기), 3성(낮게 눌렀다가 살짝 올리기), 4성(위에서 아래로 뚝 떨어지기), 경성(짧고 가볍게); for example "lǎo는 3성인데 4성처럼 떨어졌어요. 낮게 눌렀다가 살짝 올려 보세요."). Empty list if everything is fine.',
+  'These are normal and correct, never mark them as mistakes: a 3rd tone before another 3rd tone sounds like a 2nd tone (nǐ hǎo → ní hǎo), the tone changes of 一 and 不, and short light neutral tones.',
+  'Only report a tone error when you clearly hear it. Be honest but encouraging. Do not invent problems. If the audio is silent or not speech, overall is "retry" and say so in message.'
+].join('\n');
+
 const SEED = {
   chapters: [
     ['ch01', 1, '호명과 본인 확인', '수검자를 호명해 창구로 부르고 이름과 생년월일로 본인 확인하기',
@@ -226,7 +245,8 @@ const SEED = {
     ['pron-v1', PRON_PROMPT_V1, true],
     ['zh-partner-v1', ZH_PARTNER_PROMPT_V1, true],
     ['zh-gloss-v1', ZH_GLOSS_PROMPT_V1, true],
-    ['zh-feedback-v1', ZH_FEEDBACK_PROMPT_V1, true]
+    ['zh-feedback-v1', ZH_FEEDBACK_PROMPT_V1, true],
+    ['zh-pron-v1', ZH_PRON_PROMPT_V1, true]
   ],
   // 문장 연습 초안 (Claude 작성) — 간호 현장에 맞는지 Kevin이 검토해 시트에서 고친다.
   drills: [
@@ -291,6 +311,43 @@ const ZH_SAMPLE = {
      'Play the whole first visit: greet the learner, learn who they are, ask about their brand, ask why they came, look at the samples, then close politely. Once, ask a small extra question (for example if you can touch the fabric, or about the price). If they say they will send the price later, accept it.',
      true, 'show', 'zh']
   ],
+  // 문장 연습 (27단계): 단어 몇 개 → 짧은 문장. [대괄호]가 빈칸, pron은 문장 전체의 교과서식 병음 (성조 코칭의 기준).
+  // ⑤(처음부터 끝까지)는 문장 연습 없이 대화만. 브랜드 이름이 들어간 문장은 Kevin이 시트에 추가한다.
+  drills: {
+    zh01: [
+      ['단어: 사장, 대표', '[老板]', 'lǎobǎn'],
+      ['단어: 명함', '[名片]', 'míngpiàn'],
+      ['처음 만난 사장님께 공손하게 인사할 때', '[您好]！', 'Nín hǎo!'],
+      ['명함을 건넬 때', '这是我的[名片]。', 'Zhè shì wǒ de míngpiàn.'],
+      ['잘 부탁드린다고 할 때', '[请多指教]。', 'Qǐng duō zhǐjiào.'],
+      ['만나서 반갑다고 할 때', '很高兴[认识]您。', 'Hěn gāoxìng rènshi nín.']
+    ],
+    zh02: [
+      ['단어: 브랜드', '[品牌]', 'pǐnpái'],
+      ['단어: 스타일', '[风格]', 'fēnggé'],
+      ['한국 의류 브랜드라고 소개할 때', '我们是韩国的[服装品牌]。', 'Wǒmen shì Hánguó de fúzhuāng pǐnpái.'],
+      ['주로 여성복을 만든다고 할 때', '我们主要做[女装]。', 'Wǒmen zhǔyào zuò nǚzhuāng.'],
+      ['남성복도 만든다고 할 때', '我们也做[男装]。', 'Wǒmen yě zuò nánzhuāng.'],
+      ['가죽 재킷과 바지가 많다고 할 때', '我们有很多[皮夹克]和裤子。', 'Wǒmen yǒu hěn duō pí jiākè hé kùzi.'],
+      ['대부분 검은색이라고 할 때', '大部分是[黑色]的。', 'Dàbùfen shì hēisè de.']
+    ],
+    zh03: [
+      ['단어: 샘플', '[样品]', 'yàngpǐn'],
+      ['단어: 팔다 (사다 买 mǎi와 성조만 달라요)', '[卖]', 'mài'],
+      ['브랜드를 소개하러 왔다고 할 때', '我今天来，是想[介绍]我们的品牌。', 'Wǒ jīntiān lái, shì xiǎng jièshào wǒmen de pǐnpái.'],
+      ['사장님 가게에서 우리 옷을 팔고 싶다고 할 때', '我们想在您的店[卖]我们的衣服。', 'Wǒmen xiǎng zài nín de diàn mài wǒmen de yīfu.'],
+      ['샘플과 카탈로그를 보여 줄 때', '这是我们的[样品]和目录。', 'Zhè shì wǒmen de yàngpǐn hé mùlù.'],
+      ['한번 보시라고 할 때', '您可以[看一下]。', 'Nín kěyǐ kàn yíxià.']
+    ],
+    zh04: [
+      ['단어: 위챗', '[微信]', 'Wēixìn'],
+      ['어떻게 생각하시는지 물을 때', '您[觉得]怎么样？', 'Nín juéde zěnmeyàng?'],
+      ['위챗을 알려 줄 때', '这是我的[微信]。', 'Zhè shì wǒ de Wēixìn.'],
+      ['시간 내 주셔서 감사하다고 할 때', '谢谢您的[时间]。', 'Xièxie nín de shíjiān.'],
+      ['수고를 끼쳐 감사하다고 할 때', '[麻烦]您了。', 'Máfan nín le.'],
+      ['다음에 또 오겠다고 할 때', '我[下次]再来。', 'Wǒ xià cì zài lái.']
+    ]
+  },
   // 시나리오는 챕터마다 두 명: 상하이(간체, 위챗) / 타이베이(대만 화어, LINE)
   people: [
     ['s01', '林美玲', 'female', 'China', '상하이 편집숍 사장', 'You run a small boutique in Shanghai. Use Mainland Mandarin. You use WeChat (微信).'],
@@ -299,7 +356,7 @@ const ZH_SAMPLE = {
 };
 
 /**
- * 편집기에서 한 번 실행: 중국어 과정 예시 챕터 5개와 시나리오 10개를 시트에 추가한다.
+ * 편집기에서 한 번 실행: 중국어 과정 예시 챕터 5개, 시나리오 10개, 문장 연습(챕터 ①~④)을 시트에 추가한다.
  * 같은 번호(zh01, zh01-s01 …)가 이미 있으면 그 줄은 건너뛴다. 시트에서 고친 내용은 건드리지 않는다.
  */
 function addChineseSample() {
@@ -330,6 +387,15 @@ function addChineseSample() {
     });
   });
   append('scenarios', scenarios);
+  const drills = [];
+  Object.keys(ZH_SAMPLE.drills).forEach(function (chId) {
+    ZH_SAMPLE.drills[chId].forEach(function (d, i) {
+      const n = i + 1;
+      drills.push({ drill_id: chId + '-d' + (n < 10 ? '0' : '') + n, chapter_id: chId, order: n,
+                    situation: d[0], sentence: d[1], pron: d[2], active: true });
+    });
+  });
+  append('drills', drills);
   const msg = log.length ? log.join('\n') : '이미 모두 들어 있어요. 바뀐 것 없음.';
   console.log(msg);
   return msg;
@@ -1608,6 +1674,14 @@ function gloss_(code, sessionId, text) {
   return { ok: true, pinyin: String(ai.data.pinyin || '').trim(), ko: String(ai.data.ko || '').trim() };
 }
 
+// 발음 코칭의 {mode}: 학생이 화면에서 무엇을 보고 말했는지
+const PRON_MODE = {
+  en: { korean: 'The nurse saw only the Korean situation and had to make the whole English sentence.',
+        blank: 'The nurse saw the sentence with the key words blank.' },
+  zh: { korean: 'The learner saw only the Korean situation and had to make the whole Chinese sentence.',
+        blank: 'The learner saw the sentence with the key words blank, with pinyin for the other words.' }
+};
+
 const PRON_SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -1651,7 +1725,8 @@ function pronounce_(code, drillId, level, audio) {
   const budget = checkBudget_();
   if (!budget.ok) return budget;
 
-  const prompt = coursePrompt_('pron', courseOf_(auth.student));
+  const course = courseOf_(auth.student);
+  const prompt = coursePrompt_('pron', course);
   if (!prompt) return { ok: false, error: 'NO_PROMPT' };
   const sentence = String(drill.sentence).replace(/\[([^\]]+)\]/g, '$1');
   const keywords = (String(drill.sentence).match(/\[([^\]]+)\]/g) || []).map(function (k) { return k.slice(1, -1); });
@@ -1659,12 +1734,10 @@ function pronounce_(code, drillId, level, audio) {
     .replace(/\{sentence\}/g, sentence)
     .replace(/\{keywords\}/g, keywords.join(', ') || '(none)')
     .replace(/\{pron\}/g, String(drill.pron || '').trim() || '(none)')
-    .replace(/\{mode\}/g, level === 'korean'
-      ? 'The nurse saw only the Korean situation and had to make the whole English sentence.'
-      : 'The nurse saw the sentence with the key words blank.');
+    .replace(/\{mode\}/g, (PRON_MODE[course] || PRON_MODE.en)[level === 'korean' ? 'korean' : 'blank']);
 
   const ai = callTextModel_(system, [
-    { text: "Here is the nurse's audio." },
+    { text: course === 'en' ? "Here is the nurse's audio." : "Here is the learner's audio." },
     { inlineData: { mimeType: 'audio/wav', data: audio } }
   ], PRON_SCHEMA, '발음 코칭');
 
