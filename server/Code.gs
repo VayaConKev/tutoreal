@@ -32,19 +32,23 @@
  * v0.21 (21단계): 발음 코칭 — doPost(action=pronounce)가 학생이 말한 소리(WAV)를 텍스트 모델로 보내 코칭을 받는다.
  *                 기준은 drills 탭의 문장과 pron 칸, 지시문은 prompts 탭의 pron-v1. pron_checks 탭에 결과·비용만 기록.
  * v0.22 (22단계): 프로필 캐릭터 — students 탭의 avatar 칸에 학생이 고른 캐릭터(s01 등)를 저장한다 (doPost action=set_avatar).
+ * v0.23 (23단계): 과정 칸 — students·chapters 탭의 course 칸(en 영어, zh 중국어, 빈칸은 en)으로 과정을 나눈다.
+ *                 챕터 목록은 로그인한 학생에게만, 그 학생 과정의 챕터만 보낸다 (doPost action=chapters).
+ *                 대화 시작과 발음 코칭도 다른 과정의 챕터는 막는다. 주소만으로 받던 doGet(action=chapters)는 없앤다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.22';
+const SERVER_VERSION = 'v0.23';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
-  chapters:       ['chapter_id', 'order', 'title', 'goal', 'keywords', 'scene', 'published', 'ai_captions'],
+  // course: 과정 (en 영어, zh 중국어). 빈칸은 en. 학생은 자기 과정의 챕터만 받는다.
+  chapters:       ['chapter_id', 'order', 'title', 'goal', 'keywords', 'scene', 'published', 'ai_captions', 'course'],
   scenarios:      ['scenario_id', 'chapter_id', 'name', 'sex', 'dob', 'country', 'exam', 'twist', 'level', 'active'],
   prompts:        ['prompt_id', 'text', 'active'],
-  students:       ['student_id', 'display_name', 'access_code', 'status', 'daily_limit_min', 'created_at', 'role', 'avatar'],
+  students:       ['student_id', 'display_name', 'access_code', 'status', 'daily_limit_min', 'created_at', 'role', 'avatar', 'course'],
   sessions:       ['session_id', 'student_id', 'started_at', 'duration_sec', 'chapter_id', 'scenario_id', 'shared',
                    'hints_used', 'korean_ratio', 'end_reason', 'est_cost_usd', 'confidence', 'difficulty_note', 'feedback'],
   keyword_checks: ['session_id', 'student_id', 'chapter_id', 'keyword', 'found'],
@@ -267,9 +271,7 @@ function doGet(e) {
     if (action === 'ping') {
       return json_({ ok: true, server: SERVER_VERSION, time: new Date().toISOString() });
     }
-    if (action === 'chapters') {
-      return json_({ ok: true, server: SERVER_VERSION, chapters: listChapters_() });
-    }
+    // 챕터 목록은 v0.23부터 로그인한 뒤 doPost(action=chapters)로만 준다 (과정별로 다른 목록).
     return json_({ ok: false, error: 'UNKNOWN_ACTION' });
   } catch (err) {
     console.error(err);
@@ -334,8 +336,20 @@ function captionMode_(v) {
   return mode === 'show' || mode === 'off' ? mode : 'tap';
 }
 
-/** 공개(published)된 챕터만 순서(order)대로. 학생 화면에 필요한 칸만 보낸다. */
-function listChapters_() {
+/** 학생·챕터 줄의 과정. 빈칸이면 영어(en). */
+function courseOf_(row) {
+  return String((row && row.course) || '').trim().toLowerCase() || 'en';
+}
+
+/** 그 과정의 공개된 챕터인지. 대화 시작·발음 코칭에서 다른 과정의 챕터를 막는 데 쓴다. */
+function chapterInCourse_(chapterId, course) {
+  return readTable_('chapters').some(function (c) {
+    return String(c.chapter_id) === chapterId && isTrue_(c.published) && courseOf_(c) === course;
+  });
+}
+
+/** 그 과정에서 공개(published)된 챕터만 순서(order)대로. 학생 화면에 필요한 칸만 보낸다. */
+function listChapters_(course) {
   // 문장 연습: 챕터별로 active인 문장을 순서대로 붙인다 (drills 탭이 없으면 빈 목록)
   const drills = {};
   readTable_('drills')
@@ -348,7 +362,7 @@ function listChapters_() {
       });
     });
   return readTable_('chapters')
-    .filter(function (c) { return c.chapter_id && isTrue_(c.published); })
+    .filter(function (c) { return c.chapter_id && isTrue_(c.published) && courseOf_(c) === course; })
     .sort(function (a, b) { return Number(a.order) - Number(b.order); })
     .map(function (c) {
       return {
@@ -382,6 +396,11 @@ function doPost(e) {
       const result = login_(body.code);
       result.server = SERVER_VERSION;
       return json_(result);
+    }
+    if (body.action === 'chapters') {
+      const auth = auth_(body.code);
+      if (!auth.ok) return json_(auth);
+      return json_({ ok: true, server: SERVER_VERSION, chapters: listChapters_(courseOf_(auth.student)) });
     }
     if (body.action === 'talk') {
       const result = startTalk_(body.code, String(body.chapter_id || ''));
@@ -421,7 +440,7 @@ function login_(code) {
   if (!auth.ok) return auth;
   return {
     ok: true, name: String(auth.student.display_name || auth.student.student_id),
-    role: roleOf_(auth.student), avatar: String(auth.student.avatar || '').trim()
+    role: roleOf_(auth.student), avatar: String(auth.student.avatar || '').trim(), course: courseOf_(auth.student)
   };
 }
 
@@ -474,6 +493,7 @@ function getSettings_() {
 function startTalk_(code, chapterId) {
   const auth = auth_(code);
   if (!auth.ok) return auth;
+  if (!chapterInCourse_(chapterId, courseOf_(auth.student))) return { ok: false, error: 'NO_CHAPTER' };
   const limit = checkDailyLimit_(auth.student);
   if (!limit.ok) return limit;
   const budget = checkBudget_();
@@ -1402,6 +1422,7 @@ function pronounce_(code, drillId, level, audio) {
 
   const drill = readTable_('drills').filter(function (d) { return String(d.drill_id) === drillId && isTrue_(d.active); })[0];
   if (!drill) return { ok: false, error: 'NO_DRILL' };
+  if (!chapterInCourse_(String(drill.chapter_id), courseOf_(auth.student))) return { ok: false, error: 'NO_DRILL' };
 
   const sid = String(auth.student.student_id);
   const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();

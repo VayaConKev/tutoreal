@@ -19,13 +19,6 @@ async function send(url, init, timeoutMs) {
   }
 }
 
-async function callServer(action, params = {}, timeoutMs = 15000) {
-  const url = new URL(SERVER_URL);
-  url.searchParams.set('action', action);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  return send(url, {}, timeoutMs);
-}
-
 // 접속 코드처럼 주소(URL)에 남으면 안 되는 값은 본문(POST)으로 보낸다.
 // text/plain으로 보내야 브라우저가 사전 확인(CORS preflight) 없이 Apps Script로 보낼 수 있다.
 // keepalive: 화면을 닫는 중이어도 요청을 끝까지 보낸다.
@@ -38,8 +31,9 @@ async function postServer(action, body = {}, timeoutMs = 15000, keepalive = fals
   }, timeoutMs);
 }
 
-export async function getChapters() {
-  const data = await callServer('chapters');
+// 챕터 목록은 접속 코드로만 받는다. 서버가 그 학생 과정(영어/중국어)의 챕터만 준다.
+export async function getChapters(code) {
+  const data = await postServer('chapters', { code });
   return { chapters: data.chapters || [], server: data.server };
 }
 

@@ -175,7 +175,7 @@ async function loadChapters() {
   const box = $('#chapter-list');
   box.innerHTML = '<p class="state">챕터를 불러오는 중…</p>';
   try {
-    const { chapters: list, server } = await getChapters();
+    const { chapters: list, server } = await getChapters(loadCode());
     chapters = list;
     setVersion(server);
     renderList();
