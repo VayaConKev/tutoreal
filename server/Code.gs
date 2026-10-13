@@ -40,12 +40,13 @@
  *                 zh_lang_china / zh_lang_taiwan 설정을 추가한다. addChineseSample()이 예시 챕터·시나리오를 넣는다.
  * v0.25 (25단계): 중국어 자막 도우미 — doPost(action=gloss)가 상대의 말 한 줄을 텍스트 모델로 보내
  *                 교과서식 병음과 한국어 뜻을 받는다 (prompts 탭의 zh-gloss-v1). 비용은 그 대화에 더한다.
+ * v0.26 (26단계): 중국어 피드백 — zh-feedback-v1 지시문, 더 좋은 표현과 다음 연습 문장에 병음(better_py, py)을 더한다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.25';
+const SERVER_VERSION = 'v0.26';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -174,6 +175,31 @@ const ZH_GLOSS_PROMPT_V1 = [
   'Do not add explanations.'
 ].join('\n');
 
+// 중국어 피드백 지시문 (26단계). 영어 피드백과 같은 항목에 병음(better_py, py)을 더한다.
+// {goal} {keywords} {name} {exam} 은 서버가 채운다. 대화 글자는 따로 붙는다.
+const ZH_FEEDBACK_PROMPT_V1 = [
+  'You are a Mandarin Chinese speaking coach for a Korean fashion brand owner who is a beginner (about HSK 2).',
+  'You review one practice conversation between the learner and an AI playing a Chinese shop owner.',
+  'Lesson goal (Korean): {goal}',
+  'Key expressions: {keywords}',
+  'Partner: {name} ({exam}).',
+  'The transcript comes from speech recognition, so:',
+  '- Do not comment on punctuation, simplified or traditional characters, or how names are written.',
+  '- Recognition may write a different character with the same sound. If the meaning is clear from context, do not count it as a mistake.',
+  '- Korean sentences mean the learner switched to Korean. Suggest a simple Chinese way to say it.',
+  '- Do not judge pronunciation or tones.',
+  '- Partner lines starting with "你可以说：" are hints. If the learner then repeated the hint, that is good practice, but note that it was with help.',
+  'Write feedback for the learner:',
+  '- summary: one short sentence in Korean.',
+  '- strengths: 1-3 short points in Korean, based on what the learner actually said in Chinese. Praise only what was really done well. Do not praise a line that you also correct.',
+  '- fixes: up to 3 items. "said" = the learner\'s exact words, "better" = a natural, simple, polite Chinese sentence (HSK 1-3 words where possible), "better_py" = its pinyin, "why" = one short reason in Korean. Only include real improvements.',
+  '- keywords: for each key expression, in the same order, whether the learner used it or a clear equivalent.',
+  '- next_practice: 1-2 short, useful Chinese sentences for next time ("zh"), their pinyin ("py"), and the Korean meaning ("ko").',
+  'Pinyin style: textbook style with tone marks, syllables grouped into words, first letter of a sentence capitalized, neutral tones (xiānsheng, wǒmen) and the tone changes of 一 and 不 (yíxià, búyòng).',
+  'Do not add new facts about the learner or the brand (job, products, numbers, names) that are not in the conversation. If a sentence needs such a fact, write it in Korean in brackets, for example [브랜드 이름].',
+  'Be kind and specific. Give feedback only on the learner\'s lines; partner lines are context.'
+].join('\n');
+
 const SEED = {
   chapters: [
     ['ch01', 1, '호명과 본인 확인', '수검자를 호명해 창구로 부르고 이름과 생년월일로 본인 확인하기',
@@ -199,7 +225,8 @@ const SEED = {
     ['insight-v1', INSIGHT_PROMPT_V1, true],
     ['pron-v1', PRON_PROMPT_V1, true],
     ['zh-partner-v1', ZH_PARTNER_PROMPT_V1, true],
-    ['zh-gloss-v1', ZH_GLOSS_PROMPT_V1, true]
+    ['zh-gloss-v1', ZH_GLOSS_PROMPT_V1, true],
+    ['zh-feedback-v1', ZH_FEEDBACK_PROMPT_V1, true]
   ],
   // 문장 연습 초안 (Claude 작성) — 간호 현장에 맞는지 Kevin이 검토해 시트에서 고친다.
   drills: [
@@ -868,6 +895,14 @@ const FEEDBACK_SCHEMA = {
   required: ['summary', 'strengths', 'fixes', 'keywords', 'next_practice']
 };
 
+// 중국어 피드백: 영어와 같은 항목 + 병음. next_practice의 문장은 zh로 받는다.
+const ZH_FEEDBACK_SCHEMA = JSON.parse(JSON.stringify(FEEDBACK_SCHEMA));
+ZH_FEEDBACK_SCHEMA.properties.fixes.items.properties.better_py = { type: 'STRING' };
+ZH_FEEDBACK_SCHEMA.properties.fixes.items.required.push('better_py');
+ZH_FEEDBACK_SCHEMA.properties.next_practice.items = {
+  type: 'OBJECT', properties: { zh: { type: 'STRING' }, py: { type: 'STRING' }, ko: { type: 'STRING' } }, required: ['zh', 'py', 'ko']
+};
+
 const FEEDBACK_CACHE_SEC = 6 * 3600;   // 같은 대화의 피드백은 6시간 동안 다시 만들지 않고 그대로 준다
 const FEEDBACK_MAX_TRIES = 3;          // 실패해도 한 대화에 3번까지만 시도
 
@@ -911,8 +946,10 @@ function cleanLines_(lines) {
 function makeFeedback_(chapter, scenario, lines) {
   if (!lines.some(function (l) { return l.who === 'me'; })) return { ok: false, error: 'NO_TALK' };
 
-  const prompt = coursePrompt_('feedback', courseOf_(chapter));
+  const course = courseOf_(chapter);
+  const prompt = coursePrompt_('feedback', course);
   if (!prompt) return { ok: false, error: 'NO_PROMPT' };
+  const zh = course === 'zh';
 
   const keywords = String(chapter.keywords || '').split(',').map(function (k) { return k.trim(); }).filter(Boolean);
   const system = String(prompt.text)
@@ -921,9 +958,10 @@ function makeFeedback_(chapter, scenario, lines) {
     .replace(/\{name\}/g, String(scenario.name || ''))
     .replace(/\{dob\}/g, formatDob_(scenario.dob))
     .replace(/\{exam\}/g, String(scenario.exam || ''));
-  const transcript = 'Transcript:\n' + lines.map(function (l) { return (l.who === 'me' ? 'Nurse: ' : 'Patient: ') + l.text; }).join('\n');
+  const who = zh ? ['Learner: ', 'Partner: '] : ['Nurse: ', 'Patient: '];
+  const transcript = 'Transcript:\n' + lines.map(function (l) { return (l.who === 'me' ? who[0] : who[1]) + l.text; }).join('\n');
 
-  const ai = callTextModel_(system, transcript, FEEDBACK_SCHEMA, '피드백');
+  const ai = callTextModel_(system, transcript, zh ? ZH_FEEDBACK_SCHEMA : FEEDBACK_SCHEMA, '피드백');
   if (!ai.ok) return { ok: false, error: ai.error === 'AI_FAILED' ? 'FEEDBACK_FAILED' : ai.error, cost: ai.cost };
   const fb = ai.data;
   const cost = ai.cost;
@@ -937,9 +975,17 @@ function makeFeedback_(chapter, scenario, lines) {
     feedback: {
       summary: String(fb.summary || ''),
       strengths: (fb.strengths || []).map(String).slice(0, 3),
-      fixes: (fb.fixes || []).slice(0, 3).map(function (f) { return { said: String(f.said || ''), better: String(f.better || ''), why: String(f.why || '') }; }),
+      fixes: (fb.fixes || []).slice(0, 3).map(function (f) {
+        const out = { said: String(f.said || ''), better: String(f.better || ''), why: String(f.why || '') };
+        if (zh) out.better_py = String(f.better_py || '');
+        return out;
+      }),
       keywords: keywords.map(function (k) { return { keyword: k, used: used[k.toLowerCase()] === true }; }),
-      next_practice: (fb.next_practice || []).slice(0, 2).map(function (n) { return { en: String(n.en || ''), ko: String(n.ko || '') }; })
+      // 앱과 내 기록은 연습 문장을 en 칸으로 읽는다 (중국어 과정에서도 같은 칸에 중국어 문장, py에 병음).
+      next_practice: (fb.next_practice || []).slice(0, 2).map(function (n) {
+        return zh ? { en: String(n.zh || ''), py: String(n.py || ''), ko: String(n.ko || '') }
+                  : { en: String(n.en || ''), ko: String(n.ko || '') };
+      })
     }
   };
 }

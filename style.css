@@ -165,6 +165,9 @@ textarea {
 .chip.unused { background: transparent; color: var(--muted); border: 1px dashed var(--line); }
 .fb-next { margin: 0 0 8px; }
 .fb-next .ko { display: block; color: var(--muted); font-size: 14px; }
+/* 중국어 피드백의 병음 */
+.fb-py { color: var(--teal-ink); font-size: 15px; margin: 0 0 2px; }
+.fb-next .py { display: block; color: var(--teal-ink); font-size: 15px; }
 .choices { display: flex; flex-direction: column; gap: 8px; }
 .choice {
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 14px 16px; text-align: left;

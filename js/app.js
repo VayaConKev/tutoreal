@@ -113,6 +113,7 @@ async function enter(code) {
     me.avatar = avatar;
     me.course = course;
     if (course === 'zh') loadPinyin();
+    $('#difficulty').placeholder = course === 'zh' ? '브랜드 소개 문장이 바로 안 떠올랐어요' : '이름 철자를 묻는 게 어려웠어요';
     renderMe();
     $('#tab-teacher').hidden = role !== 'teacher';   // 화면에서만 숨긴다. 서버도 요청마다 역할을 확인한다.
     setVersion(server);
@@ -429,12 +430,13 @@ function feedbackHtml(fb) {
       ${fb.fixes.map((f) => `<div class="fb-fix">
         <p class="fb-said">${escapeHtml(f.said)}</p>
         <p class="fb-better">→ ${escapeHtml(f.better)}</p>
+        ${f.better_py ? `<p class="fb-py">${escapeHtml(f.better_py)}</p>` : ''}
         <p class="fb-why">${escapeHtml(f.why)}</p></div>`).join('')}` : ''}
     ${fb.keywords.length ? `<p class="fb-title">핵심 단어 ${used} / ${fb.keywords.length}</p>
       <div class="chips">${fb.keywords.map((k) =>
         `<span class="chip${k.used ? '' : ' unused'}">${k.used ? '✓ ' : ''}${escapeHtml(k.keyword)}</span>`).join('')}</div>` : ''}
     ${fb.next_practice.length ? `<p class="fb-title">다음에 연습할 문장</p>
-      ${fb.next_practice.map((n) => `<p class="fb-next">${escapeHtml(n.en)}<span class="ko">${escapeHtml(n.ko)}</span></p>`).join('')}` : ''}`;
+      ${fb.next_practice.map((n) => `<p class="fb-next">${escapeHtml(n.en)}${n.py ? `<span class="py">${escapeHtml(n.py)}</span>` : ''}<span class="ko">${escapeHtml(n.ko)}</span></p>`).join('')}` : ''}`;
 }
 
 function goStep(n) {
