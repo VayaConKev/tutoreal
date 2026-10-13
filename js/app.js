@@ -834,7 +834,7 @@ function renderDrill() {
     actions.innerHTML = `<div class="row"><button class="secondary" id="drill-listen">🔊 다시 듣기</button>
       <button class="secondary" id="rec-start">🎤 다시 말해 보기</button></div>
       <div class="row"><button class="secondary" id="drill-hard">어려웠어요</button>
-      <button class="primary" id="drill-easy">바로 떠올랐어요</button></div>`;
+      <button class="primary" id="drill-easy">쉬웠어요</button></div>`;
     $('#drill-listen').addEventListener('click', () => speak(plainSentence(d.sentence)));
     $('#rec-start').addEventListener('click', startCoach);
     $('#drill-hard').addEventListener('click', () => nextDrill(true));

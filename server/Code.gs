@@ -43,12 +43,14 @@
  * v0.26 (26단계): 중국어 피드백 — zh-feedback-v1 지시문, 더 좋은 표현과 다음 연습 문장에 병음(better_py, py)을 더한다.
  * v0.27 (27단계): 중국어 문장 연습 — 성조 코칭 지시문 zh-pron-v1 (drills의 pron 칸 = 문장 전체 병음이 기준).
  *                 addChineseSample()이 챕터 ①~④의 문장 연습(단어 → 짧은 문장)도 추가한다.
+ * v0.28 (28단계): 학생 소개 — students 탭 profile 칸. 대화 상대 지시문과 피드백 지시문에 붙여, 힌트와 예문이
+ *                 학생의 실제 정보로 문장을 만들게 한다 (지어내지 않게). 비어 있으면 지금과 같다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.27';
+const SERVER_VERSION = 'v0.28';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -56,7 +58,8 @@ const SCHEMA = {
   chapters:       ['chapter_id', 'order', 'title', 'goal', 'keywords', 'scene', 'published', 'ai_captions', 'course'],
   scenarios:      ['scenario_id', 'chapter_id', 'name', 'sex', 'dob', 'country', 'exam', 'twist', 'level', 'active'],
   prompts:        ['prompt_id', 'text', 'active'],
-  students:       ['student_id', 'display_name', 'access_code', 'status', 'daily_limit_min', 'created_at', 'role', 'avatar', 'course'],
+  // profile: 학생 소개 (이름·회사·하는 일 등 사실). AI 상대의 힌트와 피드백 예문이 이 사실로 문장을 만든다. 시트에만 둔다.
+  students:       ['student_id', 'display_name', 'access_code', 'status', 'daily_limit_min', 'created_at', 'role', 'avatar', 'course', 'profile'],
   sessions:       ['session_id', 'student_id', 'started_at', 'duration_sec', 'chapter_id', 'scenario_id', 'shared',
                    'hints_used', 'korean_ratio', 'end_reason', 'est_cost_usd', 'confidence', 'difficulty_note', 'feedback'],
   keyword_checks: ['session_id', 'student_id', 'chapter_id', 'keyword', 'found'],
@@ -695,6 +698,17 @@ function coursePrompt_(kind, course) {
   return activePrompt_(course + '-' + (kind === 'patient' ? 'partner' : kind));
 }
 
+/**
+ * 학생 소개(students 탭 profile 칸)를 지시문에 넣는다. 지시문에 {learner}가 있으면 그 자리에,
+ * 없으면 끝에 한 줄을 붙인다. 소개가 비어 있으면 지시문 그대로 (영어 과정의 간호사 학생들은 지금처럼).
+ */
+function withLearner_(text, student) {
+  const profile = String((student && student.profile) || '').trim();
+  if (text.indexOf('{learner}') >= 0) return text.replace(/\{learner\}/g, profile || '(none)');
+  if (!profile) return text;
+  return text + '\nAbout the learner (true facts; use them in hints and example sentences, and never invent other facts about the learner): ' + profile;
+}
+
 /** settings 탭을 {key: value} 로 읽는다. */
 function getSettings_() {
   const out = {};
@@ -712,7 +726,7 @@ function startTalk_(code, chapterId) {
   const budget = checkBudget_();
   if (!budget.ok) return budget;
   const maxSec = Math.min(limit.remainingSec, budget.remainingSec, LIVE_SESSION_MAX_MIN * 60);
-  const result = createLiveToken_(chapterId, maxSec);
+  const result = createLiveToken_(chapterId, maxSec, auth.student);
   if (result.ok) {
     result.session_id = logSessionStart_(auth.student, chapterId, result.scenario_id);
     result.limit_sec = maxSec;                                       // 이 대화에서 쓸 수 있는 최대 시간(초)
@@ -726,7 +740,7 @@ function startTalk_(code, chapterId) {
  * 챕터의 활성 시나리오 하나를 무작위로 고르고, 지시문을 채워 임시 토큰 안에 고정한다.
  * 지시문과 시나리오의 숨은 설정(twist)은 브라우저로 보내지 않는다. 브라우저는 토큰과 환자 차트만 받는다.
  */
-function createLiveToken_(chapterId, maxSec) {
+function createLiveToken_(chapterId, maxSec, student) {
   maxSec = maxSec || LIVE_SESSION_MAX_MIN * 60;
   const chapter = readTable_('chapters').filter(function (c) {
     return String(c.chapter_id) === chapterId && isTrue_(c.published);
@@ -766,6 +780,7 @@ function createLiveToken_(chapterId, maxSec) {
     .replace(/\{scene\}/g, String(chapter.scene || ''))
     .replace(/\{twist\}/g, String(sc.twist || ''))
     .replace(/\{keywords\}/g, String(chapter.keywords || ''));
+  const instructionFull = withLearner_(instruction, student);
 
   // 받아쓰기 언어: 영어 과정은 영어+한국어. 중국어 과정은 시나리오의 country가 Taiwan이면 대만, 아니면 중국 본토 코드
   // (settings 탭의 zh_lang_taiwan / zh_lang_china) + 한국어 (학생이 막혀서 한국어로 말할 때).
@@ -779,7 +794,7 @@ function createLiveToken_(chapterId, maxSec) {
   const setup = {
     model: 'models/' + model,
     generationConfig: { responseModalities: ['AUDIO'] },
-    systemInstruction: { parts: [{ text: instruction }] },
+    systemInstruction: { parts: [{ text: instructionFull }] },
     // 학생 말 → 글자 (받아쓰기). 언어를 지정하지 않으면 자동 판단하다가 다른 언어(예: 스페인어)로 적는 경우가 있었다.
     // 한국어도 넣어 학생이 한국어로 말하면 한국어로 적히게 한다. 환자 이름·핵심 단어는 더 잘 알아듣도록 단어 힌트로 준다.
     // 모드는 기본값(VERBATIM, 들린 그대로)을 쓴다. SMART는 문법을 다듬어 학생의 실수가 지워진다.
@@ -995,7 +1010,7 @@ function feedback_(code, sessionId, lines) {
   const scenario = readTable_('scenarios').filter(function (s) { return String(s.scenario_id) === String(session.scenario_id); })[0];
   if (!chapter || !scenario) return { ok: false, error: 'NO_CHAPTER' };
 
-  const result = makeFeedback_(chapter, scenario, cleanLines_(lines));
+  const result = makeFeedback_(chapter, scenario, cleanLines_(lines), auth.student);
   if (result.cost) addCost_(sessionId, result.cost);
   delete result.cost;
   if (result.ok) cache.put('fb_' + sessionId, JSON.stringify(result.feedback), FEEDBACK_CACHE_SEC);
@@ -1009,7 +1024,7 @@ function cleanLines_(lines) {
     .filter(function (l) { return l.text; });
 }
 
-function makeFeedback_(chapter, scenario, lines) {
+function makeFeedback_(chapter, scenario, lines, student) {
   if (!lines.some(function (l) { return l.who === 'me'; })) return { ok: false, error: 'NO_TALK' };
 
   const course = courseOf_(chapter);
@@ -1024,10 +1039,11 @@ function makeFeedback_(chapter, scenario, lines) {
     .replace(/\{name\}/g, String(scenario.name || ''))
     .replace(/\{dob\}/g, formatDob_(scenario.dob))
     .replace(/\{exam\}/g, String(scenario.exam || ''));
+  const systemFull = withLearner_(system, student);
   const who = zh ? ['Learner: ', 'Partner: '] : ['Nurse: ', 'Patient: '];
   const transcript = 'Transcript:\n' + lines.map(function (l) { return (l.who === 'me' ? who[0] : who[1]) + l.text; }).join('\n');
 
-  const ai = callTextModel_(system, transcript, zh ? ZH_FEEDBACK_SCHEMA : FEEDBACK_SCHEMA, '피드백');
+  const ai = callTextModel_(systemFull, transcript, zh ? ZH_FEEDBACK_SCHEMA : FEEDBACK_SCHEMA, '피드백');
   if (!ai.ok) return { ok: false, error: ai.error === 'AI_FAILED' ? 'FEEDBACK_FAILED' : ai.error, cost: ai.cost };
   const fb = ai.data;
   const cost = ai.cost;
