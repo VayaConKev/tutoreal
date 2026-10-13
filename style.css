@@ -94,6 +94,9 @@ h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin: 0 0 10px; }
 
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
 .eyebrow { color: var(--accent); font-weight: 700; font-size: 14px; margin: 0; }
+/* 선생님 챕터 목록: 과정 제목 (영어 과정 / 중국어 과정) */
+.course-label { margin: 18px 0 8px; }
+.course-label:first-child { margin-top: 0; }
 .card h3 { margin: 2px 0 8px; font-size: 22px; }
 .card .goal { color: var(--muted); margin: 0 0 16px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }

@@ -112,8 +112,6 @@ async function enter(code) {
     me.name = name;
     me.avatar = avatar;
     me.course = course;
-    if (course === 'zh') loadPinyin();
-    $('#difficulty').placeholder = course === 'zh' ? '브랜드 소개 문장이 바로 안 떠올랐어요' : '이름 철자를 묻는 게 어려웠어요';
     renderMe();
     $('#tab-teacher').hidden = role !== 'teacher';   // 화면에서만 숨긴다. 서버도 요청마다 역할을 확인한다.
     setVersion(server);
@@ -141,13 +139,18 @@ function logout() {
 
 /* ── 챕터 ── */
 
+const COURSE_NAME = { en: '영어', zh: '중국어' };
+
 function renderList() {
   const box = $('#chapter-list');
   if (!chapters.length) {
     box.innerHTML = '<p class="state">아직 공개된 챕터가 없어요.</p>';
     return;
   }
-  box.innerHTML = chapters.map((c) => `
+  // 과정이 둘 이상이면(선생님) 과정마다 제목을 붙인다. 서버가 과정별·순서대로 보낸다.
+  const many = new Set(chapters.map((c) => c.course)).size > 1;
+  box.innerHTML = chapters.map((c, i) => `
+    ${many && (i === 0 || chapters[i - 1].course !== c.course) ? `<p class="eyebrow course-label">${COURSE_NAME[c.course] || c.course} 과정</p>` : ''}
     <button class="chapter" data-id="${escapeHtml(c.chapter_id)}">
       <span class="chapter-no">${escapeHtml(c.order)}</span>
       <span class="chapter-text">
@@ -181,6 +184,7 @@ async function loadChapters() {
   try {
     const { chapters: list, server } = await getChapters(loadCode());
     chapters = list;
+    if (chapters.some((c) => c.course === 'zh')) loadPinyin();   // 중국어 챕터가 있을 때만 병음 변환기를 불러온다
     setVersion(server);
     renderList();
   } catch (err) {
@@ -230,8 +234,8 @@ function addText(who, text) {
     line.className = `line ${who}`;
     line.innerHTML = `<span class="who">${who === 'me' ? '나' : partnerWord()}</span>` +
       (who === 'ai' ? '<span class="cover">눌러서 자막 보기</span>' : '') + '<span class="text"></span>' +
-      (me.course === 'zh' ? '<span class="py"></span>' : '') +
-      (me.course === 'zh' && who === 'ai' ? '<button class="ko-btn" hidden>뜻 보기</button><span class="ko" hidden></span>' : '');
+      (courseNow() === 'zh' ? '<span class="py"></span>' : '') +
+      (courseNow() === 'zh' && who === 'ai' ? '<button class="ko-btn" hidden>뜻 보기</button><span class="ko" hidden></span>' : '');
     if (who === 'ai' && currentChapter.ai_captions === 'tap') {
       line.classList.add('covered');
       line.addEventListener('click', () => line.classList.remove('covered'), { once: true });
@@ -244,14 +248,14 @@ function addText(who, text) {
   }
   line.querySelector('.text').textContent += text;
   line.entry.text += text;
-  if (me.course === 'zh') line.querySelector('.py').textContent = localPinyin(line.entry.text);
+  if (courseNow() === 'zh') line.querySelector('.py').textContent = localPinyin(line.entry.text);
 }
 
 function endTurn() {
   const ai = transcript.ai;
   transcript.me = null;
   transcript.ai = null;
-  if (ai && me.course === 'zh') glossLine(ai);
+  if (ai && courseNow() === 'zh') glossLine(ai);
 }
 
 /** 상대의 말 한 줄: 서버에서 병음·뜻을 받아 넣고 '뜻 보기' 버튼을 보여 준다. 실패하면 휴대폰 병음을 그대로 둔다. */
@@ -310,6 +314,7 @@ function reportEnd(t) {
 
 async function beginTalk() {
   if (live || !currentChapter) return;
+  $('#difficulty').placeholder = courseNow() === 'zh' ? '브랜드 소개 문장이 바로 안 떠올랐어요' : '이름 철자를 묻는 게 어려웠어요';
   const t = { sessionId: null, scenarioId: '', patient: null, readyAt: 0, endReason: '', reported: false, limitSec: 0, limitKind: '' };
   talk = t;
   // 오디오는 버튼을 누른 이 순간에 켜야 한다 (iOS). 그래서 다른 일보다 먼저 만든다.
@@ -467,10 +472,12 @@ const HISTORY_MAX = 30;
 
 function saveLocal(d) {
   const entry = {
-    sessionId: d.sessionId, scenarioId: d.scenarioId, chapterId: d.chapter.chapter_id, chapterOrder: d.chapter.order,
+    sessionId: d.sessionId, scenarioId: d.scenarioId, chapterId: d.chapter.chapter_id, chapterOrder: d.chapter.order, course: d.chapter.course || me.course,
     chapterTitle: d.chapter.title, at: new Date().toISOString(), durationSec: d.durationSec,
     patient: d.patient, confidence: d.confidence, difficulty: d.difficulty, shared: d.shared,
-    lines: d.lines.map((l) => ({ who: l.who, text: l.text })), feedback: d.feedback || null
+    // 중국어 과정: 서버에서 받은 병음(py)과 뜻(ko)도 함께 남긴다
+    lines: d.lines.map((l) => ({ who: l.who, text: l.text, ...(l.py ? { py: l.py } : {}), ...(l.ko ? { ko: l.ko } : {}) })),
+    feedback: d.feedback || null
   };
   try {
     const list = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]').filter((e) => e.sessionId !== entry.sessionId);
@@ -541,8 +548,11 @@ function initialsHtml(name, size = '') {
 const avatars = { students: {}, patients: {} };
 const me = { name: '', avatar: '', course: 'en' };
 // 대화 상대를 부르는 말: 영어 과정은 수검자(환자), 중국어 과정은 상대
-const partnerWord = () => (me.course === 'en' ? '환자' : '상대');
-const partnerTitle = () => (me.course === 'en' ? '수검자' : '상대');
+// 지금 연 챕터의 과정. 선생님은 영어·중국어 챕터를 모두 쓰므로 학생의 과정이 아니라 챕터를 따른다 (30단계).
+let viewCourse = '';   // 내 기록을 다시 볼 때 그 기록의 과정
+const courseNow = () => viewCourse || (currentChapter && currentChapter.course) || me.course;
+const partnerWord = () => (courseNow() === 'en' ? '환자' : '상대');
+const partnerTitle = () => (courseNow() === 'en' ? '수검자' : '상대');
 
 async function loadAvatars() {
   try {
@@ -680,6 +690,7 @@ function openHistory() {
 }
 
 function openRecord(e) {
+  viewCourse = e.course || me.course;   // 이 기록의 과정으로 그린다 (다 그린 뒤 되돌림)
   $('#record-head').innerHTML = `${avatarHtml(e)}
     <div>
       <p class="eyebrow">${chapterNo(e)} · ${escapeHtml(e.chapterTitle || '')}</p>
@@ -692,9 +703,10 @@ function openRecord(e) {
   $('#record-lines').innerHTML = (e.lines || []).map((l) => `
     <div class="line ${l.who === 'me' ? 'me' : 'ai'}">
       <span class="who">${l.who === 'me' ? '나' : partnerWord()}</span><span class="text">${escapeHtml(l.text)}</span>
-      ${me.course === 'zh' && (l.py || localPinyin(l.text)) ? `<span class="py">${escapeHtml(l.py || localPinyin(l.text))}</span>` : ''}
+      ${courseNow() === 'zh' && (l.py || localPinyin(l.text)) ? `<span class="py">${escapeHtml(l.py || localPinyin(l.text))}</span>` : ''}
       ${l.ko ? `<span class="ko">${escapeHtml(l.ko)}</span>` : ''}
     </div>`).join('');
+  viewCourse = '';
   show('record');
 }
 
@@ -718,7 +730,7 @@ const LEVEL_DESC = {
   korean: '상황만 보고 영어 문장을 처음부터 말해요. 실전처럼!'
 };
 // 과정 언어 이름 (문장 연습 문구에 쓴다)
-const langName = () => (me.course === 'zh' ? '중국어' : '영어');
+const langName = () => (courseNow() === 'zh' ? '중국어' : '영어');
 
 function loadDrillMarks() {
   try { return JSON.parse(localStorage.getItem(DRILL_KEY) || '{}'); } catch { return {}; }
@@ -786,7 +798,7 @@ function renderDrill() {
   } else {
     sentence = '';
   }
-  const zh = me.course === 'zh';
+  const zh = courseNow() === 'zh';
   // 힌트: 영어는 첫 글자(f___ n___), 중국어는 빈칸 단어의 병음
   const hint = parts.filter((p) => p.blank).map((p) => (zh ? localPinyin(p.blank)
     : p.blank.split(/\s+/).map((w) => w[0] + '_'.repeat(Math.max(0, w.length - 1))).join(' '))).join(' · ');
@@ -915,8 +927,8 @@ function speak(text) {
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   // 중국어 과정은 휴대폰의 중국어 음성으로 조금 더 천천히
-  u.lang = me.course === 'zh' ? 'zh-CN' : 'en-US';
-  u.rate = me.course === 'zh' ? 0.8 : 0.9;
+  u.lang = courseNow() === 'zh' ? 'zh-CN' : 'en-US';
+  u.rate = courseNow() === 'zh' ? 0.8 : 0.9;
   speechSynthesis.speak(u);
 }
 

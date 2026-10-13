@@ -48,12 +48,14 @@
  * v0.29: 병음·뜻이 15~37초 걸려 실패 → settings의 gloss_model(가벼운 모델)을 생각 minimal로 쓴다.
  * v0.30 (29단계): 선생님 요약을 과정별로 — buildSummary_(course). 앱은 과정을 골라 보고, summary 탭은 과정마다 이어서 적는다.
  *                 중국어 과정 기간은 settings의 last_class_date_zh. 중국어 챕터 AI 정리 지시문 zh-insight-v1.
+ * v0.31 (30단계): 선생님은 모든 과정의 챕터를 받는다. 지시문·받아쓰기 언어·병음은 학생이 아니라 챕터의 과정을 따른다.
+ *                 요약은 대화를 챕터의 과정으로 나눈다 (선생님의 중국어 연습은 중국어 과정 요약에).
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.30';
+const SERVER_VERSION = 'v0.31';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -561,15 +563,23 @@ function courseOf_(row) {
   return String((row && row.course) || '').trim().toLowerCase() || 'en';
 }
 
-/** 그 과정의 공개된 챕터인지. 대화 시작·발음 코칭에서 다른 과정의 챕터를 막는 데 쓴다. */
-function chapterInCourse_(chapterId, course) {
-  return readTable_('chapters').some(function (c) {
-    return String(c.chapter_id) === chapterId && isTrue_(c.published) && courseOf_(c) === course;
-  });
+/** 이 사람이 그 과정의 챕터를 쓸 수 있는지. 학생은 자기 과정만, 선생님은 모든 과정 (30단계). */
+function canUseCourse_(student, course) {
+  return roleOf_(student) === 'teacher' || courseOf_(student) === course;
 }
 
-/** 그 과정에서 공개(published)된 챕터만 순서(order)대로. 학생 화면에 필요한 칸만 보낸다. */
-function listChapters_(course) {
+/**
+ * 이 사람이 쓸 수 있는 공개 챕터면 그 챕터 줄, 아니면 null. 대화 시작·발음 코칭에서 다른 과정의 챕터를 막는다.
+ * 기능(지시문·받아쓰기 언어·병음)은 학생의 과정이 아니라 챕터의 과정을 따른다 — 선생님이 두 과정을 모두 연습하므로.
+ */
+function usableChapter_(chapterId, student) {
+  return readTable_('chapters').filter(function (c) {
+    return String(c.chapter_id) === chapterId && isTrue_(c.published) && canUseCourse_(student, courseOf_(c));
+  })[0] || null;
+}
+
+/** 이 사람이 쓸 수 있는 공개(published) 챕터를 과정별·순서(order)대로. 학생 화면에 필요한 칸만 보낸다. */
+function listChapters_(student) {
   // 문장 연습: 챕터별로 active인 문장을 순서대로 붙인다 (drills 탭이 없으면 빈 목록)
   const drills = {};
   readTable_('drills')
@@ -582,11 +592,15 @@ function listChapters_(course) {
       });
     });
   return readTable_('chapters')
-    .filter(function (c) { return c.chapter_id && isTrue_(c.published) && courseOf_(c) === course; })
-    .sort(function (a, b) { return Number(a.order) - Number(b.order); })
+    .filter(function (c) { return c.chapter_id && isTrue_(c.published) && canUseCourse_(student, courseOf_(c)); })
+    .sort(function (a, b) {
+      return (courseOf_(a) === 'en' ? 0 : 1) - (courseOf_(b) === 'en' ? 0 : 1) ||
+        (courseOf_(a) < courseOf_(b) ? -1 : courseOf_(a) > courseOf_(b) ? 1 : 0) || Number(a.order) - Number(b.order);
+    })
     .map(function (c) {
       return {
         chapter_id: String(c.chapter_id),
+        course: courseOf_(c),
         order: Number(c.order),
         title: String(c.title || ''),
         goal: String(c.goal || ''),
@@ -620,7 +634,7 @@ function doPost(e) {
     if (body.action === 'chapters') {
       const auth = auth_(body.code);
       if (!auth.ok) return json_(auth);
-      return json_({ ok: true, server: SERVER_VERSION, chapters: listChapters_(courseOf_(auth.student)) });
+      return json_({ ok: true, server: SERVER_VERSION, chapters: listChapters_(auth.student) });
     }
     if (body.action === 'talk') {
       const result = startTalk_(body.code, String(body.chapter_id || ''));
@@ -737,7 +751,7 @@ function getSettings_() {
 function startTalk_(code, chapterId) {
   const auth = auth_(code);
   if (!auth.ok) return auth;
-  if (!chapterInCourse_(chapterId, courseOf_(auth.student))) return { ok: false, error: 'NO_CHAPTER' };
+  if (!usableChapter_(chapterId, auth.student)) return { ok: false, error: 'NO_CHAPTER' };
   const limit = checkDailyLimit_(auth.student);
   if (!limit.ok) return limit;
   const budget = checkBudget_();
@@ -1380,25 +1394,33 @@ function buildSummary_(course) {
   course = course || 'en';
   const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
   const period = summaryPeriod_(tz, course);
-  // 과정별로 따로 정리한다 (29단계): 이 과정의 학생·챕터·대화만. 비용도 이 과정 학생들의 대화만 (비활성 학생 포함).
+  // 과정별로 따로 정리한다 (29단계): 이 과정의 학생·챕터·대화만. 비용도 이 과정의 대화만 (비활성 학생 포함).
+  // 대화는 챕터의 과정으로 나눈다 (선생님이 다른 과정 챕터를 연습해도 그 과정에 들어가게). 챕터를 못 찾으면 학생의 과정.
   const allStudents = readTable_('students');
-  const inCourse = {};
-  allStudents.forEach(function (s) { if (courseOf_(s) === course) inCourse[String(s.student_id)] = true; });
+  const studentCourse = {};
+  allStudents.forEach(function (s) { studentCourse[String(s.student_id)] = courseOf_(s); });
+  const chapterCourse = {};
+  readTable_('chapters').forEach(function (c) { chapterCourse[String(c.chapter_id)] = courseOf_(c); });
+  const sessionCourse = function (s) { return chapterCourse[String(s.chapter_id)] || studentCourse[String(s.student_id)] || 'en'; };
+
+  // 기간 안의 모든 대화(비용 계산용)와, 그중 활성 학생의 대화(나머지 통계용)
+  const allInPeriod = readTable_('sessions').filter(function (s) {
+    if (!(s.started_at instanceof Date)) return false;
+    const day = Utilities.formatDate(s.started_at, tz, 'yyyy-MM-dd');
+    return day >= period.from && day <= period.to && sessionCourse(s) === course;
+  });
+  // 학생: 이 과정의 활성 학생 + 이 기간에 이 과정 챕터를 연습한 다른 활성 사람(예: 선생님)
+  const practiced = {};
+  allInPeriod.forEach(function (s) { practiced[String(s.student_id)] = true; });
   const students = allStudents.filter(function (s) {
-    return s.student_id && String(s.status).trim().toLowerCase() === 'active' && courseOf_(s) === course;
+    return s.student_id && String(s.status).trim().toLowerCase() === 'active' &&
+      (courseOf_(s) === course || practiced[String(s.student_id)]);
   });
   const nameOf = {};
   const avatarOf = {};
   students.forEach(function (s) {
     nameOf[String(s.student_id)] = String(s.display_name || s.student_id);
     avatarOf[String(s.student_id)] = String(s.avatar || '').trim();
-  });
-
-  // 기간 안의 모든 대화(비용 계산용)와, 그중 활성 학생의 대화(나머지 통계용)
-  const allInPeriod = readTable_('sessions').filter(function (s) {
-    if (!(s.started_at instanceof Date)) return false;
-    const day = Utilities.formatDate(s.started_at, tz, 'yyyy-MM-dd');
-    return day >= period.from && day <= period.to && inCourse[String(s.student_id)];
   });
   const sessions = allInPeriod.filter(function (s) { return nameOf[String(s.student_id)] !== undefined; });
   const inPeriod = {};
@@ -1734,12 +1756,14 @@ function gloss_(code, sessionId, text) {
   text = text.trim().slice(0, GLOSS_MAX_CHARS);
   if (!text) return { ok: false, error: 'NO_TEXT' };
 
-  const prompt = coursePrompt_('gloss', courseOf_(auth.student));
-  if (!prompt) return { ok: false, error: 'NO_PROMPT' };
-
   const session = readTable_('sessions').filter(function (s) { return String(s.session_id) === sessionId; })[0];
   if (!session) return { ok: false, error: 'NO_SESSION' };
   if (String(session.student_id) !== String(auth.student.student_id)) return { ok: false, error: 'NOT_YOURS' };
+
+  // 과정은 그 대화의 챕터를 따른다 (선생님이 중국어 챕터를 연습할 때도 중국어 지시문)
+  const chapter = readTable_('chapters').filter(function (c) { return String(c.chapter_id) === String(session.chapter_id); })[0];
+  const prompt = coursePrompt_('gloss', chapter ? courseOf_(chapter) : courseOf_(auth.student));
+  if (!prompt) return { ok: false, error: 'NO_PROMPT' };
 
   const cache = CacheService.getScriptCache();
   const n = Number(cache.get('gl_' + sessionId) || 0);
@@ -1797,7 +1821,8 @@ function pronounce_(code, drillId, level, audio) {
 
   const drill = readTable_('drills').filter(function (d) { return String(d.drill_id) === drillId && isTrue_(d.active); })[0];
   if (!drill) return { ok: false, error: 'NO_DRILL' };
-  if (!chapterInCourse_(String(drill.chapter_id), courseOf_(auth.student))) return { ok: false, error: 'NO_DRILL' };
+  const chapter = usableChapter_(String(drill.chapter_id), auth.student);
+  if (!chapter) return { ok: false, error: 'NO_DRILL' };
 
   const sid = String(auth.student.student_id);
   const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
@@ -1809,7 +1834,7 @@ function pronounce_(code, drillId, level, audio) {
   const budget = checkBudget_();
   if (!budget.ok) return budget;
 
-  const course = courseOf_(auth.student);
+  const course = courseOf_(chapter);
   const prompt = coursePrompt_('pron', course);
   if (!prompt) return { ok: false, error: 'NO_PROMPT' };
   const sentence = String(drill.sentence).replace(/\[([^\]]+)\]/g, '$1');
