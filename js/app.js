@@ -50,7 +50,8 @@ const ERROR_TEXT = {
   NOT_TEACHER: '선생님 코드로만 볼 수 있어요.',
   DAILY_PRON_LIMIT: '오늘 발음 코칭 횟수를 다 썼어요. "정답 보기"로 계속 연습할 수 있어요.',
   PRON_FAILED: '발음 확인에 실패했어요. 잠시 뒤 다시 해 주세요.',
-  BAD_AUDIO: '녹음이 제대로 되지 않았어요. 다시 해 주세요.'
+  BAD_AUDIO: '녹음이 제대로 되지 않았어요. 다시 해 주세요.',
+  NO_PROMPT: '이 과정에서는 아직 준비 중인 기능이에요.'
 };
 const LIMIT_TEXT = {
   daily: '오늘 사용 시간을 다 써서 대화를 마쳤어요.',
@@ -106,10 +107,11 @@ async function enter(code) {
   submit.textContent = '확인 중…';
   $('#login-msg').textContent = '';
   try {
-    const { name, role, avatar, server } = await login(code);
+    const { name, role, avatar, course, server } = await login(code);
     saveCode(code);
     me.name = name;
     me.avatar = avatar;
+    me.course = course;
     renderMe();
     $('#tab-teacher').hidden = role !== 'teacher';   // 화면에서만 숨긴다. 서버도 요청마다 역할을 확인한다.
     setVersion(server);
@@ -222,7 +224,7 @@ function addText(who, text) {
   if (!line) {
     line = document.createElement('div');
     line.className = `line ${who}`;
-    line.innerHTML = `<span class="who">${who === 'me' ? '나' : '환자'}</span>` +
+    line.innerHTML = `<span class="who">${who === 'me' ? '나' : partnerWord()}</span>` +
       (who === 'ai' ? '<span class="cover">눌러서 자막 보기</span>' : '') + '<span class="text"></span>';
     if (who === 'ai' && currentChapter.ai_captions === 'tap') {
       line.classList.add('covered');
@@ -269,10 +271,9 @@ async function beginTalk() {
 
   $('#talk-head').hidden = false;
   $('#talk-chapter').textContent = `${currentChapter.order}장 · ${currentChapter.title}`;
-  $('#talk-name').textContent = '수검자 준비 중…';
+  $('#talk-name').textContent = `${partnerTitle()} 준비 중…`;
   $('#talk-avatar').innerHTML = '';
-  $('#talk-dob').textContent = '–';
-  $('#talk-exam').textContent = '–';
+  $('#talk-meta').textContent = '–';
   $('#talk-time').textContent = '0:00';
   $('#talk-info').hidden = true;
   $('#transcript').innerHTML = '';
@@ -288,7 +289,7 @@ async function beginTalk() {
     setTalkStatus('마이크 준비 중…');
     await session.openMic();
     if (session.ended) return;   // 준비 중에 '끝내기'를 누른 경우
-    setTalkStatus('수검자를 부르는 중…');
+    setTalkStatus(`${partnerTitle()}를 부르는 중…`);
     const { token, model, patient, sessionId, scenarioId, server, limitSec, limitKind } = await startTalk(loadCode(), currentChapter.chapter_id);
     t.sessionId = sessionId;
     t.scenarioId = scenarioId || '';
@@ -299,8 +300,8 @@ async function beginTalk() {
     setVersion(server);
     $('#talk-name').textContent = patient.name;
     $('#talk-avatar').innerHTML = patientAvatar(patient.name, scenarioId);
-    $('#talk-dob').textContent = patient.dob;
-    $('#talk-exam').textContent = patient.exam;
+    // 영어: 생년월일 · 검사 / 중국어: 역할·장소 (생년월일 칸은 비어 있다)
+    $('#talk-meta').textContent = [patient.dob, patient.exam].filter(Boolean).join(' · ') || '–';
     setTalkStatus('연결 중…');
     session.connect(token, model);
   } catch (err) {
@@ -483,7 +484,10 @@ function initialsHtml(name, size = '') {
 /* 프로필 캐릭터: 그림 목록은 img/avatars/manifest.json (학생: s01…, 수검자: 시나리오 번호).
    그림이 없으면 머리글자 배지를 쓴다. */
 const avatars = { students: {}, patients: {} };
-const me = { name: '', avatar: '' };
+const me = { name: '', avatar: '', course: 'en' };
+// 대화 상대를 부르는 말: 영어 과정은 수검자(환자), 중국어 과정은 상대
+const partnerWord = () => (me.course === 'en' ? '환자' : '상대');
+const partnerTitle = () => (me.course === 'en' ? '수검자' : '상대');
 
 async function loadAvatars() {
   try {
@@ -632,7 +636,7 @@ function openRecord(e) {
   // 다시 보는 화면이므로 환자 말도 가리지 않고 모두 보여 준다.
   $('#record-lines').innerHTML = (e.lines || []).map((l) => `
     <div class="line ${l.who === 'me' ? 'me' : 'ai'}">
-      <span class="who">${l.who === 'me' ? '나' : '환자'}</span><span class="text">${escapeHtml(l.text)}</span>
+      <span class="who">${l.who === 'me' ? '나' : partnerWord()}</span><span class="text">${escapeHtml(l.text)}</span>
     </div>`).join('');
   show('record');
 }

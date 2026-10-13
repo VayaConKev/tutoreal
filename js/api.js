@@ -39,7 +39,7 @@ export async function getChapters(code) {
 
 export async function login(code) {
   const data = await postServer('login', { code });
-  return { name: data.name, role: data.role || 'student', avatar: data.avatar || '', server: data.server };
+  return { name: data.name, role: data.role || 'student', avatar: data.avatar || '', course: data.course || 'en', server: data.server };
 }
 
 export async function startTalk(code, chapterId) {
