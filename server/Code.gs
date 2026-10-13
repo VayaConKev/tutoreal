@@ -50,12 +50,14 @@
  *                 중국어 과정 기간은 settings의 last_class_date_zh. 중국어 챕터 AI 정리 지시문 zh-insight-v1.
  * v0.31 (30단계): 선생님은 모든 과정의 챕터를 받는다. 지시문·받아쓰기 언어·병음은 학생이 아니라 챕터의 과정을 따른다.
  *                 요약은 대화를 챕터의 과정으로 나눈다 (선생님의 중국어 연습은 중국어 과정 요약에).
+ * v0.32 (31단계): 속도 — 한 요청 안에서는 같은 탭을 한 번만 읽고(readTable_ 기억), 발음 코칭은 settings의 pron_model
+ *                 (빠른 모델, 생각 minimal)로 부른다. 요청마다 걸린 시간(시트 읽기·Gemini)을 실행 기록에 남긴다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.31';
+const SERVER_VERSION = 'v0.32';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -303,6 +305,7 @@ const SEED = {
     ['zh_lang_china', 'zh-CN', '중국어 과정 받아쓰기 언어 (중국 본토 시나리오)'],
     ['zh_lang_taiwan', 'zh-TW', '중국어 과정 받아쓰기 언어 (country가 Taiwan인 시나리오)'],
     ['gloss_model', 'gemini-3.5-flash-lite', '중국어 자막 도우미(병음·뜻)용 빠른 모델 (생각 minimal). 비우면 text_model'],
+    ['pron_model', 'gemini-3.5-flash-lite', '발음 코칭용 빠른 모델 (생각 minimal, 소리를 듣는 모델: gemini-3.5-flash-lite 또는 gemini-3.6-flash). 비우면 text_model (느림)'],
     ['last_class_date_zh', '', '중국어 과정의 최근 수업일 (요약 기간 시작). 비우면 last_class_date']
   ]
 };
@@ -394,6 +397,7 @@ function addChineseSample() {
       sheet.appendRow(headers.map(function (h) { return obj[h] === undefined ? '' : obj[h]; }));
       log.push('줄 추가 (' + tab + '): ' + obj[headers[0]]);
     });
+    forgetTable_(tab);
   };
   const ch = SCHEMA.chapters;
   append('chapters', ZH_SAMPLE.chapters.map(function (row) {
@@ -532,11 +536,30 @@ function checkApiKey() {
 
 /* ───────────────────────── 4단계: 챕터 목록 ───────────────────────── */
 
+// 한 번의 요청 안에서는 같은 탭을 한 번만 읽는다 (v0.32). 대화 시작 한 번에 settings를 3번, sessions를 2번 읽고 있었다.
+// Apps Script는 요청마다 이 값을 새로 만들므로 다음 요청은 시트를 다시 읽는다 (시트에서 고친 내용이 바로 반영됨).
+// 탭에 쓰는 곳은 forgetTable_()로 지워, 같은 요청 안에서 쓴 뒤에 읽어도 새 값을 읽게 한다.
+const TABLE_MEMO_ = {};
+// 걸린 시간 기록 (v0.32): 요청이 끝나면 doPost가 실행 기록에 '시트 읽기 몇 번·몇 초, Gemini 몇 초'를 남긴다.
+const TIMING_ = { reads: 0, readMs: 0, aiCalls: 0, aiMs: 0 };
+
+function forgetTable_(name) {
+  delete TABLE_MEMO_[name];
+}
+
 /** 시트 탭 하나를 [{칸이름: 값, ...}, ...] 형태로 읽는다. 칸 이름(1행)으로 찾으므로 칸 순서가 바뀌어도 괜찮다. */
 function readTable_(name) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
-  if (!sheet || sheet.getLastRow() < 2) return [];
-  const values = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).getValues();
+  if (!TABLE_MEMO_[name]) {
+    const started = Date.now();
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+    TABLE_MEMO_[name] = !sheet || sheet.getLastRow() < 2 ? []
+      : sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).getValues();
+    TIMING_.reads++;
+    TIMING_.readMs += Date.now() - started;
+  }
+  // 읽은 값은 그대로 두고 매번 새 객체를 만든다 (부르는 쪽이 객체를 고쳐도 다음 읽기에 섞이지 않게).
+  const values = TABLE_MEMO_[name];
+  if (values.length < 2) return [];
   const headers = values[0].map(function (h) { return String(h).trim(); });
   return values.slice(1)
     .filter(function (row) { return row.join('') !== ''; })
@@ -625,6 +648,27 @@ function doPost(e) {
   } catch (err) {
     return json_({ ok: false, error: 'BAD_REQUEST' });   // 본문에 코드가 있을 수 있으므로 로그에 남기지 않는다
   }
+  const started = Date.now();
+  const out = handlePost_(body);
+  logTiming_(body.action, started);
+  return out;
+}
+
+/**
+ * 요청 하나에 걸린 시간을 실행 기록(Apps Script 편집기 → 실행)에 한 줄로 남긴다 (v0.32).
+ * 예) [시간] pronounce 전체 4.1초 · 시트 읽기 6번 0.9초 · Gemini 1번 2.8초 · 나머지 0.4초
+ * 접속 코드나 대화 내용은 남기지 않는다.
+ */
+function logTiming_(action, started) {
+  const sec = function (ms) { return (ms / 1000).toFixed(1) + '초'; };
+  const total = Date.now() - started;
+  console.log('[시간] ' + String(action || '?').slice(0, 20) + ' 전체 ' + sec(total) +
+    ' · 시트 읽기 ' + TIMING_.reads + '번 ' + sec(TIMING_.readMs) +
+    ' · Gemini ' + TIMING_.aiCalls + '번 ' + sec(TIMING_.aiMs) +
+    ' · 나머지 ' + sec(Math.max(0, total - TIMING_.readMs - TIMING_.aiMs)));
+}
+
+function handlePost_(body) {
   try {
     if (body.action === 'login') {
       const result = login_(body.code);
@@ -855,6 +899,8 @@ function createLiveToken_(chapterId, maxSec, student) {
     }),
     muteHttpExceptions: true
   });
+  TIMING_.aiCalls++;
+  TIMING_.aiMs += Date.now() - now;
   if (res.getResponseCode() !== 200) {
     // 구글의 오류 설명만 남긴다 (키와 토큰은 남기지 않는다).
     console.error('토큰 발급 실패 (응답 코드 ' + res.getResponseCode() + '): ' + res.getContentText().slice(0, 800));
@@ -899,6 +945,7 @@ function appendRow_(name, obj) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function (h) { return String(h).trim(); });
   sheet.appendRow(headers.map(function (h) { return Object.prototype.hasOwnProperty.call(obj, h) ? obj[h] : ''; }));
+  forgetTable_(name);
 }
 
 /** 토큰을 줄 때 sessions 탭에 시작 기록을 남긴다. 대화 내용은 남기지 않는다. */
@@ -938,6 +985,7 @@ function endSession_(code, sessionId, durationSec, endReason, aiAudioSec) {
     const sec = Math.round(Math.max(0, Math.min(Number(durationSec) || 0, elapsed, LIVE_SESSION_MAX_MIN * 60)));
     sheet.getRange(i + 1, col('duration_sec') + 1).setValue(sec);
     sheet.getRange(i + 1, col('end_reason') + 1).setValue(END_REASONS.indexOf(endReason) >= 0 ? endReason : 'unknown');
+    forgetTable_('sessions');
     // 예상 비용: 학생 말은 대화 전체 시간, AI 말은 앱이 받은 소리 길이(대화 시간을 넘지 않게).
     const aiSec = Math.max(0, Math.min(Number(aiAudioSec) || 0, sec));
     addCost_(sessionId, liveCost_(sec, aiSec));
@@ -1136,7 +1184,10 @@ function callTextModel_(system, userText, schema, what, opts) {
   let res;
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt) Utilities.sleep(2000 * attempt);
+    const aiStarted = Date.now();
     res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent', request);
+    TIMING_.aiCalls++;
+    TIMING_.aiMs += Date.now() - aiStarted;
     if ([429, 500, 503].indexOf(res.getResponseCode()) < 0) break;
   }
   if (res.getResponseCode() !== 200) {
@@ -1211,6 +1262,7 @@ function share_(code, sessionId, confidence, difficulty, lines) {
     set('confidence', conf);
     set('difficulty_note', String(difficulty || '').trim().slice(0, 300));
     set('feedback', fb ? JSON.stringify(fb) : '');
+    forgetTable_('sessions');
 
     const now = new Date();
     cleanLines_(lines).forEach(function (l, i) {
@@ -1278,6 +1330,7 @@ function addCost_(sessionId, usd) {
       if (String(values[i][id]) !== sessionId) continue;
       const before = Number(values[i][c]) || 0;
       sheet.getRange(i + 1, c + 1).setValue(Math.round((before + usd) * 10000) / 10000);
+      forgetTable_('sessions');
       return;
     }
   } finally {
@@ -1593,6 +1646,7 @@ function writeSummary_(list) {
   sheet.getRange(2, 1, last, Math.max(sheet.getLastColumn(), width)).clearContent().setFontWeight('normal');
   const body = sheet.getRange(2, 1, grid.length, width);
   body.setNumberFormat('@').setHorizontalAlignment('left').setValues(grid);
+  forgetTable_('summary');
   bold.forEach(function (i) { sheet.getRange(i + 2, 1, 1, width).setFontWeight('bold'); });
   body.setWrap(true);   // 긴 문장(AI 정리 등)은 칸 안에서 줄바꿈
   SpreadsheetApp.flush();   // 다 적은 다음에 너비를 맞춰야 잘리지 않는다
@@ -1845,10 +1899,13 @@ function pronounce_(code, drillId, level, audio) {
     .replace(/\{pron\}/g, String(drill.pron || '').trim() || '(none)')
     .replace(/\{mode\}/g, (PRON_MODE[course] || PRON_MODE.en)[level === 'korean' ? 'korean' : 'blank']);
 
+  // 학생이 결과를 기다리므로 빠른 모델(settings의 pron_model)을 가장 짧은 생각(minimal)으로 쓴다 (v0.32).
+  // text_model(gemini-3.8-flash)은 생각을 low보다 줄일 수 없어 느리다. pron_model이 비어 있으면 전처럼 text_model.
+  const pronModel = String(getSettings_().pron_model || '').trim();
   const ai = callTextModel_(system, [
     { text: course === 'en' ? "Here is the nurse's audio." : "Here is the learner's audio." },
     { inlineData: { mimeType: 'audio/wav', data: audio } }
-  ], PRON_SCHEMA, '발음 코칭');
+  ], PRON_SCHEMA, '발음 코칭', pronModel ? { model: pronModel, thinkingLevel: 'minimal' } : null);
 
   const r = ai.ok ? ai.data : null;
   const overall = r && ['great', 'good', 'retry'].indexOf(r.overall) >= 0 ? r.overall : '';
@@ -1917,6 +1974,7 @@ function setAvatar_(code, avatar) {
   for (let i = 1; i < values.length; i++) {
     if (String(values[i][idCol]) === String(auth.student.student_id)) {
       sheet.getRange(i + 1, avCol + 1).setValue(avatar);
+      forgetTable_('students');
       return { ok: true, avatar: avatar };
     }
   }
