@@ -38,12 +38,14 @@
  * v0.24 (24단계): 중국어 대화 — 지시문을 과정별로 고른다 (coursePrompt_: 중국어는 zh-partner-…, zh-feedback-…).
  *                 중국어 챕터는 받아쓰기 언어를 중국어(본토/대만)+한국어로. setup()이 zh-partner-v1 지시문과
  *                 zh_lang_china / zh_lang_taiwan 설정을 추가한다. addChineseSample()이 예시 챕터·시나리오를 넣는다.
+ * v0.25 (25단계): 중국어 자막 도우미 — doPost(action=gloss)가 상대의 말 한 줄을 텍스트 모델로 보내
+ *                 교과서식 병음과 한국어 뜻을 받는다 (prompts 탭의 zh-gloss-v1). 비용은 그 대화에 더한다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.24';
+const SERVER_VERSION = 'v0.25';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -161,6 +163,17 @@ const ZH_PARTNER_PROMPT_V1 = [
   '- Be friendly and polite, like a busy shop owner meeting a new brand. Do not make promises (prices, orders) that are not in the scene. Stay in role.'
 ].join('\n');
 
+// 중국어 자막 도우미 지시문 (25단계): 상대가 한 말 한 줄 → 교과서식 병음 + 한국어 뜻.
+const ZH_GLOSS_PROMPT_V1 = [
+  'You help a Korean beginner learning Mandarin Chinese (about HSK 2).',
+  'You get one line spoken by a Chinese shop owner in a speaking practice. It comes from speech recognition and may be in simplified or traditional characters.',
+  'Return:',
+  '- pinyin: Hanyu Pinyin of the whole line with tone marks, in textbook style. Group syllables into words (for example "Nín hǎo, qǐngwèn nín shì……?"), capitalize the first letter of each sentence and of names, and keep the punctuation.',
+  '  Use neutral tones where natural speech has them (for example xiānsheng, máfan, yìsi, wǒmen) and the tone changes of 一 and 不 (for example yíxià, búyòng). Keep non-Chinese words (like brand names) as they are.',
+  '- ko: the meaning in natural, simple Korean. If the line contains "你可以说：" with a suggested sentence, write that part as "이렇게 말해 보세요: " followed by the Korean meaning of the suggested sentence.',
+  'Do not add explanations.'
+].join('\n');
+
 const SEED = {
   chapters: [
     ['ch01', 1, '호명과 본인 확인', '수검자를 호명해 창구로 부르고 이름과 생년월일로 본인 확인하기',
@@ -185,7 +198,8 @@ const SEED = {
     ['feedback-v2', FEEDBACK_PROMPT_V2, true],
     ['insight-v1', INSIGHT_PROMPT_V1, true],
     ['pron-v1', PRON_PROMPT_V1, true],
-    ['zh-partner-v1', ZH_PARTNER_PROMPT_V1, true]
+    ['zh-partner-v1', ZH_PARTNER_PROMPT_V1, true],
+    ['zh-gloss-v1', ZH_GLOSS_PROMPT_V1, true]
   ],
   // 문장 연습 초안 (Claude 작성) — 간호 현장에 맞는지 Kevin이 검토해 시트에서 고친다.
   drills: [
@@ -513,6 +527,9 @@ function doPost(e) {
     }
     if (body.action === 'pronounce') {
       return json_(pronounce_(body.code, String(body.drill_id || ''), body.level === 'korean' ? 'korean' : 'blank', String(body.audio || '')));
+    }
+    if (body.action === 'gloss') {
+      return json_(gloss_(body.code, String(body.session_id || ''), String(body.text || '')));
     }
     if (body.action === 'set_avatar') {
       return json_(setAvatar_(body.code, String(body.avatar || '')));
@@ -1504,6 +1521,46 @@ function teacherSummary_(code, refresh) {
 
 
 /* ───────────────────────── 21단계: 발음 코칭 ───────────────────────── */
+
+/* ───────────────────────── 25단계: 중국어 자막의 병음과 한국어 뜻 ───────────────────────── */
+
+const GLOSS_MAX_PER_SESSION = 80;   // 한 대화에서 병음·뜻을 받을 수 있는 줄 수
+const GLOSS_MAX_CHARS = 300;        // 한 줄 최대 글자 수
+const GLOSS_SCHEMA = {
+  type: 'OBJECT',
+  properties: { pinyin: { type: 'STRING' }, ko: { type: 'STRING' } },
+  required: ['pinyin', 'ko']
+};
+
+/**
+ * 대화 중 상대(AI)가 한 말 한 줄의 병음과 한국어 뜻. 지시문은 과정별(zh-gloss-…)이라 영어 과정은 NO_PROMPT.
+ * 글자는 이 요청에만 쓰고 저장하지 않는다. 비용은 그 대화(sessions 탭)에 더해 월 예산에 들어간다.
+ */
+function gloss_(code, sessionId, text) {
+  const auth = auth_(code);
+  if (!auth.ok) return auth;
+  text = text.trim().slice(0, GLOSS_MAX_CHARS);
+  if (!text) return { ok: false, error: 'NO_TEXT' };
+
+  const prompt = coursePrompt_('gloss', courseOf_(auth.student));
+  if (!prompt) return { ok: false, error: 'NO_PROMPT' };
+
+  const session = readTable_('sessions').filter(function (s) { return String(s.session_id) === sessionId; })[0];
+  if (!session) return { ok: false, error: 'NO_SESSION' };
+  if (String(session.student_id) !== String(auth.student.student_id)) return { ok: false, error: 'NOT_YOURS' };
+
+  const cache = CacheService.getScriptCache();
+  const n = Number(cache.get('gl_' + sessionId) || 0);
+  if (n >= GLOSS_MAX_PER_SESSION) return { ok: false, error: 'GLOSS_LIMIT' };
+  cache.put('gl_' + sessionId, String(n + 1), FEEDBACK_CACHE_SEC);
+  const budget = checkBudget_();
+  if (!budget.ok) return budget;
+
+  const ai = callTextModel_(String(prompt.text), text, GLOSS_SCHEMA, '병음·뜻');
+  if (ai.cost) addCost_(sessionId, ai.cost);
+  if (!ai.ok) return { ok: false, error: 'GLOSS_FAILED' };
+  return { ok: true, pinyin: String(ai.data.pinyin || '').trim(), ko: String(ai.data.ko || '').trim() };
+}
 
 const PRON_SCHEMA = {
   type: 'OBJECT',

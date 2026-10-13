@@ -73,6 +73,12 @@ export async function checkPronunciation(code, drillId, level, audio) {
   return data.coach;
 }
 
+// 중국어 과정: 상대가 한 말 한 줄의 교과서식 병음과 한국어 뜻. 대화 중에 줄마다 부른다.
+export async function getGloss(code, sessionId, text) {
+  const data = await postServer('gloss', { code, session_id: sessionId, text }, 30000);
+  return { pinyin: data.pinyin || '', ko: data.ko || '' };
+}
+
 // 내가 고른 캐릭터 번호(예: s07)를 저장한다. 빈 값이면 머리글자로 돌아간다.
 export async function setAvatar(code, avatar) {
   await postServer('set_avatar', { code, avatar });

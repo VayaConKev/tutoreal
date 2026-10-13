@@ -1,6 +1,6 @@
 // 화면 전환과 전체 흐름을 담당한다.
 import { APP_VERSION } from './config.js';
-import { getChapters, login, startTalk, endTalk, getFeedback, shareTalk, getSummary, checkPronunciation, setAvatar } from './api.js';
+import { getChapters, login, startTalk, endTalk, getFeedback, shareTalk, getSummary, checkPronunciation, setAvatar, getGloss } from './api.js';
 import { LiveSession } from './live.js';
 import { Recorder } from './recorder.js';
 
@@ -112,6 +112,7 @@ async function enter(code) {
     me.name = name;
     me.avatar = avatar;
     me.course = course;
+    if (course === 'zh') loadPinyin();
     renderMe();
     $('#tab-teacher').hidden = role !== 'teacher';   // 화면에서만 숨긴다. 서버도 요청마다 역할을 확인한다.
     setVersion(server);
@@ -214,8 +215,10 @@ function startClock(t) {
 }
 
 /* 받아쓰기·자막: 말이 글자로 조금씩 도착하면 지금 말하는 사람의 말풍선에 이어 붙인다.
-   환자 차례가 끝나면 두 말풍선을 닫아, 다음 말은 새 말풍선에 쓴다. 글자는 화면에만 있고 저장하지 않는다. */
-const transcript = { me: null, ai: null, lines: [] };   // lines: [{ who, text }] — 대화 후 화면에서 쓴다
+   환자 차례가 끝나면 두 말풍선을 닫아, 다음 말은 새 말풍선에 쓴다. 글자는 화면에만 있고 저장하지 않는다.
+   중국어 과정: 한자 아래에 병음을 바로 보여 주고(휴대폰에서 변환), 상대의 말이 끝나면 서버에서
+   교과서식 병음과 한국어 뜻을 받아 바꿔 넣는다. 뜻은 '뜻 보기'를 눌러야 보인다. */
+const transcript = { me: null, ai: null, lines: [] };   // lines: [{ who, text, py?, ko? }] — 대화 후 화면에서 쓴다
 
 function addText(who, text) {
   if (who === 'ai' && currentChapter.ai_captions === 'off') return;
@@ -225,7 +228,9 @@ function addText(who, text) {
     line = document.createElement('div');
     line.className = `line ${who}`;
     line.innerHTML = `<span class="who">${who === 'me' ? '나' : partnerWord()}</span>` +
-      (who === 'ai' ? '<span class="cover">눌러서 자막 보기</span>' : '') + '<span class="text"></span>';
+      (who === 'ai' ? '<span class="cover">눌러서 자막 보기</span>' : '') + '<span class="text"></span>' +
+      (me.course === 'zh' ? '<span class="py"></span>' : '') +
+      (me.course === 'zh' && who === 'ai' ? '<button class="ko-btn" hidden>뜻 보기</button><span class="ko" hidden></span>' : '');
     if (who === 'ai' && currentChapter.ai_captions === 'tap') {
       line.classList.add('covered');
       line.addEventListener('click', () => line.classList.remove('covered'), { once: true });
@@ -238,11 +243,59 @@ function addText(who, text) {
   }
   line.querySelector('.text').textContent += text;
   line.entry.text += text;
+  if (me.course === 'zh') line.querySelector('.py').textContent = localPinyin(line.entry.text);
 }
 
 function endTurn() {
+  const ai = transcript.ai;
   transcript.me = null;
   transcript.ai = null;
+  if (ai && me.course === 'zh') glossLine(ai);
+}
+
+/** 상대의 말 한 줄: 서버에서 병음·뜻을 받아 넣고 '뜻 보기' 버튼을 보여 준다. 실패하면 휴대폰 병음을 그대로 둔다. */
+function glossLine(line) {
+  const t = talk;
+  const e = line.entry;
+  if (!t || !t.sessionId || !e.text.trim()) return;
+  const btn = line.querySelector('.ko-btn');
+  const ko = line.querySelector('.ko');
+  const showKo = () => { ko.textContent = e.ko || (e.koFailed ? '뜻을 불러오지 못했어요.' : '뜻을 불러오는 중…'); };
+  btn.hidden = false;
+  btn.addEventListener('click', (ev) => { ev.stopPropagation(); btn.hidden = true; ko.hidden = false; showKo(); });
+  getGloss(loadCode(), t.sessionId, e.text)
+    .then((g) => {
+      e.py = g.pinyin;
+      e.ko = g.ko;
+      if (g.pinyin) line.querySelector('.py').textContent = g.pinyin;
+    })
+    .catch((err) => { console.warn('병음·뜻 실패', err); e.koFailed = true; })
+    .finally(showKo);
+}
+
+/* 병음 변환 (pinyin-pro, js/vendor). 중국어 과정 학생에게만 불러온다. 불러오기 전에는 빈칸. */
+let pinyinLoading = false;
+function loadPinyin() {
+  if (window.pinyinPro || pinyinLoading) return;
+  pinyinLoading = true;
+  const el = document.createElement('script');
+  el.src = 'js/vendor/pinyin-pro.js';
+  el.onerror = () => { pinyinLoading = false; };
+  document.head.append(el);
+}
+
+/** 한자 → 병음 (한 글자씩, 성조 표시). 한자가 없으면 빈칸. 영어 낱말은 붙여서 그대로 둔다. */
+function localPinyin(text) {
+  const pp = window.pinyinPro;
+  if (!pp || !/[\u3400-\u9fff]/.test(text)) return '';
+  const out = [];
+  let plain = false;   // 직전이 한자가 아닌 글자(영어 등)였는지
+  pp.pinyin(text, { type: 'all' }).forEach((x) => {
+    if (x.isZh) { out.push(x.pinyin); plain = false; } else if (/\s/.test(x.origin)) plain = false;
+    else if (plain) out[out.length - 1] += x.origin;
+    else { out.push(x.origin); plain = true; }
+  });
+  return out.join(' ').replace(/ ([，。！？、：；…,.!?:;）)」])/g, '$1');
 }
 
 /** 사용 시간 기록을 서버에 보낸다. 한 대화에 한 번만. */
@@ -637,6 +690,8 @@ function openRecord(e) {
   $('#record-lines').innerHTML = (e.lines || []).map((l) => `
     <div class="line ${l.who === 'me' ? 'me' : 'ai'}">
       <span class="who">${l.who === 'me' ? '나' : partnerWord()}</span><span class="text">${escapeHtml(l.text)}</span>
+      ${me.course === 'zh' && (l.py || localPinyin(l.text)) ? `<span class="py">${escapeHtml(l.py || localPinyin(l.text))}</span>` : ''}
+      ${l.ko ? `<span class="ko">${escapeHtml(l.ko)}</span>` : ''}
     </div>`).join('');
   show('record');
 }
