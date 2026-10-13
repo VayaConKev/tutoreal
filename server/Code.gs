@@ -45,12 +45,13 @@
  *                 addChineseSample()이 챕터 ①~④의 문장 연습(단어 → 짧은 문장)도 추가한다.
  * v0.28 (28단계): 학생 소개 — students 탭 profile 칸. 대화 상대 지시문과 피드백 지시문에 붙여, 힌트와 예문이
  *                 학생의 실제 정보로 문장을 만들게 한다 (지어내지 않게). 비어 있으면 지금과 같다.
+ * v0.29: 병음·뜻이 15~37초 걸려 실패 → settings의 gloss_model(가벼운 모델)을 생각 minimal로 쓴다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.28';
+const SERVER_VERSION = 'v0.29';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -284,7 +285,8 @@ const SEED = {
     ['cost_safety_factor', 1.5, '예상 비용에 곱하는 여유 배수 (지시문·받아쓰기 글자 등 문서에 없는 비용 대비)'],
     ['daily_pron_limit', 50, '학생 1명당 하루 발음 코칭 횟수 상한'],
     ['zh_lang_china', 'zh-CN', '중국어 과정 받아쓰기 언어 (중국 본토 시나리오)'],
-    ['zh_lang_taiwan', 'zh-TW', '중국어 과정 받아쓰기 언어 (country가 Taiwan인 시나리오)']
+    ['zh_lang_taiwan', 'zh-TW', '중국어 과정 받아쓰기 언어 (country가 Taiwan인 시나리오)'],
+    ['gloss_model', 'gemini-3.5-flash-lite', '중국어 자막 도우미(병음·뜻)용 빠른 모델 (생각 minimal). 비우면 text_model']
   ]
 };
 
@@ -1077,8 +1079,10 @@ function makeFeedback_(chapter, scenario, lines, student) {
  * 모델이 붐비면(503) 또는 잠시 요청이 많으면(429, 500) 2초, 4초 기다렸다 최대 2번 더 시도한다.
  * 결과: { ok, data(JSON), cost(달러) } 또는 { ok: false, error, cost }
  */
-function callTextModel_(system, userText, schema, what) {
-  const model = String(getSettings_().text_model || '').trim().replace(/^models\//, '');
+function callTextModel_(system, userText, schema, what, opts) {
+  opts = opts || {};
+  // opts.model: 이 요청만 다른 모델 (예: 병음·뜻은 가벼운 모델), opts.thinkingLevel: 생각 단계 (기본 low)
+  const model = String(opts.model || getSettings_().text_model || '').trim().replace(/^models\//, '');
   if (!model) return { ok: false, error: 'NO_TEXT_MODEL' };
   const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!key) return { ok: false, error: 'NO_API_KEY' };
@@ -1094,7 +1098,7 @@ function callTextModel_(system, userText, schema, what) {
       generationConfig: {
         responseMimeType: 'application/json',
         responseSchema: schema,
-        thinkingConfig: { thinkingLevel: 'low' },   // 빠르고 저렴하게
+        thinkingConfig: { thinkingLevel: opts.thinkingLevel || 'low' },   // 빠르고 저렴하게
         maxOutputTokens: 4096
       }
     }),
@@ -1684,7 +1688,11 @@ function gloss_(code, sessionId, text) {
   const budget = checkBudget_();
   if (!budget.ok) return budget;
 
-  const ai = callTextModel_(String(prompt.text), text, GLOSS_SCHEMA, '병음·뜻');
+  // 대화 중에 바로 보여야 하므로 가벼운 모델(settings의 gloss_model)을 가장 짧은 생각(minimal)으로 쓴다.
+  // text_model(gemini-3.8-flash)은 minimal이 없어 한 줄에 15~37초가 걸렸다 (2026-10-13 실행 기록).
+  const glossModel = String(getSettings_().gloss_model || '').trim();
+  const ai = callTextModel_(String(prompt.text), text, GLOSS_SCHEMA, '병음·뜻',
+    glossModel ? { model: glossModel, thinkingLevel: 'minimal' } : null);
   if (ai.cost) addCost_(sessionId, ai.cost);
   if (!ai.ok) return { ok: false, error: 'GLOSS_FAILED' };
   return { ok: true, pinyin: String(ai.data.pinyin || '').trim(), ko: String(ai.data.ko || '').trim() };

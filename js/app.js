@@ -261,7 +261,7 @@ function glossLine(line) {
   if (!t || !t.sessionId || !e.text.trim()) return;
   const btn = line.querySelector('.ko-btn');
   const ko = line.querySelector('.ko');
-  const showKo = () => { ko.textContent = e.ko || (e.koFailed ? '뜻을 불러오지 못했어요.' : '뜻을 불러오는 중…'); };
+  const showKo = () => { ko.textContent = e.ko || (e.koFailed ? `뜻을 불러오지 못했어요. (${e.koFailed})` : '뜻을 불러오는 중…'); };
   btn.hidden = false;
   btn.addEventListener('click', (ev) => { ev.stopPropagation(); btn.hidden = true; ko.hidden = false; showKo(); });
   getGloss(loadCode(), t.sessionId, e.text)
@@ -270,7 +270,7 @@ function glossLine(line) {
       e.ko = g.ko;
       if (g.pinyin) line.querySelector('.py').textContent = g.pinyin;
     })
-    .catch((err) => { console.warn('병음·뜻 실패', err); e.koFailed = true; })
+    .catch((err) => { console.warn('병음·뜻 실패', err); e.koFailed = err.message || 'ERROR'; })
     .finally(showKo);
 }
 
