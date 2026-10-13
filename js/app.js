@@ -925,6 +925,7 @@ function speak(text) {
 // openStudent() 아래에 '공유된 대화' 목록을 붙인다 (모양은 내 기록 보기와 같게).
 
 let teacherData = null;
+let teacherCourse = '';   // 선생님 요약에서 보고 있는 과정 (en/zh). 비우면 서버가 정한다
 
 const chapterLabel = (c) => `${c.order}장 ${c.title}`;
 const confText = (v) => (v === null || v === undefined ? '–' : v);
@@ -941,7 +942,8 @@ async function openTeacher(refresh = false) {
     show('teacher');
   }
   try {
-    teacherData = await getSummary(loadCode(), refresh);
+    teacherData = await getSummary(loadCode(), refresh, teacherCourse);
+    teacherCourse = teacherData.course || '';
     renderTeacher();
   } catch (err) {
     console.warn(err);
@@ -956,7 +958,11 @@ async function openTeacher(refresh = false) {
 function renderTeacher() {
   const s = teacherData;
   $('#teacher-period').textContent = `${s.period.label} · ${s.generated_at} 기준`;
+  // 과정이 둘 이상이면 위에 과정 고르기 (영어 / 중국어)
+  const courses = s.courses || [];
   $('#teacher-body').innerHTML = `
+    ${courses.length > 1 ? `<div class="levels" role="group" aria-label="과정">${courses.map((c) => `
+      <button class="level${c.course === s.course ? ' on' : ''}" data-course="${escapeHtml(c.course)}">${escapeHtml(c.label)} 과정</button>`).join('')}</div>` : ''}
     <div class="card t-card">
       <div class="tiles">
         <span><span class="tile-n">${s.totals.students}</span><span class="tile-l">연습한 학생</span></span>
@@ -981,6 +987,11 @@ function renderTeacher() {
           <span class="t-meta">${c.students}명 · ${c.count}회</span>
         </button>`).join('')}
     </div>`;
+  document.querySelectorAll('#teacher-body [data-course]').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.course === teacherCourse) return;
+    teacherCourse = b.dataset.course;
+    openTeacher(false);
+  }));
   document.querySelectorAll('[data-student]').forEach((b) => b.addEventListener('click', () => openStudent(b.dataset.student)));
   document.querySelectorAll('[data-chapter]').forEach((b) => b.addEventListener('click', () => openTChapter(b.dataset.chapter)));
 }

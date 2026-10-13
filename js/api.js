@@ -62,8 +62,9 @@ export async function shareTalk(code, sessionId, confidence, difficulty, lines) 
 }
 
 // 선생님 요약 (선생님 코드만). refresh면 AI 정리를 새로 만들고 시트 summary 탭도 새로 쓴다 — 오래 걸릴 수 있다.
-export async function getSummary(code, refresh = false) {
-  const data = await postServer('summary', { code, refresh }, refresh ? 180000 : 30000);
+// course: 볼 과정 (en/zh). 비우면 선생님 자신의 과정. 새로 정리하기는 모든 과정의 summary 탭을 다시 쓴다.
+export async function getSummary(code, refresh = false, course = '') {
+  const data = await postServer('summary', { code, refresh, course }, refresh ? 180000 : 30000);
   return data.summary;
 }
 

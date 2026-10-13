@@ -46,12 +46,14 @@
  * v0.28 (28단계): 학생 소개 — students 탭 profile 칸. 대화 상대 지시문과 피드백 지시문에 붙여, 힌트와 예문이
  *                 학생의 실제 정보로 문장을 만들게 한다 (지어내지 않게). 비어 있으면 지금과 같다.
  * v0.29: 병음·뜻이 15~37초 걸려 실패 → settings의 gloss_model(가벼운 모델)을 생각 minimal로 쓴다.
+ * v0.30 (29단계): 선생님 요약을 과정별로 — buildSummary_(course). 앱은 과정을 골라 보고, summary 탭은 과정마다 이어서 적는다.
+ *                 중국어 과정 기간은 settings의 last_class_date_zh. 중국어 챕터 AI 정리 지시문 zh-insight-v1.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.29';
+const SERVER_VERSION = 'v0.30';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -223,6 +225,17 @@ const ZH_PRON_PROMPT_V1 = [
   'Only report a tone error when you clearly hear it. Be honest but encouraging. Do not invent problems. If the audio is silent or not speech, overall is "retry" and say so in message.'
 ].join('\n');
 
+// 중국어 과정 챕터별 AI 정리 지시문 (29단계). {chapter} {goal} {keywords} 는 서버가 채운다.
+const ZH_INSIGHT_PROMPT_V1 = [
+  'You help a teacher prepare a Mandarin Chinese speaking class for a Korean fashion brand owner (beginner, about HSK 2).',
+  'Below are feedback items from practice conversations in one lesson. Each item shows what the learner said in Chinese, a better sentence, and why.',
+  'Lesson: {chapter}. Goal (Korean): {goal}. Key expressions: {keywords}.',
+  'Group similar mistakes and write:',
+  '- common_mistakes: up to 5, most frequent first. "point" = the mistake pattern in Korean (one short line), "example" = one real learner sentence from the items, "better" = the better Chinese sentence, "count" = how many items show this pattern.',
+  '- teaching_points: 2-3 short points in Korean the teacher can use in class. You may use the missed key expressions and the difficulties the learner wrote.',
+  'Use only the given items. Do not invent mistakes or facts.'
+].join('\n');
+
 const SEED = {
   chapters: [
     ['ch01', 1, '호명과 본인 확인', '수검자를 호명해 창구로 부르고 이름과 생년월일로 본인 확인하기',
@@ -250,7 +263,8 @@ const SEED = {
     ['zh-partner-v1', ZH_PARTNER_PROMPT_V1, true],
     ['zh-gloss-v1', ZH_GLOSS_PROMPT_V1, true],
     ['zh-feedback-v1', ZH_FEEDBACK_PROMPT_V1, true],
-    ['zh-pron-v1', ZH_PRON_PROMPT_V1, true]
+    ['zh-pron-v1', ZH_PRON_PROMPT_V1, true],
+    ['zh-insight-v1', ZH_INSIGHT_PROMPT_V1, true]
   ],
   // 문장 연습 초안 (Claude 작성) — 간호 현장에 맞는지 Kevin이 검토해 시트에서 고친다.
   drills: [
@@ -286,7 +300,8 @@ const SEED = {
     ['daily_pron_limit', 50, '학생 1명당 하루 발음 코칭 횟수 상한'],
     ['zh_lang_china', 'zh-CN', '중국어 과정 받아쓰기 언어 (중국 본토 시나리오)'],
     ['zh_lang_taiwan', 'zh-TW', '중국어 과정 받아쓰기 언어 (country가 Taiwan인 시나리오)'],
-    ['gloss_model', 'gemini-3.5-flash-lite', '중국어 자막 도우미(병음·뜻)용 빠른 모델 (생각 minimal). 비우면 text_model']
+    ['gloss_model', 'gemini-3.5-flash-lite', '중국어 자막 도우미(병음·뜻)용 빠른 모델 (생각 minimal). 비우면 text_model'],
+    ['last_class_date_zh', '', '중국어 과정의 최근 수업일 (요약 기간 시작). 비우면 last_class_date']
   ]
 };
 
@@ -619,7 +634,7 @@ function doPost(e) {
       return json_(share_(body.code, String(body.session_id || ''), body.confidence, body.difficulty, body.lines));
     }
     if (body.action === 'summary') {
-      const result = teacherSummary_(body.code, body.refresh === true);
+      const result = teacherSummary_(body.code, body.refresh === true, String(body.course || ''));
       result.server = SERVER_VERSION;
       return json_(result);
     }
@@ -1311,20 +1326,25 @@ function onOpen() {
 
 /** 메뉴에서 실행: 요약을 계산하고 챕터별 AI 정리를 붙여 summary 탭에 적는다. */
 function refreshSummary() {
-  const summary = buildSummary_();
-  updateInsights_(summary);
-  writeSummary_(summary);
-  SpreadsheetApp.getActiveSpreadsheet().toast('요약을 새로 만들었어요 (' + summary.period.label + ')', 'Tutoreal');
+  const all = buildAllSummaries_();
+  all.forEach(updateInsights_);
+  writeSummary_(all);
+  SpreadsheetApp.getActiveSpreadsheet().toast('요약을 새로 만들었어요 (' + all.map(function (sm) {
+    return (all.length > 1 ? sm.course_label + ' ' : '') + sm.period.label; }).join(', ') + ')', 'Tutoreal');
 }
 
 /**
  * 요약 기간: settings의 last_class_date(지난 수업일)부터 오늘까지. 비어 있으면 최근 7일(오늘 포함).
  * 날짜는 시트의 시간대 기준 'yyyy-MM-dd' 글자로 비교한다.
  */
-function summaryPeriod_(tz) {
+function summaryPeriod_(tz, course) {
   const fmt = function (d) { return Utilities.formatDate(d, tz, 'yyyy-MM-dd'); };
   const today = fmt(new Date());
-  const v = getSettings_().last_class_date;
+  // 과정마다 수업일이 다르다: 영어 외 과정은 last_class_date_<과정>(예: last_class_date_zh)이 있으면 그것을 쓴다.
+  const settings = getSettings_();
+  const own = course && course !== 'en' ? settings['last_class_date_' + course] : '';
+  const hasOwn = own instanceof Date || String(own || '').trim() !== '';
+  const v = hasOwn ? own : settings.last_class_date;
   let from = '';
   if (v instanceof Date) from = fmt(v);
   else if (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '').trim())) from = String(v).trim();
@@ -1333,14 +1353,40 @@ function summaryPeriod_(tz) {
   return { from: from, to: today, label: from + ' ~ ' + today + ' (최근 7일)' };
 }
 
+// 과정 이름 (선생님 요약·summary 탭에 쓴다)
+const COURSE_LABEL = { en: '영어', zh: '중국어' };
+
+/** 요약할 과정 목록: 활성 학생이 있거나 공개 챕터가 있는 과정. 영어가 먼저. */
+function summaryCourses_() {
+  const set = {};
+  readTable_('students').forEach(function (s) {
+    if (s.student_id && String(s.status).trim().toLowerCase() === 'active') set[courseOf_(s)] = true;
+  });
+  readTable_('chapters').forEach(function (c) { if (c.chapter_id && isTrue_(c.published)) set[courseOf_(c)] = true; });
+  return Object.keys(set).sort(function (a, b) { return (a === 'en' ? 0 : 1) - (b === 'en' ? 0 : 1) || (a < b ? -1 : 1); });
+}
+
+/** 모든 과정의 요약을 만든다 (summary 탭과 '새로 정리하기'용). */
+function buildAllSummaries_() {
+  const list = summaryCourses_();
+  return (list.length ? list : ['en']).map(function (c) { return buildSummary_(c); });
+}
+
 /**
  * 기간 안의 기록을 정리한다. 앱의 선생님 화면(19단계)도 이 결과를 그대로 쓴다.
  * 횟수·시간은 모든 대화로, 자기 평가·핵심 단어·어려웠던 점은 '공유하기'를 고른 대화로만 계산한다.
  */
-function buildSummary_() {
+function buildSummary_(course) {
+  course = course || 'en';
   const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
-  const period = summaryPeriod_(tz);
-  const students = readTable_('students').filter(function (s) { return s.student_id && String(s.status).trim().toLowerCase() === 'active'; });
+  const period = summaryPeriod_(tz, course);
+  // 과정별로 따로 정리한다 (29단계): 이 과정의 학생·챕터·대화만. 비용도 이 과정 학생들의 대화만 (비활성 학생 포함).
+  const allStudents = readTable_('students');
+  const inCourse = {};
+  allStudents.forEach(function (s) { if (courseOf_(s) === course) inCourse[String(s.student_id)] = true; });
+  const students = allStudents.filter(function (s) {
+    return s.student_id && String(s.status).trim().toLowerCase() === 'active' && courseOf_(s) === course;
+  });
   const nameOf = {};
   const avatarOf = {};
   students.forEach(function (s) {
@@ -1352,7 +1398,7 @@ function buildSummary_() {
   const allInPeriod = readTable_('sessions').filter(function (s) {
     if (!(s.started_at instanceof Date)) return false;
     const day = Utilities.formatDate(s.started_at, tz, 'yyyy-MM-dd');
-    return day >= period.from && day <= period.to;
+    return day >= period.from && day <= period.to && inCourse[String(s.student_id)];
   });
   const sessions = allInPeriod.filter(function (s) { return nameOf[String(s.student_id)] !== undefined; });
   const inPeriod = {};
@@ -1363,7 +1409,7 @@ function buildSummary_() {
   const used = {};
   sessions.forEach(function (s) { used[String(s.chapter_id)] = true; });
   const chapters = chapterRows
-    .filter(function (c) { return c.chapter_id && (isTrue_(c.published) || used[String(c.chapter_id)]); })
+    .filter(function (c) { return c.chapter_id && courseOf_(c) === course && (isTrue_(c.published) || used[String(c.chapter_id)]); })
     .sort(function (a, b) { return Number(a.order) - Number(b.order); })
     .map(function (c) {
       return {
@@ -1431,6 +1477,9 @@ function buildSummary_() {
   });
 
   return {
+    course: course,
+    course_label: COURSE_LABEL[course] || course,
+    courses: summaryCourses_().map(function (c) { return { course: c, label: COURSE_LABEL[c] || c }; }),
     period: period,
     generated_at: Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm'),
     totals: {
@@ -1447,67 +1496,72 @@ function buildSummary_() {
 }
 
 /** 요약을 summary 탭에 적는다. 1행(item, value)은 그대로 두고 2행부터 새로 쓴다. */
-function writeSummary_(sm) {
+function writeSummary_(list) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('summary');
   const rows = [];
   const bold = [];
+  list = Array.isArray(list) ? list : [list];
   const title = function (text) { bold.push(rows.length); rows.push([text]); };
   const blank = function () { rows.push(['']); };
   const pct = function (k) { return k.total ? Math.round(k.used / k.total * 100) + '% (' + k.used + '/' + k.total + ')' : '–'; };
   const label = function (c) { return c.order + '장 ' + c.title; };
 
-  title('Tutoreal 요약');
-  rows.push(['기간', sm.period.label]);
-  rows.push(['만든 시각', sm.generated_at]);
-  blank();
-
-  title('전체');
-  rows.push(['연습한 학생', sm.totals.students]);
-  rows.push(['연습 횟수', sm.totals.count]);
-  rows.push(['연습 시간(분)', sm.totals.minutes]);
-  rows.push(['예상 비용(USD, 비활성 학생 포함)', sm.totals.cost_usd]);
-  blank();
-
-  title('학생 × 챕터 (횟수 / 분)');
-  bold.push(rows.length);
-  rows.push(['학생'].concat(sm.chapters.map(label), ['합계']));
-  sm.studentStats.forEach(function (st) {
-    const cells = sm.chapters.map(function (c) {
-      const cell = sm.matrix[st.student_id][c.chapter_id];
-      return cell ? cell.count + '회 ' + Math.round(cell.sec / 60) + '분' : '–';
-    });
-    rows.push([st.name].concat(cells, [st.count ? st.count + '회 ' + st.minutes + '분' : '–']));
-  });
-  blank();
-
-  title('챕터별 (자기 평가·핵심 단어·어려웠던 점은 공유된 대화 기준)');
-  sm.chapterStats.forEach(function (c) {
-    bold.push(rows.length);
-    rows.push([label(c)]);
-    rows.push(['연습', '학생 ' + c.students + '명 · ' + c.count + '회 · ' + c.minutes + '분']);
-    rows.push(['공유된 대화', c.shared ? c.shared + '개' : '공유된 대화가 없어요']);
-    if (c.shared) {
-      rows.push(['자기 평가 평균 (1~3)', c.confidence === null ? '–' : c.confidence]);
-      c.keywords.forEach(function (k) { rows.push(['핵심 단어: ' + k.keyword, pct(k)]); });
-      c.difficulties.forEach(function (d) { rows.push(['어려웠던 점 (' + d.student + ')', d.text]); });
-      if (c.insightError) rows.push(['AI 정리', '만들지 못했어요 — ' + c.insightError]);
-      if (c.insight) {
-        rows.push(['AI 정리', '공유된 대화 ' + c.insight.shared + '개 기준 · ' + c.insight.at]);
-        c.insight.common_mistakes.forEach(function (m, i) {
-          rows.push(['자주 틀린 표현 ' + (i + 1), m.point + ' (' + m.count + '회)']);
-          rows.push(['', '예: ' + m.example + '  →  ' + m.better]);
-        });
-        c.insight.teaching_points.forEach(function (p, i) { rows.push([i ? '' : '수업 포인트', p]); });
-      }
-    }
+  // 과정이 여러 개면 과정마다 같은 순서로 이어서 적는다 (영어 과정 → 중국어 과정)
+  list.forEach(function (sm, n) {
+    if (n) { blank(); blank(); }
+    title(list.length > 1 ? 'Tutoreal 요약 — ' + sm.course_label + ' 과정' : 'Tutoreal 요약');
+    rows.push(['기간', sm.period.label]);
+    rows.push(['만든 시각', sm.generated_at]);
     blank();
-  });
 
-  title('학생별');
-  bold.push(rows.length);
-  rows.push(['학생', '연습 횟수', '연습 시간(분)', '주로 연습한 챕터', '자기 평가 평균', '공유한 대화']);
-  sm.studentStats.forEach(function (st) {
-    rows.push([st.name, st.count, st.minutes, st.chapters.join(', ') || '–', st.confidence === null ? '–' : st.confidence, st.shared]);
+    title('전체');
+    rows.push(['연습한 학생', sm.totals.students]);
+    rows.push(['연습 횟수', sm.totals.count]);
+    rows.push(['연습 시간(분)', sm.totals.minutes]);
+    rows.push(['예상 비용(USD, 이 과정, 비활성 학생 포함)', sm.totals.cost_usd]);
+    blank();
+
+    title('학생 × 챕터 (횟수 / 분)');
+    bold.push(rows.length);
+    rows.push(['학생'].concat(sm.chapters.map(label), ['합계']));
+    sm.studentStats.forEach(function (st) {
+      const cells = sm.chapters.map(function (c) {
+        const cell = sm.matrix[st.student_id][c.chapter_id];
+        return cell ? cell.count + '회 ' + Math.round(cell.sec / 60) + '분' : '–';
+      });
+      rows.push([st.name].concat(cells, [st.count ? st.count + '회 ' + st.minutes + '분' : '–']));
+    });
+    blank();
+
+    title('챕터별 (자기 평가·핵심 단어·어려웠던 점은 공유된 대화 기준)');
+    sm.chapterStats.forEach(function (c) {
+      bold.push(rows.length);
+      rows.push([label(c)]);
+      rows.push(['연습', '학생 ' + c.students + '명 · ' + c.count + '회 · ' + c.minutes + '분']);
+      rows.push(['공유된 대화', c.shared ? c.shared + '개' : '공유된 대화가 없어요']);
+      if (c.shared) {
+        rows.push(['자기 평가 평균 (1~3)', c.confidence === null ? '–' : c.confidence]);
+        c.keywords.forEach(function (k) { rows.push(['핵심 단어: ' + k.keyword, pct(k)]); });
+        c.difficulties.forEach(function (d) { rows.push(['어려웠던 점 (' + d.student + ')', d.text]); });
+        if (c.insightError) rows.push(['AI 정리', '만들지 못했어요 — ' + c.insightError]);
+        if (c.insight) {
+          rows.push(['AI 정리', '공유된 대화 ' + c.insight.shared + '개 기준 · ' + c.insight.at]);
+          c.insight.common_mistakes.forEach(function (m, i) {
+            rows.push(['자주 틀린 표현 ' + (i + 1), m.point + ' (' + m.count + '회)']);
+            rows.push(['', '예: ' + m.example + '  →  ' + m.better]);
+          });
+          c.insight.teaching_points.forEach(function (p, i) { rows.push([i ? '' : '수업 포인트', p]); });
+        }
+      }
+      blank();
+    });
+
+    title('학생별');
+    bold.push(rows.length);
+    rows.push(['학생', '연습 횟수', '연습 시간(분)', '주로 연습한 챕터', '자기 평가 평균', '공유한 대화']);
+    sm.studentStats.forEach(function (st) {
+      rows.push([st.name, st.count, st.minutes, st.chapters.join(', ') || '–', st.confidence === null ? '–' : st.confidence, st.shared]);
+    });
   });
 
   // 모두 글자로 적는다: 날짜·숫자로 바뀌어 정렬이 섞이지 않게
@@ -1604,7 +1658,7 @@ function makeInsight_(chapter, stat, sessions) {
   const notes = stat.difficulties.map(function (d) { return d.text; });
   const userText = 'Feedback items:\n' + items.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n') +
     (missed.length ? '\n\nKey expressions often missed: ' + missed.join(', ') : '') +
-    (notes.length ? '\n\nDifficulties written by nurses (Korean): ' + notes.join(' / ') : '');
+    (notes.length ? '\n\nDifficulties written by ' + (courseOf_(chapter) === 'en' ? 'nurses' : 'the learner') + ' (Korean): ' + notes.join(' / ') : '');
 
   const system = String(prompt.text)
     .replace(/\{chapter\}/g, stat.order + '. ' + stat.title)
@@ -1639,16 +1693,22 @@ function roleOf_(student) {
  * 선생님에게만 요약을 준다 (시트 summary 탭과 같은 계산). refresh면 AI 정리를 갱신하고 summary 탭도 새로 쓴다.
  * 학생 상세 화면을 늘릴 때는 학생 한 명의 공유 기록을 주는 요청을 따로 추가한다 (이 응답을 무겁게 만들지 않도록).
  */
-function teacherSummary_(code, refresh) {
+function teacherSummary_(code, refresh, course) {
   const auth = auth_(code);
   if (!auth.ok) return auth;
   if (roleOf_(auth.student) !== 'teacher') return { ok: false, error: 'NOT_TEACHER' };
-  const summary = buildSummary_();
+  // 과정을 고르지 않았거나 없는 과정이면 선생님 자신의 과정 (없으면 첫 과정)
+  const courses = summaryCourses_();
+  course = String(course || '').trim().toLowerCase();
+  if (courses.indexOf(course) < 0) course = courses.indexOf(courseOf_(auth.student)) >= 0 ? courseOf_(auth.student) : (courses[0] || 'en');
   if (refresh) {
-    updateInsights_(summary);
-    writeSummary_(summary);
+    // summary 탭은 모든 과정을 한 번에 다시 쓴다
+    const all = buildAllSummaries_();
+    all.forEach(updateInsights_);
+    writeSummary_(all);
+    return { ok: true, summary: all.filter(function (sm) { return sm.course === course; })[0] || all[0] };
   }
-  return { ok: true, summary: summary };
+  return { ok: true, summary: buildSummary_(course) };
 }
 
 
