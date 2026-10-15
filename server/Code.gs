@@ -54,17 +54,20 @@
  *                 (빠른 모델, 생각 minimal)로 부른다. 요청마다 걸린 시간(시트 읽기·Gemini)을 실행 기록에 남긴다.
  * v0.33 (32단계): 대화 후 화면 순서 변경 — 공유할 때 학생이 고른 '어려웠던 부분'을 sessions 탭 hard_lines 칸에 저장한다
  *                 (transcripts 탭의 seq 번호). setup()이 칸을 추가한다.
+ * v0.34 (33단계): 안내 체크리스트 — chapters 탭 checklist 칸(한 줄에 하나, '(선택)'은 가끔만 하는 안내, '한국어 | English').
+ *                 챕터 목록에 함께 보내고, 피드백이 항목마다 했는지(done)를 판단한다. 칸이 빈 챕터는 그대로.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.33';
+const SERVER_VERSION = 'v0.34';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
   // course: 과정 (en 영어, zh 중국어). 빈칸은 en. 학생은 자기 과정의 챕터만 받는다.
-  chapters:       ['chapter_id', 'order', 'title', 'goal', 'keywords', 'scene', 'published', 'ai_captions', 'course'],
+  // checklist: 이 챕터에서 꼭 해야 할 안내 (한 줄에 하나, '(선택)'으로 시작하면 가끔만 하는 안내). 비우면 체크리스트 없음.
+  chapters:       ['chapter_id', 'order', 'title', 'goal', 'keywords', 'scene', 'published', 'ai_captions', 'course', 'checklist'],
   scenarios:      ['scenario_id', 'chapter_id', 'name', 'sex', 'dob', 'country', 'exam', 'twist', 'level', 'active'],
   prompts:        ['prompt_id', 'text', 'active'],
   // profile: 학생 소개 (이름·회사·하는 일 등 사실). AI 상대의 힌트와 피드백 예문이 이 사실로 문장을 만든다. 시트에만 둔다.
@@ -633,9 +636,33 @@ function listChapters_(student) {
         goal: String(c.goal || ''),
         keywords: String(c.keywords || '').split(',').map(function (k) { return k.trim(); }).filter(Boolean),
         ai_captions: captionMode_(c.ai_captions),
+        checklist: checklistOf_(c),
         drills: drills[String(c.chapter_id)] || []
       };
     });
+}
+
+
+/**
+ * 챕터의 안내 체크리스트 (33단계). 시트 칸 하나에 한 줄에 하나씩 적는다. 앞의 번호·글머리표(1. 1) - •)는 떼고,
+ * '(선택)'으로 시작하면 가끔만 하는 안내(optional: 안 해도 빠뜨린 것으로 세지 않음). 최대 20개, 한 줄 200자.
+ * '한국어 | English'처럼 | 뒤에 따라 읽을 문장을 적으면 en으로 따로 둔다 (화면에서 한국어 아래에 보이고, 피드백의 판단 기준이 된다).
+ * 영어를 따로 두는 것은 나중에 난이도(Beginner 등)에 따라 숨기거나 보이기 위해서다.
+ * 결과: [{ text, en, optional }]
+ */
+function checklistOf_(chapter) {
+  return String((chapter && chapter.checklist) || '').split(/\r?\n/)
+    .map(function (line) { return line.trim().replace(/^(\d+\s*[.)]|[-•])\s*/, '').trim(); })
+    .filter(Boolean)
+    .slice(0, 20)
+    .map(function (line) {
+      const bar = line.indexOf('|');
+      const ko = (bar >= 0 ? line.slice(0, bar) : line).trim();
+      const en = bar >= 0 ? line.slice(bar + 1).trim().slice(0, 200) : '';
+      const optional = /^\(선택\)/.test(ko);
+      return { text: (optional ? ko.replace(/^\(선택\)\s*/, '') : ko).slice(0, 200), en: en, optional: optional };
+    })
+    .filter(function (item) { return item.text; });
 }
 
 
@@ -786,6 +813,23 @@ function withLearner_(text, student) {
   if (text.indexOf('{learner}') >= 0) return text.replace(/\{learner\}/g, profile || '(none)');
   if (!profile) return text;
   return text + '\nAbout the learner (true facts; use them in hints and example sentences, and never invent other facts about the learner): ' + profile;
+}
+
+/**
+ * 안내 체크리스트가 있는 챕터는 피드백 지시문 끝에 항목 목록과 판단 방법을 붙인다 (33단계).
+ * 지시문(prompts 탭)은 그대로 두고 체크리스트가 있을 때만 붙이므로 다른 챕터의 피드백은 바뀌지 않는다.
+ */
+function withChecklist_(text, checklist) {
+  if (!checklist.length) return text;
+  return text + '\n' + [
+    'Guidance checklist (written in Korean): the steps the learner should do in this lesson.',
+    checklist.map(function (item, i) {
+      return (i + 1) + '. ' + (item.optional ? '(optional) ' : '') + item.text + (item.en ? ' (model sentence: ' + item.en + ')' : '');
+    }).join('\n'),
+    'For "checklist", return every item number "n" with "done": true if the learner clearly gave that guidance or asked that question',
+    '(any wording, at any point, even with small grammar mistakes; it does not need to match the model sentence), otherwise false. Judge only the learner\'s lines.',
+    'If the learner said only part of an item (for example "lie down" without "on your left side"), it is false.'
+  ].join('\n');
 }
 
 /** settings 탭을 {key: value} 로 읽는다. */
@@ -1124,15 +1168,29 @@ function makeFeedback_(chapter, scenario, lines, student) {
     .replace(/\{name\}/g, String(scenario.name || ''))
     .replace(/\{dob\}/g, formatDob_(scenario.dob))
     .replace(/\{exam\}/g, String(scenario.exam || ''));
-  const systemFull = withLearner_(system, student);
+  const checklist = checklistOf_(chapter);
+  const systemFull = withChecklist_(withLearner_(system, student), checklist);
   const who = zh ? ['Learner: ', 'Partner: '] : ['Nurse: ', 'Patient: '];
   const transcript = 'Transcript:\n' + lines.map(function (l) { return (l.who === 'me' ? who[0] : who[1]) + l.text; }).join('\n');
 
-  const ai = callTextModel_(systemFull, transcript, zh ? ZH_FEEDBACK_SCHEMA : FEEDBACK_SCHEMA, '피드백');
+  let schema = zh ? ZH_FEEDBACK_SCHEMA : FEEDBACK_SCHEMA;
+  if (checklist.length) {
+    // 체크리스트가 있는 챕터만 결과에 checklist를 더 받는다 (없는 챕터는 지금과 같은 요청)
+    schema = JSON.parse(JSON.stringify(schema));
+    schema.properties.checklist = {
+      type: 'ARRAY',
+      items: { type: 'OBJECT', properties: { n: { type: 'INTEGER' }, done: { type: 'BOOLEAN' } }, required: ['n', 'done'] }
+    };
+    schema.required.push('checklist');
+  }
+  const ai = callTextModel_(systemFull, transcript, schema, '피드백');
   if (!ai.ok) return { ok: false, error: ai.error === 'AI_FAILED' ? 'FEEDBACK_FAILED' : ai.error, cost: ai.cost };
   const fb = ai.data;
   const cost = ai.cost;
 
+  // 체크리스트는 시트의 순서 그대로, AI가 빠뜨린 항목은 '안 함'으로 맞춘다.
+  const doneByNo = {};
+  (fb.checklist || []).forEach(function (c) { doneByNo[Number(c.n)] = c.done === true; });
   // 핵심 단어는 챕터의 목록 순서 그대로, 빠진 단어는 '안 씀'으로 맞춘다.
   const used = {};
   (fb.keywords || []).forEach(function (k) { used[String(k.keyword).trim().toLowerCase()] = k.used === true; });
@@ -1148,6 +1206,10 @@ function makeFeedback_(chapter, scenario, lines, student) {
         return out;
       }),
       keywords: keywords.map(function (k) { return { keyword: k, used: used[k.toLowerCase()] === true }; }),
+      // 안내 체크리스트 (체크리스트가 있는 챕터만). 앱과 내 기록이 그대로 그린다.
+      checklist: checklist.map(function (item, i) {
+        return { item: item.text, en: item.en, optional: item.optional, done: doneByNo[i + 1] === true };
+      }),
       // 앱과 내 기록은 연습 문장을 en 칸으로 읽는다 (중국어 과정에서도 같은 칸에 중국어 문장, py에 병음).
       next_practice: (fb.next_practice || []).slice(0, 2).map(function (n) {
         return zh ? { en: String(n.zh || ''), py: String(n.py || ''), ko: String(n.ko || '') }

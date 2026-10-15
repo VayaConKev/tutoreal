@@ -171,6 +171,13 @@ function openChapter(id) {
   $('#detail-title').textContent = c.title;
   $('#detail-goal').innerHTML = goalHtml(c.goal);
   $('#detail-keywords').innerHTML = c.keywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join('');
+  // 안내 체크리스트 (시트의 checklist 칸이 있는 챕터만): 대화 전에 미리 보고 공부한다 (33단계)
+  // 한국어 아래에 따라 읽을 영어(en, 시트에서 '한국어 | English'). 지금은 모두 Beginner라 항상 보인다.
+  const list = c.checklist || [];
+  $('#detail-checklist-box').hidden = !list.length;
+  $('#detail-checklist').innerHTML = list.map((item) => `<li>
+    <span class="ck-ko">${escapeHtml(item.text)}${item.optional ? ' <span class="opt-tag">선택</span>' : ''}</span>
+    ${item.en ? `<span class="ck-en" lang="en">${escapeHtml(item.en)}</span>` : ''}</li>`).join('');
   currentChapter = c;
   const n = (c.drills || []).length;
   $('#drill-open').hidden = !n;
@@ -436,10 +443,26 @@ function loadFeedback(data) {
   return data.feedbackJob;
 }
 
+/** 안내 체크리스트 결과 (33단계): 했음 ✓ / 빠짐 ✗ / 선택 항목을 안 함 –. 숫자는 선택이 아닌 항목만 센다. */
+function checklistHtml(list) {
+  if (!list || !list.length) return '';
+  const required = list.filter((c) => !c.optional);
+  const STATE = { done: ['✓', '했어요'], miss: ['✗', '빠졌어요'], opt: ['–', ''] };   // 선택 항목은 글 옆의 '선택' 표시로 충분
+  return `<p class="fb-title">안내 체크리스트 ${required.filter((c) => c.done).length} / ${required.length}</p>
+    <ul class="fb-check">${list.map((c) => {
+      const state = c.done ? 'done' : c.optional ? 'opt' : 'miss';
+      return `<li class="${state}"><span class="mark" aria-hidden="true">${STATE[state][0]}</span>
+        <span class="txt">${escapeHtml(c.item)}${c.optional ? ' <span class="opt-tag">선택</span>' : ''}
+          ${c.en ? `<span class="ck-en" lang="en">${escapeHtml(c.en)}</span>` : ''}</span>
+        <span class="chk-state">${STATE[state][1]}</span></li>`;
+    }).join('')}</ul>`;
+}
+
 function feedbackHtml(fb) {
   const used = fb.keywords.filter((k) => k.used).length;
   return `
     <p class="fb-summary">${escapeHtml(fb.summary)}</p>
+    ${checklistHtml(fb.checklist)}
     ${fb.strengths.length ? `<p class="fb-title">잘한 점</p>
       <ul class="fb-list">${fb.strengths.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>` : ''}
     ${fb.fixes.length ? `<p class="fb-title">더 좋은 표현</p>

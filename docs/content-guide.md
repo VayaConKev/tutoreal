@@ -30,7 +30,7 @@ Tutoreal의 교과서 내용은 **모두 구글 시트(Tutoreal DB)에만** 있�
 
 ## 3. chapters 탭
 
-칸 순서: `chapter_id` `order` `title` `goal` `keywords` `scene` `published` `ai_captions` `course`
+칸 순서: `chapter_id` `order` `title` `goal` `keywords` `scene` `published` `ai_captions` `course` `checklist`
 
 | 칸 | 뜻 | 영어 과정 | 중국어 과정 |
 | --- | --- | --- | --- |
@@ -43,6 +43,14 @@ Tutoreal의 교과서 내용은 **모두 구글 시트(Tutoreal DB)에만** 있�
 | published | 학생에게 보일지 | TRUE / FALSE | TRUE / FALSE |
 | ai_captions | AI 말 자막: `tap`(눌러서 보기) / `show`(항상) / `off`(없음) | 보통 `tap` | 초보라 `show` |
 | course | 과정 | `en` 또는 빈칸 | `zh` |
+| checklist | 꼭 해야 할 안내 (**한 칸 안에 한 줄에 하나**). `한국어 \| 따라 읽을 문장`. 가끔만 하는 안내는 앞에 `(선택)`. 챕터 화면에 미리 보이고, 피드백이 항목마다 했는지(✓/✗) 확인한다. 없으면 비움 | `저를 바라보면서 왼쪽으로 누워주세요. \| Please lie down on your left side, facing me.` | `원단 성분 묻기 \| 这个面料是什么成分？` |
+
+**checklist 쓰는 법**
+- 대화에서 꼭 해야 할 안내나 질문을 순서대로, 한 줄에 하나씩. 앞의 번호(`1.` `1)` `-`)는 있어도 없어도 된다. 최대 20개.
+- `|` 뒤에 따라 읽을 문장(영어 과정은 영어, 중국어 과정은 중국어)을 적으면 한국어 아래에 보이고, 피드백 판단의 모범 문장으로도 쓰인다. `|`가 없으면 한국어만 보인다.
+- 한 칸 안에서 줄을 바꾸려면 ⌘+Enter. 여러 줄을 한 번에 넣을 때는 칸을 두 번 눌러 편집 상태로 만든 뒤 붙여 넣는다.
+- AI는 같은 뜻이면 표현이 달라도 '했음'으로, 일부만 말하면 '안 함'으로 본다. 순서는 보지 않는다. 받아쓰기 탓에 가끔 틀릴 수 있다.
+- 체크리스트를 쓰는 챕터는 scene에서 상대(AI)가 짧게 대답하도록 하면 안내 연습에 집중하기 좋다 (예: "Reply in 1 to 4 words, like 'OK.', 'Like this?', 'Sorry?'").
 
 **scene 쓰는 법**
 - AI 입장에서 쓴다: "You are …", "The learner …".
