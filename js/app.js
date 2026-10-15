@@ -44,6 +44,7 @@ const ERROR_TEXT = {
   TOKEN_FAILED: '음성 연결 준비에 실패했어요. 잠시 뒤 다시 해 주세요.',
   FEEDBACK_FAILED: '피드백을 만들지 못했어요.',
   FEEDBACK_LIMIT: '이 대화의 피드백을 여러 번 실패했어요. 다음 대화에서 다시 받아 보세요.',
+  FEEDBACK_BUSY: '피드백을 아직 만드는 중이에요. 잠시 뒤 다시 시도해 주세요.',
   DAILY_CONNECT_LIMIT: '오늘 대화 횟수를 다 썼어요. 내일 다시 만나요.',
   DAILY_TIME_LIMIT: '오늘 사용 시간을 다 썼어요. 내일 다시 만나요.',
   MONTHLY_BUDGET: '이번 달 사용할 수 있는 시간을 모두 썼어요. 선생님께 알려 주세요.',
@@ -425,9 +426,16 @@ function openReview() {
 /* 4/4 피드백: 대화 글자를 서버로 보내 AI 피드백을 받는다 (저장은 하지 않는다). 숨겨진 4단계 칸에 미리 그려 둔다. */
 function loadFeedback(data) {
   const box = $('#feedback');
-  box.innerHTML = '<p class="state">피드백을 만드는 중… 곧 끝나요.</p>';
+  // 기다리는 동안 걸린 시간을 보여 준다 (v0.39). 붐빌 때는 1분을 넘기기도 한다.
+  const started = Date.now();
+  box.innerHTML = '<p class="state">피드백을 만드는 중… <span id="fb-elapsed"></span><br>1분 안팎 걸릴 수 있어요.</p>';
+  const tick = setInterval(() => {
+    const el = $('#fb-elapsed');
+    if (el && review.data === data) el.textContent = `(${Math.round((Date.now() - started) / 1000)}초)`;
+  }, 1000);
   const lines = data.lines.map((l) => ({ who: l.who, text: l.text }));
   data.feedbackJob = getFeedback(loadCode(), data.sessionId, lines)
+    .finally(() => clearInterval(tick))
     .then((fb) => {
       data.feedback = fb;
       if (review.data === data) box.innerHTML = feedbackHtml(fb);

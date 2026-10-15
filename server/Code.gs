@@ -58,12 +58,14 @@
  *                 챕터 목록에 함께 보내고, 피드백이 항목마다 했는지(done)를 판단한다. 칸이 빈 챕터는 그대로.
  * v0.35 (34단계): 체크리스트 항목 앞의 (남성)·(여성) — 그 성별의 상대(시나리오 sex 칸)에게만 하는 안내.
  *                 피드백은 맞는 항목만 판단하고 보여 준다 (예: 전립선 비대증 질문은 남성 수검자에게만).
+ * v0.36 (35단계): 피드백 안정화 — 답의 최대 길이 8192, 45초 뒤에는 다시 시도하지 않음, 같은 대화의 피드백을 만드는 중이면
+ *                 새로 만들지 않고 기다림. quality 탭에 진단 기록 (시작·완료·실패, 걸린 시간, 멈춘 이유, 토큰 수).
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.35';
+const SERVER_VERSION = 'v0.36';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -315,7 +317,8 @@ const SEED = {
     ['zh_lang_taiwan', 'zh-TW', '중국어 과정 받아쓰기 언어 (country가 Taiwan인 시나리오)'],
     ['gloss_model', 'gemini-3.5-flash-lite', '중국어 자막 도우미(병음·뜻)용 빠른 모델 (생각 minimal). 비우면 text_model'],
     ['pron_model', 'gemini-3.5-flash-lite', '발음 코칭용 빠른 모델 (생각 minimal, 소리를 듣는 모델: gemini-3.5-flash-lite 또는 gemini-3.6-flash). 비우면 text_model (느림)'],
-    ['last_class_date_zh', '', '중국어 과정의 최근 수업일 (요약 기간 시작). 비우면 last_class_date']
+    ['last_class_date_zh', '', '중국어 과정의 최근 수업일 (요약 기간 시작). 비우면 last_class_date'],
+    ['diag_log', true, '피드백 진단 기록을 quality 탭에 남김 (TRUE 켜짐 / FALSE 꺼짐, 비우면 켜짐). 대화 내용·이름은 남기지 않음']
   ]
 };
 
@@ -1128,6 +1131,8 @@ ZH_FEEDBACK_SCHEMA.properties.next_practice.items = {
 
 const FEEDBACK_CACHE_SEC = 6 * 3600;   // 같은 대화의 피드백은 6시간 동안 다시 만들지 않고 그대로 준다
 const FEEDBACK_MAX_TRIES = 3;          // 실패해도 한 대화에 3번까지만 시도
+const FEEDBACK_WAIT_MS = 100000;       // 같은 대화의 피드백을 다른 요청이 만드는 중이면 그 결과를 이만큼 기다린다 (v0.36)
+const FEEDBACK_RUNNING_SEC = 360;      // '만드는 중' 표시가 남는 최대 시간 (Apps Script 한 번 실행의 최대 6분)
 
 /**
  * 대화 글자를 받아 피드백을 만든다. 글자는 피드백을 만드는 데만 쓰고 시트에 저장하지 않는다.
@@ -1144,19 +1149,59 @@ function feedback_(code, sessionId, lines) {
   const cache = CacheService.getScriptCache();
   const cached = cache.get('fb_' + sessionId);
   if (cached) return { ok: true, feedback: JSON.parse(cached) };
-  const tries = Number(cache.get('fbn_' + sessionId) || 0);
-  if (tries >= FEEDBACK_MAX_TRIES) return { ok: false, error: 'FEEDBACK_LIMIT' };
-  cache.put('fbn_' + sessionId, String(tries + 1), FEEDBACK_CACHE_SEC);
+  // 같은 대화의 피드백을 다른 요청이 이미 만드는 중이면 (앱이 기다리다 포기한 뒤 '다시 시도' 등)
+  // 새로 만들지 않고 그 결과를 기다린다. AI에 같은 일이 겹겹이 쌓이지 않게 (v0.36)
+  if (!claimFeedback_(cache, sessionId)) return waitFeedback_(cache, sessionId);
+  try {
+    const tries = Number(cache.get('fbn_' + sessionId) || 0);
+    if (tries >= FEEDBACK_MAX_TRIES) return { ok: false, error: 'FEEDBACK_LIMIT' };
+    cache.put('fbn_' + sessionId, String(tries + 1), FEEDBACK_CACHE_SEC);
 
-  const chapter = readTable_('chapters').filter(function (c) { return String(c.chapter_id) === String(session.chapter_id); })[0];
-  const scenario = readTable_('scenarios').filter(function (s) { return String(s.scenario_id) === String(session.scenario_id); })[0];
-  if (!chapter || !scenario) return { ok: false, error: 'NO_CHAPTER' };
+    const chapter = readTable_('chapters').filter(function (c) { return String(c.chapter_id) === String(session.chapter_id); })[0];
+    const scenario = readTable_('scenarios').filter(function (s) { return String(s.scenario_id) === String(session.scenario_id); })[0];
+    if (!chapter || !scenario) return { ok: false, error: 'NO_CHAPTER' };
 
-  const result = makeFeedback_(chapter, scenario, cleanLines_(lines), auth.student);
-  if (result.cost) addCost_(sessionId, result.cost);
-  delete result.cost;
-  if (result.ok) cache.put('fb_' + sessionId, JSON.stringify(result.feedback), FEEDBACK_CACHE_SEC);
-  return result;
+    const clean = cleanLines_(lines);
+    // 진단 기록: AI에 보내기 직전 (이 줄만 있고 '완료·실패' 줄이 없으면 AI를 기다리다 6분 한도에 걸린 것)
+    diag_(sessionId, 'feedback', '시작 · ' + String(getSettings_().text_model || '') + ' · 대화 ' + clean.length + '줄 · ' + (tries + 1) + '번째');
+    const result = makeFeedback_(chapter, scenario, clean, auth.student);
+    diag_(sessionId, 'feedback', (result.ok ? '완료 · ' : '실패 · ' + (result.error || '') + ' · ') + metaNote_(result.meta));
+    if (result.cost) addCost_(sessionId, result.cost);
+    delete result.cost;
+    delete result.meta;
+    if (result.ok) cache.put('fb_' + sessionId, JSON.stringify(result.feedback), FEEDBACK_CACHE_SEC);
+    return result;
+  } finally {
+    cache.remove('fbr_' + sessionId);
+  }
+}
+
+/** 이 대화의 피드백을 만들 차례를 잡는다. 다른 요청이 이미 만드는 중이면 false. 두 요청이 동시에 와도 하나만 잡는다. */
+function claimFeedback_(cache, sessionId) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(5000);
+  try {
+    if (cache.get('fbr_' + sessionId)) return false;
+    cache.put('fbr_' + sessionId, String(Date.now()), FEEDBACK_RUNNING_SEC);
+    return true;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** 다른 요청이 만드는 피드백을 2초마다 확인하며 기다린다. 만들던 요청이 실패로 끝나면 바로 알린다. */
+function waitFeedback_(cache, sessionId) {
+  const started = Date.now();
+  while (Date.now() - started < FEEDBACK_WAIT_MS) {
+    Utilities.sleep(2000);
+    const done = cache.get('fb_' + sessionId);
+    if (done) {
+      diag_(sessionId, 'feedback', '다른 요청이 만든 결과를 받음 · ' + Math.round((Date.now() - started) / 1000) + '초 기다림');
+      return { ok: true, feedback: JSON.parse(done) };
+    }
+    if (!cache.get('fbr_' + sessionId)) return { ok: false, error: 'FEEDBACK_FAILED' };   // 만들던 요청이 실패로 끝남
+  }
+  return { ok: false, error: 'FEEDBACK_BUSY' };
 }
 
 /** 앱이 보낸 대화 글자를 정리한다: 최대 80줄, 한 줄 400자. hard: 학생이 '어려웠던 부분'으로 고른 줄 (공유 때만 쓴다). */
@@ -1199,8 +1244,9 @@ function makeFeedback_(chapter, scenario, lines, student) {
     };
     schema.required.push('checklist');
   }
-  const ai = callTextModel_(systemFull, transcript, schema, '피드백');
-  if (!ai.ok) return { ok: false, error: ai.error === 'AI_FAILED' ? 'FEEDBACK_FAILED' : ai.error, cost: ai.cost };
+  // 체크리스트·한국어 설명·병음으로 답이 길어 4096에서 잘릴 수 있어 8192 (쓴 만큼만 요금). 45초가 지나면 다시 시도하지 않는다 (v0.36)
+  const ai = callTextModel_(systemFull, transcript, schema, '피드백', { maxOutputTokens: 8192, deadlineMs: 45000 });
+  if (!ai.ok) return { ok: false, error: ai.error === 'AI_FAILED' ? 'FEEDBACK_FAILED' : ai.error, cost: ai.cost, meta: ai.meta };
   const fb = ai.data;
   const cost = ai.cost;
 
@@ -1213,6 +1259,7 @@ function makeFeedback_(chapter, scenario, lines, student) {
   return {
     ok: true,
     cost: cost,
+    meta: ai.meta,
     feedback: {
       summary: String(fb.summary || ''),
       strengths: (fb.strengths || []).map(String).slice(0, 3),
@@ -1243,10 +1290,14 @@ function makeFeedback_(chapter, scenario, lines, student) {
 function callTextModel_(system, userText, schema, what, opts) {
   opts = opts || {};
   // opts.model: 이 요청만 다른 모델 (예: 병음·뜻은 가벼운 모델), opts.thinkingLevel: 생각 단계 (기본 low)
+  // opts.maxOutputTokens: 답의 최대 길이 (생각 포함, 기본 4096). opts.deadlineMs: 이 시간이 지나면 다시 시도하지 않는다 (v0.36)
   const model = String(opts.model || getSettings_().text_model || '').trim().replace(/^models\//, '');
   if (!model) return { ok: false, error: 'NO_TEXT_MODEL' };
   const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!key) return { ok: false, error: 'NO_API_KEY' };
+  // 진단 정보 (v0.36): 걸린 시간, 시도 횟수, 응답 코드, 멈춘 이유(STOP 정상 / MAX_TOKENS 길이 초과), 토큰 수
+  const meta = { model: model, sec: 0, attempts: 0, code: 0, finish: '', inTok: 0, outTok: 0, thoughtTok: 0 };
+  const started = Date.now();
 
   const request = {
     method: 'post',
@@ -1260,36 +1311,73 @@ function callTextModel_(system, userText, schema, what, opts) {
         responseMimeType: 'application/json',
         responseSchema: schema,
         thinkingConfig: { thinkingLevel: opts.thinkingLevel || 'low' },   // 빠르고 저렴하게
-        maxOutputTokens: 4096
+        maxOutputTokens: opts.maxOutputTokens || 4096   // 생각도 이 길이에 들어간다 (공식 문서). 넘으면 답이 잘림
       }
     }),
     muteHttpExceptions: true
   };
   let res;
   for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt) Utilities.sleep(2000 * attempt);
+    if (attempt) {
+      // 마감이 있으면, 기다렸다 다시 보내도 그 안에 끝나기 어려울 때는 다시 시도하지 않는다
+      if (opts.deadlineMs && Date.now() - started + 2000 * attempt > opts.deadlineMs) break;
+      Utilities.sleep(2000 * attempt);
+    }
     const aiStarted = Date.now();
     res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent', request);
     TIMING_.aiCalls++;
     TIMING_.aiMs += Date.now() - aiStarted;
+    meta.attempts++;
     if ([429, 500, 503].indexOf(res.getResponseCode()) < 0) break;
   }
+  meta.code = res.getResponseCode();
+  meta.sec = Math.round((Date.now() - started) / 100) / 10;
   if (res.getResponseCode() !== 200) {
     console.error(what + ' 실패 (응답 코드 ' + res.getResponseCode() + '): ' + res.getContentText().slice(0, 800));
-    return { ok: false, error: 'AI_FAILED', cost: 0 };
+    return { ok: false, error: 'AI_FAILED', cost: 0, meta: meta };
   }
   let cost = 0;
   try {
     const body = JSON.parse(res.getContentText());
     cost = textCost_(body.usageMetadata);   // Gemini가 알려 주는 실제 토큰 수로 계산
+    const usage = body.usageMetadata || {};
+    meta.inTok = Number(usage.promptTokenCount) || 0;
+    meta.outTok = Number(usage.candidatesTokenCount) || 0;
+    meta.thoughtTok = Number(usage.thoughtsTokenCount) || 0;
     const cand = (body.candidates || [])[0] || {};
+    meta.finish = String(cand.finishReason || '');
     const text = ((cand.content && cand.content.parts) || [])
       .filter(function (p) { return !p.thought; })
       .map(function (p) { return p.text || ''; }).join('');
-    return { ok: true, data: JSON.parse(text), cost: cost };
+    return { ok: true, data: JSON.parse(text), cost: cost, meta: meta };
   } catch (err) {
-    console.error(what + ' 결과를 읽지 못함: ' + res.getContentText().slice(0, 800));
-    return { ok: false, error: 'AI_FAILED', cost: cost };
+    console.error(what + ' 결과를 읽지 못함 (멈춘 이유 ' + (meta.finish || '?') + '): ' + res.getContentText().slice(0, 800));
+    return { ok: false, error: 'AI_FAILED', cost: cost, meta: meta };
+  }
+}
+
+/** 진단 정보를 한 줄로: '31.2초 · STOP · 토큰 입력 2100 / 출력 1350 / 생각 900 · 시도 2번' */
+function metaNote_(meta) {
+  if (!meta) return '';
+  const parts = [meta.sec + '초'];
+  if (meta.code && meta.code !== 200) parts.push('응답 코드 ' + meta.code);
+  if (meta.finish) parts.push(meta.finish === 'MAX_TOKENS' ? 'MAX_TOKENS (길이 초과로 잘림)' : meta.finish);
+  if (meta.inTok || meta.outTok) parts.push('토큰 입력 ' + meta.inTok + ' / 출력 ' + meta.outTok + ' / 생각 ' + meta.thoughtTok);
+  if (meta.attempts > 1) parts.push('시도 ' + meta.attempts + '번');
+  return parts.join(' · ');
+}
+
+/**
+ * 진단 기록 (v0.36): quality 탭에 한 줄 (at, session_id, kind, note). settings의 diag_log가 FALSE면 남기지 않는다 (비어 있으면 켜짐).
+ * 대화 내용·이름은 남기지 않는다. 기록에 실패해도 본 기능은 그대로 진행한다.
+ */
+function diag_(sessionId, kind, note) {
+  try {
+    const on = getSettings_().diag_log;
+    if (on !== undefined && String(on).trim() !== '' && !isTrue_(on)) return;
+    appendRow_('quality', { at: new Date(), session_id: sessionId, kind: kind, note: String(note).slice(0, 300) });
+  } catch (err) {
+    console.error('진단 기록 실패: ' + err);
   }
 }
 

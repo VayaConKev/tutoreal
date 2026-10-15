@@ -50,9 +50,9 @@ export async function startTalk(code, chapterId) {
   };
 }
 
-// 대화 글자로 AI 피드백을 받는다. 모델이 생각하는 시간이 있어 넉넉히 60초까지 기다린다.
+// 대화 글자로 AI 피드백을 받는다. 수업 중처럼 붐빌 때는 1분을 넘기기도 해서 2분까지 기다린다 (v0.39, 전에는 60초).
 export async function getFeedback(code, sessionId, lines) {
-  const data = await postServer('feedback', { code, session_id: sessionId, lines }, 60000);
+  const data = await postServer('feedback', { code, session_id: sessionId, lines }, 120000);
   return data.feedback;
 }
 
