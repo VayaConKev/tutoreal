@@ -52,12 +52,14 @@
  *                 요약은 대화를 챕터의 과정으로 나눈다 (선생님의 중국어 연습은 중국어 과정 요약에).
  * v0.32 (31단계): 속도 — 한 요청 안에서는 같은 탭을 한 번만 읽고(readTable_ 기억), 발음 코칭은 settings의 pron_model
  *                 (빠른 모델, 생각 minimal)로 부른다. 요청마다 걸린 시간(시트 읽기·Gemini)을 실행 기록에 남긴다.
+ * v0.33 (32단계): 대화 후 화면 순서 변경 — 공유할 때 학생이 고른 '어려웠던 부분'을 sessions 탭 hard_lines 칸에 저장한다
+ *                 (transcripts 탭의 seq 번호). setup()이 칸을 추가한다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.32';
+const SERVER_VERSION = 'v0.33';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -68,7 +70,9 @@ const SCHEMA = {
   // profile: 학생 소개 (이름·회사·하는 일 등 사실). AI 상대의 힌트와 피드백 예문이 이 사실로 문장을 만든다. 시트에만 둔다.
   students:       ['student_id', 'display_name', 'access_code', 'status', 'daily_limit_min', 'created_at', 'role', 'avatar', 'course', 'profile'],
   sessions:       ['session_id', 'student_id', 'started_at', 'duration_sec', 'chapter_id', 'scenario_id', 'shared',
-                   'hints_used', 'korean_ratio', 'end_reason', 'est_cost_usd', 'confidence', 'difficulty_note', 'feedback'],
+                   'hints_used', 'korean_ratio', 'end_reason', 'est_cost_usd', 'confidence', 'difficulty_note', 'feedback',
+                   // hard_lines: 학생이 대화 후 '어려웠던 부분'으로 고른 줄 번호 (transcripts 탭의 seq, 예: 3,5)
+                   'hard_lines'],
   keyword_checks: ['session_id', 'student_id', 'chapter_id', 'keyword', 'found'],
   transcripts:    ['session_id', 'seq', 'speaker', 'text', 'at'],
   quality:        ['at', 'session_id', 'kind', 'note'],
@@ -1096,10 +1100,12 @@ function feedback_(code, sessionId, lines) {
   return result;
 }
 
-/** 앱이 보낸 대화 글자를 정리한다: 최대 80줄, 한 줄 400자. */
+/** 앱이 보낸 대화 글자를 정리한다: 최대 80줄, 한 줄 400자. hard: 학생이 '어려웠던 부분'으로 고른 줄 (공유 때만 쓴다). */
 function cleanLines_(lines) {
   return (Array.isArray(lines) ? lines : []).slice(0, 80)
-    .map(function (l) { return { who: l && l.who === 'me' ? 'me' : 'ai', text: String((l && l.text) || '').trim().slice(0, 400) }; })
+    .map(function (l) {
+      return { who: l && l.who === 'me' ? 'me' : 'ai', text: String((l && l.text) || '').trim().slice(0, 400), hard: !!(l && l.hard === true) };
+    })
     .filter(function (l) { return l.text; });
 }
 
@@ -1229,7 +1235,7 @@ function testFeedback() {
 
 /**
  * 학생이 '공유하기'를 고른 대화를 시트에 저장한다.
- * sessions: shared=TRUE, confidence(1~3), difficulty_note, feedback(서버가 만든 피드백, JSON 글자)
+ * sessions: shared=TRUE, confidence(1~3), difficulty_note, feedback(서버가 만든 피드백, JSON 글자), hard_lines(고른 줄 번호)
  * transcripts: 대화 한 줄씩 / keyword_checks: 핵심 단어별 사용 여부
  * 피드백은 앱이 보낸 값이 아니라 서버가 만들어 기억해 둔 것을 쓴다. 이미 공유된 대화는 다시 저장하지 않는다.
  */
@@ -1262,10 +1268,13 @@ function share_(code, sessionId, confidence, difficulty, lines) {
     set('confidence', conf);
     set('difficulty_note', String(difficulty || '').trim().slice(0, 300));
     set('feedback', fb ? JSON.stringify(fb) : '');
+    // 어려웠던 부분: transcripts 탭에 적는 줄 번호(seq)와 같은 번호로 적는다 (예: 3,5). 고르지 않았으면 빈칸.
+    const clean = cleanLines_(lines);
+    set('hard_lines', clean.map(function (l, i) { return l.hard ? i + 1 : 0; }).filter(Boolean).join(','));
     forgetTable_('sessions');
 
     const now = new Date();
-    cleanLines_(lines).forEach(function (l, i) {
+    clean.forEach(function (l, i) {
       appendRow_('transcripts', { session_id: sessionId, seq: i + 1, speaker: l.who === 'me' ? 'nurse' : 'patient', text: l.text, at: now });
     });
     if (fb) {

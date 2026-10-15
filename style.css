@@ -183,6 +183,14 @@ textarea {
 .choice.selected { border: 2px solid var(--accent); background: var(--accent-soft); }
 .choice.selected strong { color: var(--accent); }
 .review-actions { display: flex; gap: 8px; margin-top: 16px; }
+/* 대화 후 2/4: 어려웠던 부분 고르기 (누르면 '어려웠어요' 표시, 다시 누르면 취소). 내 기록 보기에도 같은 표시 */
+.pick-count { color: var(--accent); font-weight: 700; font-size: 14px; margin: -8px 0 8px; min-height: 1.4em; }
+.line.hard-pick { display: block; font: inherit; font-size: 16px; color: inherit; text-align: left; cursor: pointer; border: 2px solid transparent; }
+.line.ai.hard-pick { border-color: var(--line); }
+.line.hard-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.line.picked, .line.ai.picked { border: 2px solid var(--accent); }
+.line .pick-mark { display: none; margin-top: 4px; font-size: 12px; font-weight: 700; color: var(--accent); }
+.line.picked .pick-mark { display: block; }
 
 /* 프로필 자리: 캐릭터 그림이 있으면 그림, 없으면 이름 이니셜 */
 .avatar {

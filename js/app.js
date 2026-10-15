@@ -378,22 +378,29 @@ function endedTalk(reason, info, t) {
   // 연결 전에 끝남 (한도, 마이크 거부 등): 빈 환자 차트는 숨기고 이유만 보여 준다.
   if (!t.readyAt && reason) { $('#talk-head').hidden = true; setTalkStatus(reason); }
   else setTalkStatus(reason ? `대화가 끝났어요. ${reason}` : '대화가 끝났어요. 수고하셨어요!');
-  // 내가 한 말이 있으면 대화 후 화면(1/3 자기 평가)으로 이어지고, 없으면 챕터로 돌아간다.
+  // 내가 한 말이 있으면 대화 후 화면(1/4 자기 평가)으로 이어지고, 없으면 챕터로 돌아간다.
   const spoke = transcript.lines.some((l) => l.who === 'me' && l.text.trim());
   review.data = spoke ? {
     sessionId: t.sessionId, scenarioId: t.scenarioId, chapter: currentChapter, patient: t.patient, lines: transcript.lines.slice(),
     durationSec: t.readyAt ? Math.round((Date.now() - t.readyAt) / 1000) : 0
   } : null;
+  // 피드백은 대화가 끝나는 이 순간부터 만든다. 학생이 대화 후 화면 1~3단계를 하는 동안 준비된다 (31단계).
+  if (review.data) loadFeedback(review.data);
   $('#talk-end').hidden = true;
   $('#talk-next').hidden = !spoke;
   $('#talk-back').hidden = spoke;
   $('#talk-status').scrollIntoView({ block: 'center', behavior: 'smooth' });   // 아래로 내려가 있어도 끝난 문구가 보이게
 }
 
-/* ── 대화 후 화면: 1/3 자기 평가 → 2/3 피드백 → 3/3 공유 선택 ── */
-// review.data: { sessionId, scenarioId, chapter, patient, lines, durationSec, confidence(1~3), difficulty, feedback, shared }
+/* ── 대화 후 화면: 1/4 자기 평가 → 2/4 어려웠던 부분 고르기 → 3/4 공유 선택 → 4/4 피드백 (31단계) ──
+   피드백은 대화가 끝나는 순간부터 미리 만들어, 학생이 1~3단계를 하는 동안 준비되게 한다.
+   공유는 마지막 '완료' 때 저장한다. 서버가 만든 피드백을 함께 저장하므로 피드백이 끝난 뒤에 보낸다.
+   고른 부분(줄의 hard 표시)은 피드백에 쓰지 않고, 내 기록과 (공유하면) 시트에만 남긴다. */
+// review.data: { sessionId, scenarioId, chapter, patient, lines, durationSec, confidence(1~3), difficulty, feedback, shared,
+//                feedbackJob(피드백 요청, 끝나면 성공·실패 모두 풀림) }   lines의 각 줄: { who, text, py?, ko?, hard? }
 
 const review = { step: 1, data: null };
+const REVIEW_STEPS = 4;
 
 function openReview() {
   if (!review.data) return;
@@ -401,28 +408,32 @@ function openReview() {
   $('#difficulty').value = '';
   $('#review-msg').textContent = '';
   $('#share-msg').textContent = '';
+  $('#finish-msg').textContent = '';
+  renderPickLines();
   goStep(1);
   show('review');
-  loadFeedback();   // 자기 평가를 하는 동안 미리 만든다
+  if (!review.data.feedbackJob) loadFeedback(review.data);   // 보통은 대화가 끝날 때 이미 시작했다
 }
 
-/* 2/3 피드백: 대화 글자를 서버로 보내 AI 피드백을 받는다 (저장은 하지 않는다). */
-async function loadFeedback() {
-  const data = review.data;
+/* 4/4 피드백: 대화 글자를 서버로 보내 AI 피드백을 받는다 (저장은 하지 않는다). 숨겨진 4단계 칸에 미리 그려 둔다. */
+function loadFeedback(data) {
   const box = $('#feedback');
-  box.innerHTML = '<p class="state">피드백을 만드는 중…</p>';
-  try {
-    const lines = data.lines.map((l) => ({ who: l.who, text: l.text }));
-    data.feedback = await getFeedback(loadCode(), data.sessionId, lines);
-    if (review.data === data) $('#feedback').innerHTML = feedbackHtml(data.feedback);
-  } catch (err) {
-    console.warn(err);
-    if (review.data !== data) return;
-    box.innerHTML = `<p class="state">${escapeHtml(errorText(err))}</p>` +
-      (err.message === 'FEEDBACK_LIMIT' ? '' : '<button class="secondary" id="feedback-retry">다시 시도</button>');
-    const retry = $('#feedback-retry');
-    if (retry) retry.addEventListener('click', loadFeedback);
-  }
+  box.innerHTML = '<p class="state">피드백을 만드는 중… 곧 끝나요.</p>';
+  const lines = data.lines.map((l) => ({ who: l.who, text: l.text }));
+  data.feedbackJob = getFeedback(loadCode(), data.sessionId, lines)
+    .then((fb) => {
+      data.feedback = fb;
+      if (review.data === data) box.innerHTML = feedbackHtml(fb);
+    })
+    .catch((err) => {
+      console.warn(err);
+      if (review.data !== data) return;
+      box.innerHTML = `<p class="state">${escapeHtml(errorText(err))}</p>` +
+        (err.message === 'FEEDBACK_LIMIT' ? '' : '<button class="secondary" id="feedback-retry">다시 시도</button>');
+      const retry = $('#feedback-retry');
+      if (retry) retry.addEventListener('click', () => loadFeedback(data));
+    });
+  return data.feedbackJob;
 }
 
 function feedbackHtml(fb) {
@@ -444,12 +455,44 @@ function feedbackHtml(fb) {
       ${fb.next_practice.map((n) => `<p class="fb-next">${escapeHtml(n.en)}${n.py ? `<span class="py">${escapeHtml(n.py)}</span>` : ''}<span class="ko">${escapeHtml(n.ko)}</span></p>`).join('')}` : ''}`;
 }
 
+/** 대화 한 줄 (대화 후 2/4 고르기와 내 기록 보기가 같이 쓴다). 중국어 과정은 병음, 받아 둔 뜻이 있으면 뜻도. */
+function lineInner(l) {
+  const py = courseNow() === 'zh' ? (l.py || localPinyin(l.text)) : '';
+  return `<span class="who">${l.who === 'me' ? '나' : partnerWord()}</span><span class="text">${escapeHtml(l.text)}</span>
+    ${py ? `<span class="py">${escapeHtml(py)}</span>` : ''}
+    ${l.ko ? `<span class="ko">${escapeHtml(l.ko)}</span>` : ''}
+    <span class="pick-mark">어려웠어요</span>`;
+}
+
+/* 2/4 어려웠던 부분: 대화를 다시 보여 주고, 누른 줄에 '어려웠어요' 표시 (다시 누르면 취소) */
+function renderPickLines() {
+  $('#pick-lines').innerHTML = review.data.lines.map((l, i) => (l.text.trim()
+    ? `<button type="button" class="line ${l.who === 'me' ? 'me' : 'ai'} hard-pick${l.hard ? ' picked' : ''}" data-i="${i}" aria-pressed="${!!l.hard}">${lineInner(l)}</button>`
+    : '')).join('');
+  updatePickCount();
+}
+
+function updatePickCount() {
+  const n = review.data.lines.filter((l) => l.hard).length;
+  $('#pick-count').textContent = n ? `고른 부분 ${n}개` : '';
+}
+
+$('#pick-lines').addEventListener('click', (ev) => {
+  const btn = ev.target.closest('.hard-pick');
+  if (!btn || !review.data) return;
+  const l = review.data.lines[Number(btn.dataset.i)];
+  l.hard = !l.hard;
+  btn.classList.toggle('picked', l.hard);
+  btn.setAttribute('aria-pressed', String(l.hard));
+  updatePickCount();
+});
+
 function goStep(n) {
   review.step = n;
   document.querySelectorAll('#view-review [data-step]').forEach((el) => { el.hidden = Number(el.dataset.step) !== n; });
-  $('#review-step').textContent = `${n} / 3`;
+  $('#review-step').textContent = `${n} / ${REVIEW_STEPS}`;
   $('#review-prev').hidden = n === 1;
-  $('#review-next').textContent = n === 3 ? '완료' : '다음';
+  $('#review-next').textContent = n === REVIEW_STEPS ? '완료' : '다음';
   window.scrollTo(0, 0);
 }
 
@@ -461,7 +504,11 @@ function nextStep() {
     }
     review.data.difficulty = $('#difficulty').value.trim();
   }
-  if (review.step < 3) return goStep(review.step + 1);
+  if (review.step === 3 && review.data.shared === undefined) {
+    $('#share-msg').textContent = '공유할지 하나를 골라 주세요.';
+    return;
+  }
+  if (review.step < REVIEW_STEPS) return goStep(review.step + 1);
   finishReview();
 }
 
@@ -475,8 +522,10 @@ function saveLocal(d) {
     sessionId: d.sessionId, scenarioId: d.scenarioId, chapterId: d.chapter.chapter_id, chapterOrder: d.chapter.order, course: d.chapter.course || me.course,
     chapterTitle: d.chapter.title, at: new Date().toISOString(), durationSec: d.durationSec,
     patient: d.patient, confidence: d.confidence, difficulty: d.difficulty, shared: d.shared,
-    // 중국어 과정: 서버에서 받은 병음(py)과 뜻(ko)도 함께 남긴다
-    lines: d.lines.map((l) => ({ who: l.who, text: l.text, ...(l.py ? { py: l.py } : {}), ...(l.ko ? { ko: l.ko } : {}) })),
+    // 중국어 과정: 서버에서 받은 병음(py)과 뜻(ko)도 함께 남긴다. hard: 대화 후 2/4에서 고른 어려웠던 부분
+    lines: d.lines.map((l) => ({
+      who: l.who, text: l.text, ...(l.py ? { py: l.py } : {}), ...(l.ko ? { ko: l.ko } : {}), ...(l.hard ? { hard: true } : {})
+    })),
     feedback: d.feedback || null
   };
   try {
@@ -491,21 +540,29 @@ function saveLocal(d) {
 
 async function finishReview() {
   const d = review.data;
-  if (d.shared === undefined) {
-    $('#share-msg').textContent = '공유할지 하나를 골라 주세요.';
-    return;
-  }
   const btn = $('#review-next');
   btn.disabled = true;
-  btn.textContent = '저장 중…';
+  $('#finish-msg').textContent = '';
   try {
-    if (d.shared) await shareTalk(loadCode(), d.sessionId, d.confidence, d.difficulty, d.lines.map((l) => ({ who: l.who, text: l.text })));
+    // 피드백이 아직 만들어지는 중이면 끝날 때까지 기다린다 (공유할 때 피드백도 함께 저장되고, 내 기록에도 남도록).
+    // 기다리던 피드백이 도착하면 저장하지 않고 이 화면에 머물러 읽게 한다 (다시 '완료'를 누르면 저장).
+    // 피드백이 실패했으면 피드백 없이 저장한다.
+    if (d.feedbackJob && !d.feedback) {
+      btn.textContent = '피드백을 기다리는 중…';
+      await d.feedbackJob;
+      if (d.feedback) return;
+    }
+    btn.textContent = '저장 중…';
+    if (d.shared) {
+      await shareTalk(loadCode(), d.sessionId, d.confidence, d.difficulty,
+        d.lines.map((l) => ({ who: l.who, text: l.text, ...(l.hard ? { hard: true } : {}) })));
+    }
     saveLocal(d);
     review.data = null;
     show('detail');
   } catch (err) {
     console.warn(err);
-    $('#share-msg').textContent = `저장하지 못했어요. 다시 눌러 주세요. (${errorText(err)})`;
+    $('#finish-msg').textContent = `저장하지 못했어요. 다시 눌러 주세요. (${errorText(err)})`;
   } finally {
     btn.disabled = false;
     btn.textContent = '완료';
@@ -700,12 +757,9 @@ function openRecord(e) {
     </div>`;
   $('#record-feedback').innerHTML = e.feedback ? feedbackHtml(e.feedback) : '<p class="state">이 대화는 피드백이 없어요.</p>';
   // 다시 보는 화면이므로 환자 말도 가리지 않고 모두 보여 준다.
+  // 대화 후 2/4에서 고른 어려웠던 부분은 '어려웠어요'로 표시된다.
   $('#record-lines').innerHTML = (e.lines || []).map((l) => `
-    <div class="line ${l.who === 'me' ? 'me' : 'ai'}">
-      <span class="who">${l.who === 'me' ? '나' : partnerWord()}</span><span class="text">${escapeHtml(l.text)}</span>
-      ${courseNow() === 'zh' && (l.py || localPinyin(l.text)) ? `<span class="py">${escapeHtml(l.py || localPinyin(l.text))}</span>` : ''}
-      ${l.ko ? `<span class="ko">${escapeHtml(l.ko)}</span>` : ''}
-    </div>`).join('');
+    <div class="line ${l.who === 'me' ? 'me' : 'ai'}${l.hard ? ' picked' : ''}">${lineInner(l)}</div>`).join('');
   viewCourse = '';
   show('record');
 }
