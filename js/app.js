@@ -176,7 +176,7 @@ function openChapter(id) {
   const list = c.checklist || [];
   $('#detail-checklist-box').hidden = !list.length;
   $('#detail-checklist').innerHTML = list.map((item) => `<li>
-    <span class="ck-ko">${escapeHtml(item.text)}${item.optional ? ' <span class="opt-tag">선택</span>' : ''}</span>
+    <span class="ck-ko">${escapeHtml(item.text)}${checklistTags(item)}</span>
     ${item.en ? `<span class="ck-en" lang="en">${escapeHtml(item.en)}</span>` : ''}</li>`).join('');
   currentChapter = c;
   const n = (c.drills || []).length;
@@ -443,6 +443,13 @@ function loadFeedback(data) {
   return data.feedbackJob;
 }
 
+/** 체크리스트 항목 옆의 작은 표시: 선택(가끔만 하는 안내), 남성·여성(그 성별의 상대에게만, 34단계) */
+function checklistTags(item) {
+  const SEX = { male: `남성 ${partnerTitle()}만`, female: `여성 ${partnerTitle()}만` };
+  return (item.sex ? ` <span class="opt-tag">${SEX[item.sex] || ''}</span>` : '') +
+    (item.optional ? ' <span class="opt-tag">선택</span>' : '');
+}
+
 /** 안내 체크리스트 결과 (33단계): 했음 ✓ / 빠짐 ✗ / 선택 항목을 안 함 –. 숫자는 선택이 아닌 항목만 센다. */
 function checklistHtml(list) {
   if (!list || !list.length) return '';
@@ -452,7 +459,7 @@ function checklistHtml(list) {
     <ul class="fb-check">${list.map((c) => {
       const state = c.done ? 'done' : c.optional ? 'opt' : 'miss';
       return `<li class="${state}"><span class="mark" aria-hidden="true">${STATE[state][0]}</span>
-        <span class="txt">${escapeHtml(c.item)}${c.optional ? ' <span class="opt-tag">선택</span>' : ''}
+        <span class="txt">${escapeHtml(c.item)}${checklistTags(c)}
           ${c.en ? `<span class="ck-en" lang="en">${escapeHtml(c.en)}</span>` : ''}</span>
         <span class="chk-state">${STATE[state][1]}</span></li>`;
     }).join('')}</ul>`;

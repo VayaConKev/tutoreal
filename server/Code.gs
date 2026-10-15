@@ -56,12 +56,14 @@
  *                 (transcripts 탭의 seq 번호). setup()이 칸을 추가한다.
  * v0.34 (33단계): 안내 체크리스트 — chapters 탭 checklist 칸(한 줄에 하나, '(선택)'은 가끔만 하는 안내, '한국어 | English').
  *                 챕터 목록에 함께 보내고, 피드백이 항목마다 했는지(done)를 판단한다. 칸이 빈 챕터는 그대로.
+ * v0.35 (34단계): 체크리스트 항목 앞의 (남성)·(여성) — 그 성별의 상대(시나리오 sex 칸)에게만 하는 안내.
+ *                 피드백은 맞는 항목만 판단하고 보여 준다 (예: 전립선 비대증 질문은 남성 수검자에게만).
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.34';
+const SERVER_VERSION = 'v0.35';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -657,12 +659,25 @@ function checklistOf_(chapter) {
     .slice(0, 20)
     .map(function (line) {
       const bar = line.indexOf('|');
-      const ko = (bar >= 0 ? line.slice(0, bar) : line).trim();
+      let ko = (bar >= 0 ? line.slice(0, bar) : line).trim();
       const en = bar >= 0 ? line.slice(bar + 1).trim().slice(0, 200) : '';
-      const optional = /^\(선택\)/.test(ko);
-      return { text: (optional ? ko.replace(/^\(선택\)\s*/, '') : ko).slice(0, 200), en: en, optional: optional };
+      // 앞의 표시 (순서 상관없이 여러 개): (선택) 가끔만 하는 안내 / (남성)·(여성) 그 성별의 상대에게만 하는 안내 (v0.35)
+      let optional = false;
+      let sex = '';
+      let m;
+      while ((m = ko.match(/^\((선택|남성|여성)\)\s*/))) {
+        if (m[1] === '선택') optional = true; else sex = m[1] === '남성' ? 'male' : 'female';
+        ko = ko.slice(m[0].length);
+      }
+      return { text: ko.slice(0, 200), en: en, optional: optional, sex: sex };
     })
     .filter(function (item) { return item.text; });
+}
+
+/** 이 대화의 상대(시나리오의 sex 칸)에게 해당하는 체크리스트 항목만. 성별 표시가 없는 항목은 모두에게. */
+function checklistFor_(checklist, scenario) {
+  const sex = String((scenario && scenario.sex) || '').trim().toLowerCase();
+  return checklist.filter(function (item) { return !item.sex || item.sex === sex; });
 }
 
 
@@ -1168,7 +1183,8 @@ function makeFeedback_(chapter, scenario, lines, student) {
     .replace(/\{name\}/g, String(scenario.name || ''))
     .replace(/\{dob\}/g, formatDob_(scenario.dob))
     .replace(/\{exam\}/g, String(scenario.exam || ''));
-  const checklist = checklistOf_(chapter);
+  // 성별 표시((남성)·(여성))가 있는 항목은 이 시나리오 상대의 성별에 맞을 때만 판단하고 보여 준다 (v0.35)
+  const checklist = checklistFor_(checklistOf_(chapter), scenario);
   const systemFull = withChecklist_(withLearner_(system, student), checklist);
   const who = zh ? ['Learner: ', 'Partner: '] : ['Nurse: ', 'Patient: '];
   const transcript = 'Transcript:\n' + lines.map(function (l) { return (l.who === 'me' ? who[0] : who[1]) + l.text; }).join('\n');
@@ -1208,7 +1224,7 @@ function makeFeedback_(chapter, scenario, lines, student) {
       keywords: keywords.map(function (k) { return { keyword: k, used: used[k.toLowerCase()] === true }; }),
       // 안내 체크리스트 (체크리스트가 있는 챕터만). 앱과 내 기록이 그대로 그린다.
       checklist: checklist.map(function (item, i) {
-        return { item: item.text, en: item.en, optional: item.optional, done: doneByNo[i + 1] === true };
+        return { item: item.text, en: item.en, optional: item.optional, sex: item.sex, done: doneByNo[i + 1] === true };
       }),
       // 앱과 내 기록은 연습 문장을 en 칸으로 읽는다 (중국어 과정에서도 같은 칸에 중국어 문장, py에 병음).
       next_practice: (fb.next_practice || []).slice(0, 2).map(function (n) {
