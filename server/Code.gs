@@ -61,12 +61,15 @@
  * v0.36 (35단계): 피드백 안정화 — 답의 최대 길이 8192, 45초 뒤에는 다시 시도하지 않음, 같은 대화의 피드백을 만드는 중이면
  *                 새로 만들지 않고 기다림. quality 탭에 진단 기록 (시작·완료·실패, 걸린 시간, 멈춘 이유, 토큰 수).
  * v0.37 (37단계): 선생님이 학생의 공유된 대화를 봄 — doPost(action=student_talks). 최근 20개, 피드백·대화 글자·고른 줄.
+ * v0.38 (39단계): AI가 붐빌 때(503 등) 피드백 — 간격을 늘려 가며 다시 시도(45초 안 최대 5번), 붐빈 실패는 3번 한도에 안 셈,
+ *                 settings의 fallback_text_model(선택)로 한 번 더. 붐빈 실패는 AI_BUSY로 알린다.
+ * v0.39 (40단계): '내 기록'에서 피드백 받기 — 피드백 없이 공유된 대화에 나중에 피드백을 받으면 시트(feedback, keyword_checks)에도 채운다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.37';
+const SERVER_VERSION = 'v0.39';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -319,6 +322,7 @@ const SEED = {
     ['gloss_model', 'gemini-3.5-flash-lite', '중국어 자막 도우미(병음·뜻)용 빠른 모델 (생각 minimal). 비우면 text_model'],
     ['pron_model', 'gemini-3.5-flash-lite', '발음 코칭용 빠른 모델 (생각 minimal, 소리를 듣는 모델: gemini-3.5-flash-lite 또는 gemini-3.6-flash). 비우면 text_model (느림)'],
     ['last_class_date_zh', '', '중국어 과정의 최근 수업일 (요약 기간 시작). 비우면 last_class_date'],
+    ['fallback_text_model', '', '피드백을 만들 때 text_model이 계속 붐비면(503 등) 한 번 더 시도할 다른 모델. 비우면 쓰지 않음. 예: gemini-3.6-flash (같은 요금)'],
     ['diag_log', true, '피드백 진단 기록을 quality 탭에 남김 (TRUE 켜짐 / FALSE 꺼짐, 비우면 켜짐). 대화 내용·이름은 남기지 않음']
   ]
 };
@@ -1159,7 +1163,6 @@ function feedback_(code, sessionId, lines) {
   try {
     const tries = Number(cache.get('fbn_' + sessionId) || 0);
     if (tries >= FEEDBACK_MAX_TRIES) return { ok: false, error: 'FEEDBACK_LIMIT' };
-    cache.put('fbn_' + sessionId, String(tries + 1), FEEDBACK_CACHE_SEC);
 
     const chapter = readTable_('chapters').filter(function (c) { return String(c.chapter_id) === String(session.chapter_id); })[0];
     const scenario = readTable_('scenarios').filter(function (s) { return String(s.scenario_id) === String(session.scenario_id); })[0];
@@ -1169,14 +1172,52 @@ function feedback_(code, sessionId, lines) {
     // 진단 기록: AI에 보내기 직전 (이 줄만 있고 '완료·실패' 줄이 없으면 AI를 기다리다 6분 한도에 걸린 것)
     diag_(sessionId, 'feedback', '시작 · ' + String(getSettings_().text_model || '') + ' · 대화 ' + clean.length + '줄 · ' + (tries + 1) + '번째');
     const result = makeFeedback_(chapter, scenario, clean, auth.student);
+    // AI가 붐벼서(429·500·503) 못 받은 경우는 3번 한도에 세지 않는다 (요금이 나가지 않고, 학생 잘못도 아니다) (v0.38)
+    if (!(result.meta && result.meta.transient)) cache.put('fbn_' + sessionId, String(tries + 1), FEEDBACK_CACHE_SEC);
     diag_(sessionId, 'feedback', (result.ok ? '완료 · ' : '실패 · ' + (result.error || '') + ' · ') + metaNote_(result.meta));
     if (result.cost) addCost_(sessionId, result.cost);
     delete result.cost;
     delete result.meta;
-    if (result.ok) cache.put('fb_' + sessionId, JSON.stringify(result.feedback), FEEDBACK_CACHE_SEC);
+    if (result.ok) {
+      cache.put('fb_' + sessionId, JSON.stringify(result.feedback), FEEDBACK_CACHE_SEC);
+      // 이미 공유한 대화인데 피드백 없이 공유됐던 경우 (나중에 '내 기록'에서 피드백을 받음): 시트에도 채운다 (v0.39)
+      if (isTrue_(session.shared) && !String(session.feedback || '').trim()) attachSharedFeedback_(sessionId, auth.student, session, result.feedback);
+    }
     return result;
   } finally {
     cache.remove('fbr_' + sessionId);
+  }
+}
+
+/**
+ * 공유된 대화의 비어 있는 피드백 칸을 채우고 핵심 단어 체크(keyword_checks)를 더한다 (v0.39).
+ * 선생님 화면의 '공유된 대화'와 요약의 핵심 단어 사용률에 반영된다. 이미 채워져 있으면 바꾸지 않는다.
+ */
+function attachSharedFeedback_(sessionId, student, session, fb) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('sessions');
+    const values = sheet.getDataRange().getValues();
+    const headers = values[0].map(function (h) { return String(h).trim(); });
+    const idCol = headers.indexOf('session_id');
+    const fbCol = headers.indexOf('feedback');
+    if (idCol < 0 || fbCol < 0) return;
+    for (let i = values.length - 1; i >= 1; i--) {
+      if (String(values[i][idCol]) !== sessionId) continue;
+      if (String(values[i][fbCol]).trim()) return;   // 그사이 채워짐
+      sheet.getRange(i + 1, fbCol + 1).setValue(JSON.stringify(fb));
+      forgetTable_('sessions');
+      (fb.keywords || []).forEach(function (k) {
+        appendRow_('keyword_checks', {
+          session_id: sessionId, student_id: String(student.student_id),
+          chapter_id: String(session.chapter_id), keyword: k.keyword, found: k.used
+        });
+      });
+      return;
+    }
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -1249,7 +1290,10 @@ function makeFeedback_(chapter, scenario, lines, student) {
     schema.required.push('checklist');
   }
   // 체크리스트·한국어 설명·병음으로 답이 길어 4096에서 잘릴 수 있어 8192 (쓴 만큼만 요금). 45초가 지나면 다시 시도하지 않는다 (v0.36)
-  const ai = callTextModel_(systemFull, transcript, schema, '피드백', { maxOutputTokens: 8192, deadlineMs: 45000 });
+  // 붐빌 때는 45초 안에서 최대 5번 (간격을 늘려 가며), 그래도 붐비면 settings의 fallback_text_model로 한 번 (v0.38)
+  const ai = callTextModel_(systemFull, transcript, schema, '피드백', {
+    maxOutputTokens: 8192, deadlineMs: 45000, maxAttempts: 5, fallbackModel: getSettings_().fallback_text_model
+  });
   if (!ai.ok) return { ok: false, error: ai.error === 'AI_FAILED' ? 'FEEDBACK_FAILED' : ai.error, cost: ai.cost, meta: ai.meta };
   const fb = ai.data;
   const cost = ai.cost;
@@ -1295,6 +1339,7 @@ function callTextModel_(system, userText, schema, what, opts) {
   opts = opts || {};
   // opts.model: 이 요청만 다른 모델 (예: 병음·뜻은 가벼운 모델), opts.thinkingLevel: 생각 단계 (기본 low)
   // opts.maxOutputTokens: 답의 최대 길이 (생각 포함, 기본 4096). opts.deadlineMs: 이 시간이 지나면 다시 시도하지 않는다 (v0.36)
+  // opts.maxAttempts: 붐빌 때(429·500·503) 최대 시도 횟수 (기본 3). opts.fallbackModel: 끝까지 붐비면 한 번 더 시도할 다른 모델 (v0.38)
   const model = String(opts.model || getSettings_().text_model || '').trim().replace(/^models\//, '');
   if (!model) return { ok: false, error: 'NO_TEXT_MODEL' };
   const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
@@ -1320,25 +1365,44 @@ function callTextModel_(system, userText, schema, what, opts) {
     }),
     muteHttpExceptions: true
   };
-  let res;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt) {
-      // 마감이 있으면, 기다렸다 다시 보내도 그 안에 끝나기 어려울 때는 다시 시도하지 않는다
-      if (opts.deadlineMs && Date.now() - started + 2000 * attempt > opts.deadlineMs) break;
-      Utilities.sleep(2000 * attempt);
-    }
+  const TRANSIENT = [429, 500, 503];   // 붐빔·잠깐의 오류: 다시 시도하면 될 수 있다 (요금은 나가지 않음)
+  const send = function (m) {
     const aiStarted = Date.now();
-    res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent', request);
+    const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', request);
     TIMING_.aiCalls++;
     TIMING_.aiMs += Date.now() - aiStarted;
     meta.attempts++;
-    if ([429, 500, 503].indexOf(res.getResponseCode()) < 0) break;
+    return r;
+  };
+  let res;
+  const maxAttempts = opts.maxAttempts || 3;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt) {
+      // 공식 문서 권장 (v0.38): 기다리는 시간을 1초, 2초, 4초, 8초…로 늘리고 조금씩 흩는다 (여러 요청이 한꺼번에 다시 몰리지 않게).
+      // 전에는 2초, 4초로 7~10초 안에 3번을 몰아 보내 붐빌 때 금방 포기했다 (2026-10-16 quality 탭 503 기록).
+      const wait = Math.round(1000 * Math.pow(2, attempt - 1) * (0.7 + Math.random() * 0.6));
+      // 마감이 있으면, 기다렸다 다시 보내도 그 안에 끝나기 어려울 때는 다시 시도하지 않는다
+      if (opts.deadlineMs && Date.now() - started + wait > opts.deadlineMs) break;
+      Utilities.sleep(wait);
+    }
+    res = send(model);
+    if (TRANSIENT.indexOf(res.getResponseCode()) < 0) break;
+  }
+  // 그래도 붐비면 대체 모델로 한 번 (settings에 적어 둔 경우만, 마감 안에서)
+  const fallback = String(opts.fallbackModel || '').trim().replace(/^models\//, '');
+  if (TRANSIENT.indexOf(res.getResponseCode()) >= 0 && fallback && fallback !== model &&
+      (!opts.deadlineMs || Date.now() - started < opts.deadlineMs)) {
+    meta.fallback = fallback;
+    meta.model = fallback;
+    res = send(fallback);
   }
   meta.code = res.getResponseCode();
+  meta.transient = TRANSIENT.indexOf(meta.code) >= 0;
   meta.sec = Math.round((Date.now() - started) / 100) / 10;
   if (res.getResponseCode() !== 200) {
     console.error(what + ' 실패 (응답 코드 ' + res.getResponseCode() + '): ' + res.getContentText().slice(0, 800));
-    return { ok: false, error: 'AI_FAILED', cost: 0, meta: meta };
+    // 붐벼서 끝내 못 받은 경우는 AI_BUSY (앱이 '잠시 뒤 다시'로 안내), 그 밖의 오류는 AI_FAILED
+    return { ok: false, error: meta.transient ? 'AI_BUSY' : 'AI_FAILED', cost: 0, meta: meta };
   }
   let cost = 0;
   try {
@@ -1368,6 +1432,7 @@ function metaNote_(meta) {
   if (meta.finish) parts.push(meta.finish === 'MAX_TOKENS' ? 'MAX_TOKENS (길이 초과로 잘림)' : meta.finish);
   if (meta.inTok || meta.outTok) parts.push('토큰 입력 ' + meta.inTok + ' / 출력 ' + meta.outTok + ' / 생각 ' + meta.thoughtTok);
   if (meta.attempts > 1) parts.push('시도 ' + meta.attempts + '번');
+  if (meta.fallback) parts.push('대체 모델 ' + meta.fallback);
   return parts.join(' · ');
 }
 
@@ -1921,7 +1986,7 @@ function makeInsight_(chapter, stat, sessions) {
     .replace(/\{keywords\}/g, String(chapter.keywords || ''));
   const ai = callTextModel_(system, userText, INSIGHT_SCHEMA, '챕터 정리');
   if (!ai.ok) {
-    return { error: ai.error === 'AI_FAILED'
+    return { error: ai.error === 'AI_FAILED' || ai.error === 'AI_BUSY'
       ? 'AI 호출에 실패했어요. 잠시 뒤 다시 새로고침해 주세요. (자세한 내용: 편집기 실행 기록)'
       : '설정을 확인해 주세요 (' + ai.error + ').' };
   }
@@ -2142,7 +2207,7 @@ function pronounce_(code, drillId, level, audio) {
     at: new Date(), student_id: sid, chapter_id: String(drill.chapter_id), drill_id: drillId, level: level,
     overall: overall || 'failed', cost_usd: Math.round((ai.cost || 0) * 10000) / 10000
   });
-  if (!ai.ok) return { ok: false, error: ai.error === 'AI_FAILED' ? 'PRON_FAILED' : ai.error };
+  if (!ai.ok) return { ok: false, error: ai.error === 'AI_FAILED' || ai.error === 'AI_BUSY' ? 'PRON_FAILED' : ai.error };
 
   return {
     ok: true,

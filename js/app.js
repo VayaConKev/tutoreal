@@ -45,6 +45,8 @@ const ERROR_TEXT = {
   FEEDBACK_FAILED: '피드백을 만들지 못했어요.',
   FEEDBACK_LIMIT: '이 대화의 피드백을 여러 번 실패했어요. 다음 대화에서 다시 받아 보세요.',
   FEEDBACK_BUSY: '피드백을 아직 만드는 중이에요. 잠시 뒤 다시 시도해 주세요.',
+  AI_BUSY: 'AI가 지금 붐벼서 피드백을 받지 못했어요. 잠시 뒤 "다시 시도"를 눌러 주세요.',
+  NO_SESSION: '서버에서 이 대화의 기록을 찾지 못해서 피드백을 받을 수 없어요.',
   DAILY_CONNECT_LIMIT: '오늘 대화 횟수를 다 썼어요. 내일 다시 만나요.',
   DAILY_TIME_LIMIT: '오늘 사용 시간을 다 썼어요. 내일 다시 만나요.',
   MONTHLY_BUDGET: '이번 달 사용할 수 있는 시간을 모두 썼어요. 선생님께 알려 주세요.',
@@ -464,7 +466,9 @@ function loadFeedback(data) {
       console.warn(err);
       if (review.data !== data) return;
       box.innerHTML = `<p class="state">${escapeHtml(errorText(err))}</p>` +
-        (err.message === 'FEEDBACK_LIMIT' ? '' : '<button class="secondary" id="feedback-retry">다시 시도</button>');
+        (err.message === 'FEEDBACK_LIMIT' ? '' : '<button class="secondary" id="feedback-retry">다시 시도</button>') +
+        // 이번에 못 받아도 끝이 아니라는 안내 (40단계): 기록은 '완료' 때 저장되고, 내 기록에서 다시 받을 수 있다
+        '<p class="hint fb-later">\'완료\'를 누르면 이 대화가 \'내 기록\'에 저장돼요. 나중에 \'내 기록\'에서 피드백을 다시 받을 수 있어요.</p>';
       const retry = $('#feedback-retry');
       if (retry) retry.addEventListener('click', () => loadFeedback(data));
     });
@@ -850,6 +854,7 @@ function recordMeta(entry) {
   const parts = [when];
   if (entry.durationSec) parts.push(`${Math.max(1, Math.round(entry.durationSec / 60))}분`);
   if (CONFIDENCE[entry.confidence]) parts.push(CONFIDENCE[entry.confidence]);
+  if (!entry.feedback) parts.push('피드백 없음');
   return parts.join(' · ');
 }
 
@@ -875,6 +880,51 @@ function openHistory() {
   show('history');
 }
 
+/* ── 내 기록에서 피드백 받기 (40단계): 피드백이 없는 대화만. 받으면 이 휴대폰의 기록에 저장한다.
+   공유한 대화였다면 서버가 시트에도 채운다 (선생님 화면에 반영). ── */
+let recordOpen = '';   // 지금 열려 있는 기록의 대화 번호 (기다리는 사이 다른 기록을 열었는지 확인)
+
+function showRecordNoFeedback(e, message = '') {
+  const box = $('#record-feedback');
+  box.innerHTML = `<p class="state">${escapeHtml(message || '이 대화는 아직 피드백이 없어요.')}</p>
+    ${e.sessionId ? `<button class="primary" id="record-fb-get">${message ? '다시 시도' : '피드백 받기'}</button>` : ''}`;
+  const btn = $('#record-fb-get');
+  if (btn) btn.addEventListener('click', () => getRecordFeedback(e));
+}
+
+/** 기록의 한 항목을 고쳐 이 휴대폰에 다시 저장한다 (대화 번호로 찾음) */
+function updateLocal(sessionId, patch) {
+  try {
+    const list = loadHistory();
+    const item = list.find((x) => x.sessionId === sessionId);
+    if (!item) return;
+    Object.assign(item, patch);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
+  } catch { /* 저장 못 해도 화면에는 보인다 */ }
+}
+
+async function getRecordFeedback(e) {
+  const box = $('#record-feedback');
+  // 기다림 화면은 4/4와 같다 (복습 문장은 그 챕터에서). 챕터가 목록에 없으면 문장 없이.
+  const chapter = chapters.find((c) => c.chapter_id === e.chapterId) || { course: e.course, checklist: [], drills: [] };
+  const stop = startWaitScreen(box, { chapter });
+  try {
+    const fb = await getFeedback(loadCode(), e.sessionId, (e.lines || []).map((l) => ({ who: l.who, text: l.text })));
+    e.feedback = fb;
+    updateLocal(e.sessionId, { feedback: fb });
+    if (recordOpen !== e.sessionId) return;
+    viewCourse = e.course || me.course;
+    box.innerHTML = feedbackHtml(fb);
+    viewCourse = '';
+    $('#record-head .talk-meta').textContent = recordMeta(e);
+  } catch (err) {
+    console.warn(err);
+    if (recordOpen === e.sessionId) showRecordNoFeedback(e, errorText(err));
+  } finally {
+    stop();
+  }
+}
+
 function openRecord(e) {
   viewCourse = e.course || me.course;   // 이 기록의 과정으로 그린다 (다 그린 뒤 되돌림)
   $('#record-head').innerHTML = `${avatarHtml(e)}
@@ -884,7 +934,9 @@ function openRecord(e) {
       <p class="talk-meta">${escapeHtml(recordMeta(e))}</p>
       ${e.difficulty ? `<p class="talk-meta">어려웠던 점: ${escapeHtml(e.difficulty)}</p>` : ''}
     </div>`;
-  $('#record-feedback').innerHTML = e.feedback ? feedbackHtml(e.feedback) : '<p class="state">이 대화는 피드백이 없어요.</p>';
+  recordOpen = e.sessionId;
+  if (e.feedback) $('#record-feedback').innerHTML = feedbackHtml(e.feedback);
+  else showRecordNoFeedback(e);
   // 다시 보는 화면이므로 환자 말도 가리지 않고 모두 보여 준다.
   // 대화 후 2/4에서 고른 어려웠던 부분은 '어려웠어요'로 표시된다.
   $('#record-lines').innerHTML = (e.lines || []).map((l) => `

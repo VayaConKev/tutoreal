@@ -343,3 +343,5 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 .fb-tip .tip-target { color: var(--teal-ink); font-size: 15px; margin-top: 2px; }
 .fb-tip .tip-py { color: var(--muted); font-size: 14px; }
 @media (prefers-reduced-motion: reduce) { .fb-tip { transition: none; } }
+/* 피드백을 못 받았을 때의 안내 (40단계) */
+.fb-later { text-align: center; margin: 12px 0 0; }
