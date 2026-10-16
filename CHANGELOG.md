@@ -422,3 +422,11 @@
 - 라이트: 검은 고양이 (눈·귀 안쪽·턱 무늬 아이보리). 다크: 흰 고양이 (하늘색 눈, 분홍 귀 안쪽, 베이지 턱 무늬, 회색 수염)
 - 코드로 그린 그림(js/wait-cat.js)이라 배경이 투명하고 화면 크기와 상관없이 선명함. 로딩 표시는 CSS 애니메이션 ('동작 줄이기'를 켠 휴대폰에서는 멈춘 그림)
 - 걸린 시간, 복습 문장은 그대로. 서버는 그대로 (v0.42)
+
+## v0.50 (2026-10-17)
+- 46단계: 환자 지시문 v3 — 2장에서 "Have you ever been diagnosed with glaucoma?"에 환자가 "No." 뒤에 "This information is not medical advice or diagnosis. Please consult a healthcare professional."을 붙임
+- 원인으로 보이는 것: v2의 'Never give medical advice' 문장이 건강 질문을 '조언을 구하는 질문'으로 읽게 함
+- patient-v3: 그 문장을 바꿈 — 나는 의사·AI 비서가 아닌 환자 / 병력·알레르기·약·통증 질문에는 환자로서 1인칭으로 답함 (시나리오에 없으면 보통 "No") / 같은 답을 끝까지 유지 / "의학적 조언이 아니에요" 같은 안내문을 붙이지 않음 (간호사가 의료인) / 환자가 모를 의학 질문에는 "I don't know."
+- 나머지 규칙(되묻기, 한국어에 "Sorry?", 없는 정보)은 v2 그대로. 영어 과정의 모든 챕터에 적용
+- setup()을 다시 실행하면 prompts 탭에 patient-v3 줄이 생김. patient-v2 줄의 active를 FALSE로 바꾸면 v3 사용 (v2는 되돌리기용으로 남김)
+- 서버 v0.43 (지시문 기본값만 추가, 동작은 그대로). 앱은 바뀌지 않음 (v0.49 그대로)

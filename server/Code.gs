@@ -67,12 +67,14 @@
  * v0.40: 피드백 실패 횟수를 30분만 기억 (전에는 6시간), 이름을 바꿔 예전 서버의 횟수는 무시 — 업데이트 전에 막힌 대화도 바로 받게.
  * v0.41 (43단계): 미리 보기 — chapters 탭 published 칸에 preview라고 적으면 선생님(teacher)과 테스터(tester, students 탭 role 칸)에게만 보인다.
  * v0.42 (44단계): 선생님 요약에서 선생님·테스터 계정의 연습을 뺀다 (학생 목록, 연습 통계, 핵심 단어, 어려웠던 점, AI 정리). 비용 합계에는 넣는다.
+ * v0.43 (46단계): 환자 지시문 v3 — 건강 질문에 '의학적 조언이 아니에요' 같은 안내문을 붙이지 않고 환자로서 답한다.
+ *                 setup()이 prompts 탭에 patient-v3 줄을 추가한다. patient-v2 줄의 active를 FALSE로 바꾸면 v3을 쓴다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.42';
+const SERVER_VERSION = 'v0.43';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -119,6 +121,20 @@ const PATIENT_PROMPT_V2 = [
   'If the nurse speaks Korean, you do not understand it. Say only "Sorry?" and wait.',
   'If the nurse asks for something that is not in your data (for example an ID card or phone number), do not answer with other data. Answer naturally as a real foreign patient would (for example, "Here is my passport."), and keep it the same for the rest of the talk.'
 ].join('\n');
+
+// 환자 지시문 v3 (46단계): 녹내장 병력을 묻자 "No." 뒤에 "This information is not medical advice or diagnosis.
+// Please consult a healthcare professional."을 붙임. v2의 'Never give medical advice'가 건강 질문을 '조언을 구하는 질문'으로
+// 읽게 만든 것으로 보여, 그 문장을 '나는 환자다, 건강 질문에는 환자로서 답한다, 안내문을 붙이지 않는다'로 바꾼다.
+const PATIENT_PROMPT_V3 = PATIENT_PROMPT_V2.replace(
+  'Never give medical advice. Stay in role.',
+  [
+    'You are the patient, not a doctor and not an AI assistant. Stay in role for the whole talk.',
+    'When the nurse asks about your health (past illnesses like glaucoma, heart disease or high blood pressure, allergies, medicines, pain, how you feel),',
+    'answer in first person as the patient: from your data and Extra, or, if they do not say, with a simple natural answer (usually "No").',
+    'Keep the same answer for the rest of the talk.',
+    'Never add disclaimers or safety notes such as "This is not medical advice" or "Please consult a healthcare professional". The nurse is the healthcare professional.',
+    'If the nurse asks you a medical question that a normal patient would not know, say "I don\'t know." like a patient.'
+  ].join('\n'));
 
 // 피드백 지시문. {goal} {keywords} {name} {dob} {exam} 은 서버가 채운다. 대화 글자는 따로 붙는다.
 const FEEDBACK_PROMPT_V1 = [
@@ -286,7 +302,8 @@ const SEED = {
     ['zh-gloss-v1', ZH_GLOSS_PROMPT_V1, true],
     ['zh-feedback-v1', ZH_FEEDBACK_PROMPT_V1, true],
     ['zh-pron-v1', ZH_PRON_PROMPT_V1, true],
-    ['zh-insight-v1', ZH_INSIGHT_PROMPT_V1, true]
+    ['zh-insight-v1', ZH_INSIGHT_PROMPT_V1, true],
+    ['patient-v3', PATIENT_PROMPT_V3, true]
   ],
   // 문장 연습 초안 (Claude 작성) — 간호 현장에 맞는지 Kevin이 검토해 시트에서 고친다.
   drills: [
