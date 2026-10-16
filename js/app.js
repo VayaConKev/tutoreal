@@ -1,6 +1,6 @@
 // 화면 전환과 전체 흐름을 담당한다.
 import { APP_VERSION } from './config.js';
-import { getChapters, login, startTalk, endTalk, getFeedback, shareTalk, getSummary, checkPronunciation, setAvatar, getGloss } from './api.js';
+import { getChapters, login, startTalk, endTalk, getFeedback, shareTalk, getSummary, checkPronunciation, setAvatar, getGloss, getStudentTalks } from './api.js';
 import { LiveSession } from './live.js';
 import { Recorder } from './recorder.js';
 
@@ -8,7 +8,7 @@ const $ = (sel) => document.querySelector(sel);
 const views = {
   login: $('#view-login'), list: $('#view-list'), detail: $('#view-detail'), talk: $('#view-talk'), review: $('#view-review'),
   history: $('#view-history'), record: $('#view-record'),
-  teacher: $('#view-teacher'), tchapter: $('#view-tchapter'), tstudent: $('#view-tstudent'),
+  teacher: $('#view-teacher'), tchapter: $('#view-tchapter'), tstudent: $('#view-tstudent'), tsession: $('#view-tsession'),
   drill: $('#view-drill'), avatar: $('#view-avatar')
 };
 let chapters = [];
@@ -64,7 +64,7 @@ const errorText = (err) => ERROR_TEXT[err.name] || ERROR_TEXT[err.message] || `�
 // 탭 바: 화면마다 어느 탭에 속하는지. 여기에 없는 화면(로그인, 대화, 돌아보기, 문장 연습)에서는 탭 바를 숨긴다.
 const TAB_OF = {
   list: 'list', detail: 'list', history: 'history', record: 'history', avatar: 'avatar',
-  teacher: 'teacher', tchapter: 'teacher', tstudent: 'teacher'
+  teacher: 'teacher', tchapter: 'teacher', tstudent: 'teacher', tsession: 'teacher'
 };
 
 function show(name) {
@@ -1230,8 +1230,63 @@ function openStudent(id) {
     </div>
     ${notes.length ? `<div class="card t-card"><h3>어려웠던 점</h3>
       <ul class="fb-list">${notes.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul></div>` : ''}
-    <p class="t-note">공유된 대화의 피드백과 대화 내용 보기는 다음 버전에서 추가돼요.</p>`;
+    <div class="card t-card"><h3>공유된 대화</h3><div id="tstudent-talks"><p class="state">불러오는 중…</p></div></div>`;
   show('tstudent');
+  loadStudentTalks(id, st.name);
+}
+
+/* ── 선생님: 학생이 공유한 대화 (37단계). 요약 기간과 관계없이 최근 20개. 공유하지 않은 대화는 서버가 보내지 않는다. ── */
+
+let studentTalks = { id: '', name: '', talks: [] };
+const shortDate = (at) => { const m = /^\d{4}-(\d{2})-(\d{2}) (\d{2}:\d{2})/.exec(at || ''); return m ? `${Number(m[1])}월 ${Number(m[2])}일 ${m[3]}` : at || ''; };
+const talkMinutes = (t) => (t.duration_sec ? `${Math.max(1, Math.round(t.duration_sec / 60))}분` : '');
+
+async function loadStudentTalks(id, name) {
+  const box = $('#tstudent-talks');
+  try {
+    const talks = await getStudentTalks(loadCode(), id);
+    if (box !== $('#tstudent-talks')) return;   // 그사이 다른 학생을 열었음
+    studentTalks = { id, name, talks };
+    box.innerHTML = talks.length ? talks.map((t, i) => {
+      const hard = t.lines.filter((l) => l.hard).length;
+      const meta = [shortDate(t.at), talkMinutes(t), t.confidence ? CONFIDENCE[t.confidence].split(' ')[0] : '', hard ? `어려운 부분 ${hard}` : '']
+        .filter(Boolean).join(' · ');
+      return `<button class="trow" data-talk="${i}">
+          <span>${t.chapter_order ? `${escapeHtml(t.chapter_order)}장 · ` : ''}${escapeHtml(t.partner || t.chapter_title)} ›</span>
+          <span class="t-meta">${escapeHtml(meta)}</span>
+        </button>`;
+    }).join('') + (talks.length >= 20 ? '<p class="t-note">최근 20개까지 보여요.</p>' : '')
+      : '<p class="state">아직 공유된 대화가 없어요.</p>';
+    box.querySelectorAll('[data-talk]').forEach((b) => b.addEventListener('click', () => openTSession(talks[Number(b.dataset.talk)])));
+  } catch (err) {
+    console.warn(err);
+    box.innerHTML = `<p class="state">${escapeHtml(errorText(err))}</p>`;
+  }
+}
+
+/** 공유된 대화 하나: 자기 평가·어려웠던 점, 피드백(공유할 때 저장된 그대로), 대화 전체(학생이 고른 줄은 '어려웠어요') */
+function openTSession(t) {
+  viewCourse = t.course || 'en';   // 이 대화의 과정으로 그린다 (중국어면 병음, '상대')
+  const hard = t.lines.filter((l) => l.hard).length;
+  $('#tsession-body').innerHTML = `
+    <div class="card t-card record-head">
+      ${patientAvatar(t.partner, t.scenario_id)}
+      <div>
+        <p class="eyebrow">${escapeHtml(studentTalks.name)} · ${t.chapter_order ? `${escapeHtml(t.chapter_order)}장 ` : ''}${escapeHtml(t.chapter_title)}</p>
+        <h3>${escapeHtml(t.partner)}</h3>
+        <p class="talk-meta">${escapeHtml([shortDate(t.at), talkMinutes(t), CONFIDENCE[t.confidence] || ''].filter(Boolean).join(' · '))}</p>
+        ${t.difficulty ? `<p class="talk-meta">어려웠던 점: ${escapeHtml(t.difficulty)}</p>` : ''}
+      </div>
+    </div>
+    <div class="card t-card"><h3>피드백</h3>
+      ${t.feedback ? feedbackHtml(t.feedback) : '<p class="state">이 대화는 피드백이 저장되지 않았어요.</p>'}</div>
+    <div class="card t-card"><h3>대화 전체</h3>
+      ${hard ? `<p class="t-note">학생이 어려웠다고 고른 부분 ${hard}개</p>` : ''}
+      <div class="transcript">${t.lines.map((l) => `<div class="line ${l.who === 'me' ? 'me' : 'ai'}${l.hard ? ' picked' : ''}">${lineInner(l)}</div>`).join('')
+        || '<p class="state">저장된 대화 글자가 없어요.</p>'}</div>
+    </div>`;
+  viewCourse = '';
+  show('tsession');
 }
 
 /* ── 화면 모드: 자동(휴대폰 설정) → 라이트 → 다크. 이 휴대폰에만 기억한다 (index.html이 그리기 전에 먼저 적용) ── */
@@ -1295,6 +1350,7 @@ document.querySelectorAll('.level').forEach((b) => b.addEventListener('click', (
 $('#teacher-refresh').addEventListener('click', () => openTeacher(true));
 $('#tchapter-back').addEventListener('click', () => show('teacher'));
 $('#tstudent-back').addEventListener('click', () => show('teacher'));
+$('#tsession-back').addEventListener('click', () => show('tstudent'));
 
 $('#record-back').addEventListener('click', openHistory);
 $('#back').addEventListener('click', () => show('list'));

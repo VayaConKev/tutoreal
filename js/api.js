@@ -68,6 +68,12 @@ export async function getSummary(code, refresh = false, course = '') {
   return data.summary;
 }
 
+// 선생님 전용: 학생 한 명의 공유된 대화 (최근 20개). 피드백과 대화 글자가 함께 온다.
+export async function getStudentTalks(code, studentId) {
+  const data = await postServer('student_talks', { code, student_id: studentId }, 30000);
+  return data.talks || [];
+}
+
 // 발음 코칭: 녹음한 소리(WAV base64)를 보내 코칭을 받는다. 문장은 서버가 시트에서 찾는다.
 export async function checkPronunciation(code, drillId, level, audio) {
   const data = await postServer('pronounce', { code, drill_id: drillId, level, audio }, 60000);

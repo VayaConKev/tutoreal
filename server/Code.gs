@@ -60,12 +60,13 @@
  *                 피드백은 맞는 항목만 판단하고 보여 준다 (예: 전립선 비대증 질문은 남성 수검자에게만).
  * v0.36 (35단계): 피드백 안정화 — 답의 최대 길이 8192, 45초 뒤에는 다시 시도하지 않음, 같은 대화의 피드백을 만드는 중이면
  *                 새로 만들지 않고 기다림. quality 탭에 진단 기록 (시작·완료·실패, 걸린 시간, 멈춘 이유, 토큰 수).
+ * v0.37 (37단계): 선생님이 학생의 공유된 대화를 봄 — doPost(action=student_talks). 최근 20개, 피드백·대화 글자·고른 줄.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.36';
+const SERVER_VERSION = 'v0.37';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -744,6 +745,9 @@ function handlePost_(body) {
       const result = teacherSummary_(body.code, body.refresh === true, String(body.course || ''));
       result.server = SERVER_VERSION;
       return json_(result);
+    }
+    if (body.action === 'student_talks') {
+      return json_(studentTalks_(body.code, String(body.student_id || '')));
     }
     if (body.action === 'pronounce') {
       return json_(pronounce_(body.code, String(body.drill_id || ''), body.level === 'korean' ? 'korean' : 'blank', String(body.audio || '')));
@@ -1944,6 +1948,56 @@ function roleOf_(student) {
  * 선생님에게만 요약을 준다 (시트 summary 탭과 같은 계산). refresh면 AI 정리를 갱신하고 summary 탭도 새로 쓴다.
  * 학생 상세 화면을 늘릴 때는 학생 한 명의 공유 기록을 주는 요청을 따로 추가한다 (이 응답을 무겁게 만들지 않도록).
  */
+// 선생님이 학생 한 명의 공유된 대화를 볼 때 최근 몇 개까지 보낼지 (37단계)
+const STUDENT_TALKS_MAX = 20;
+
+/**
+ * 선생님 전용: 학생 한 명이 '공유하기'를 고른 대화들 (최근 것부터 최대 20개). 공유하지 않은 대화는 보내지 않는다.
+ * 대화마다 자기 평가·어려웠던 점·고른 줄·피드백(공유할 때 저장된 것)·대화 글자(transcripts 탭)를 함께 보낸다.
+ */
+function studentTalks_(code, studentId) {
+  const auth = auth_(code);
+  if (!auth.ok) return auth;
+  if (roleOf_(auth.student) !== 'teacher') return { ok: false, error: 'NOT_TEACHER' };
+  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+  const sessions = readTable_('sessions')
+    .filter(function (s) { return String(s.student_id) === studentId && isTrue_(s.shared) && s.started_at instanceof Date; })
+    .sort(function (a, b) { return b.started_at.getTime() - a.started_at.getTime(); })
+    .slice(0, STUDENT_TALKS_MAX);
+  const want = {};
+  sessions.forEach(function (s) { want[String(s.session_id)] = []; });
+  // 대화 글자: 공유할 때 transcripts 탭에 한 줄씩 저장된 것 (speaker는 영어·중국어 모두 nurse = 학생, patient = 상대)
+  readTable_('transcripts').forEach(function (t) {
+    const list = want[String(t.session_id)];
+    if (list) list.push({ seq: Number(t.seq) || 0, who: String(t.speaker) === 'nurse' ? 'me' : 'ai', text: String(t.text || '') });
+  });
+  const chapterOf = {};
+  readTable_('chapters').forEach(function (c) { chapterOf[String(c.chapter_id)] = c; });
+  const nameOf = {};
+  readTable_('scenarios').forEach(function (sc) { nameOf[String(sc.scenario_id)] = String(sc.name || ''); });
+  const talks = sessions.map(function (s) {
+    const id = String(s.session_id);
+    const c = chapterOf[String(s.chapter_id)] || {};
+    const hard = String(s.hard_lines || '').split(',').map(function (n) { return Number(n); }).filter(Boolean);
+    let feedback = null;
+    try { feedback = s.feedback ? JSON.parse(String(s.feedback)) : null; } catch (err) { feedback = null; }
+    return {
+      session_id: id,
+      at: Utilities.formatDate(s.started_at, tz, 'yyyy-MM-dd HH:mm'),
+      chapter_id: String(s.chapter_id), chapter_order: Number(c.order) || '', chapter_title: String(c.title || ''),
+      course: c.chapter_id ? courseOf_(c) : 'en',
+      scenario_id: String(s.scenario_id || ''), partner: nameOf[String(s.scenario_id)] || '',
+      duration_sec: Number(s.duration_sec) || 0,
+      confidence: [1, 2, 3].indexOf(Number(s.confidence)) >= 0 ? Number(s.confidence) : null,
+      difficulty: String(s.difficulty_note || '').trim(),
+      feedback: feedback,
+      lines: want[id].sort(function (a, b) { return a.seq - b.seq; })
+        .map(function (l) { return { who: l.who, text: l.text, hard: hard.indexOf(l.seq) >= 0 }; })
+    };
+  });
+  return { ok: true, server: SERVER_VERSION, talks: talks, max: STUDENT_TALKS_MAX };
+}
+
 function teacherSummary_(code, refresh, course) {
   const auth = auth_(code);
   if (!auth.ok) return auth;
