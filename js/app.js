@@ -142,16 +142,39 @@ function logout() {
 
 const COURSE_NAME = { en: '영어', zh: '중국어' };
 
+/* 난이도 탭 (38단계): Beginner / Intermediate / Advanced. 난이도를 정하는 방법은 나중에 정한다.
+   지금은 챕터에 난이도 값이 없으므로 모두 Beginner. 나중에 시트에 난이도 칸이 생기면 c.level로 나뉜다. */
+const DIFF_NAME = { beginner: 'Beginner', intermediate: 'Intermediate', advanced: 'Advanced' };
+let difficulty = 'beginner';
+const levelOf = (c) => (String(c.level || '').trim().toLowerCase() || 'beginner');
+
+function setDifficulty(d) {
+  difficulty = d;
+  document.querySelectorAll('.diff-tab').forEach((b) => {
+    b.classList.toggle('on', b.dataset.diff === d);
+    b.setAttribute('aria-pressed', String(b.dataset.diff === d));
+  });
+  renderList();
+}
+
 function renderList() {
   const box = $('#chapter-list');
   if (!chapters.length) {
     box.innerHTML = '<p class="state">아직 공개된 챕터가 없어요.</p>';
     return;
   }
+  const list = chapters.filter((c) => levelOf(c) === difficulty);
+  if (!list.length) {
+    box.innerHTML = `<div class="card soon">
+        <p class="soon-title">아직 준비 중이에요. Stay tuned!</p>
+        <p class="soon-sub">${DIFF_NAME[difficulty]} 챕터는 곧 추가될 예정이에요.<br>지금은 Beginner 챕터로 연습해 주세요.</p>
+      </div>`;
+    return;
+  }
   // 과정이 둘 이상이면(선생님) 과정마다 제목을 붙인다. 서버가 과정별·순서대로 보낸다.
-  const many = new Set(chapters.map((c) => c.course)).size > 1;
-  box.innerHTML = chapters.map((c, i) => `
-    ${many && (i === 0 || chapters[i - 1].course !== c.course) ? `<p class="eyebrow course-label">${COURSE_NAME[c.course] || c.course} 과정</p>` : ''}
+  const many = new Set(list.map((c) => c.course)).size > 1;
+  box.innerHTML = list.map((c, i) => `
+    ${many && (i === 0 || list[i - 1].course !== c.course) ? `<p class="eyebrow course-label">${COURSE_NAME[c.course] || c.course} 과정</p>` : ''}
     <button class="chapter" data-id="${escapeHtml(c.chapter_id)}">
       <span class="chapter-no">${escapeHtml(c.order)}</span>
       <span class="chapter-text">
@@ -1336,6 +1359,7 @@ const TAB_ACTION = {
 document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => TAB_ACTION[b.dataset.tab]()));
 $('#greet-avatar').addEventListener('click', openAvatarPicker);
 $('#drill-open').addEventListener('click', startDrill);
+document.querySelectorAll('.diff-tab').forEach((b) => b.addEventListener('click', () => setDifficulty(b.dataset.diff)));
 $('#drill-back').addEventListener('click', () => { if (window.speechSynthesis) speechSynthesis.cancel(); cancelRecording(); show('detail'); });
 document.querySelectorAll('.level').forEach((b) => b.addEventListener('click', () => {
   cancelRecording();

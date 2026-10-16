@@ -268,11 +268,17 @@ textarea {
 /* 문장 연습 */
 .drill-open { margin: 0 0 8px; }
 .levels { display: flex; gap: 6px; margin-bottom: 10px; }
-.level {
+.level, .diff-tab {
   flex: 1; padding: 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--card);
   color: var(--muted); font: inherit; font-size: 14px; cursor: pointer;
 }
-.level.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 700; }
+.level.on, .diff-tab.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 700; }
+/* 챕터 목록의 난이도 탭 (38단계): 휴대폰 폭에서 세 개가 한 줄에 들어가게 */
+.diff-tabs { margin: 0 0 14px; }
+.diff-tab { padding: 8px 4px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.soon { text-align: center; padding: 28px 20px; }
+.soon-title { font-size: 18px; font-weight: 700; margin: 0 0 6px; }
+.soon-sub { color: var(--muted); margin: 0; }
 .level-desc { color: var(--muted); font-size: 14px; margin: -2px 0 10px; }
 .drill-card { min-height: 220px; }
 .situation-label { color: var(--teal-ink); font-size: 13px; font-weight: 700; margin: 0 0 2px; }
