@@ -925,7 +925,86 @@ async function getRecordFeedback(e) {
   }
 }
 
+/* ── 대화 하나 공유·저장 (41단계): 대화와 피드백을 읽기용 글로 만들어 휴대폰의 공유 창에 넘긴다.
+   학생이 직접 고른 곳(메모, 카카오톡 나에게 보내기, 메일, 파일 등)에만 간다. 서버를 거치지 않는다.
+   공유 창이 없는 브라우저(컴퓨터 등)에서는 글을 복사한다. ── */
+let recordEntry = null;   // 지금 열려 있는 기록
+
+/** 기록의 챕터 번호를 글자로 ('2장'). 화면용 chapterNo()는 HTML이라 글에는 쓰지 않는다. */
+function plainChapterNo(e) {
+  const order = e.chapterOrder || (chapters.find((c) => c.chapter_id === e.chapterId) || {}).order;
+  return order ? `${order}장` : '';
+}
+
+function recordText(e) {
+  viewCourse = e.course || me.course;
+  const zh = courseNow() === 'zh';
+  const who = (l) => (l.who === 'me' ? '나' : partnerWord());
+  const out = ['Tutoreal 대화 기록', `${[plainChapterNo(e), e.chapterTitle].filter(Boolean).join(' · ')} — ${(e.patient && e.patient.name) || ''}`, recordMeta(e)];
+  if (e.difficulty) out.push(`어려웠던 점: ${e.difficulty}`);
+  out.push('', '[대화]');
+  (e.lines || []).forEach((l) => {
+    out.push(`${l.hard ? '★ ' : ''}${who(l)}: ${l.text}`);
+    const py = zh ? (l.py || localPinyin(l.text)) : '';
+    if (py) out.push(`    ${py}`);
+    if (l.ko) out.push(`    ${l.ko}`);
+  });
+  if ((e.lines || []).some((l) => l.hard)) out.push('(★ 어려웠던 부분)');
+  out.push('', '[피드백]');
+  const fb = e.feedback;
+  if (!fb) {
+    out.push('아직 피드백이 없어요.');
+  } else {
+    out.push(fb.summary);
+    if ((fb.checklist || []).length) {
+      const req = fb.checklist.filter((c) => !c.optional);
+      out.push('', `안내 체크리스트 ${req.filter((c) => c.done).length} / ${req.length}`);
+      fb.checklist.forEach((c) => out.push(`${c.done ? '✓' : c.optional ? '–' : '✗'} ${c.item}${c.optional ? ' (선택)' : ''}${c.en ? ` / ${c.en}` : ''}`));
+    }
+    if (fb.strengths.length) out.push('', '잘한 점', ...fb.strengths.map((x) => `- ${x}`));
+    if (fb.fixes.length) {
+      out.push('', '더 좋은 표현');
+      fb.fixes.forEach((f) => out.push(`- 내가 한 말: ${f.said}`, `  → ${f.better}${f.better_py ? ` (${f.better_py})` : ''}`, `  ${f.why}`));
+    }
+    if (fb.keywords.length) {
+      out.push('', `핵심 단어 ${fb.keywords.filter((k) => k.used).length} / ${fb.keywords.length}: ` +
+        fb.keywords.map((k) => `${k.used ? '✓' : '✗'} ${k.keyword}`).join(', '));
+    }
+    if (fb.next_practice.length) {
+      out.push('', '다음에 연습할 문장', ...fb.next_practice.map((n) => `- ${n.en}${n.py ? ` (${n.py})` : ''} — ${n.ko}`));
+    }
+  }
+  viewCourse = '';
+  return out.join('\n');
+}
+
+async function shareRecord() {
+  const e = recordEntry;
+  if (!e) return;
+  const msg = $('#record-share-msg');
+  msg.textContent = '';
+  const text = recordText(e);
+  const title = `Tutoreal ${plainChapterNo(e)} 대화 기록`.replace(/\s+/g, ' ');
+  if (navigator.share) {
+    try {
+      await navigator.share({ title, text });
+      return;
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;   // 공유 창을 닫음
+      console.warn(err);
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    msg.textContent = '대화 기록을 복사했어요. 메모나 메신저에 붙여 넣으세요.';
+  } catch {
+    msg.textContent = '이 브라우저에서는 공유할 수 없어요.';
+  }
+}
+
 function openRecord(e) {
+  recordEntry = e;
+  $('#record-share-msg').textContent = '';
   viewCourse = e.course || me.course;   // 이 기록의 과정으로 그린다 (다 그린 뒤 되돌림)
   $('#record-head').innerHTML = `${avatarHtml(e)}
     <div>
@@ -1429,6 +1508,7 @@ $('#tstudent-back').addEventListener('click', () => show('teacher'));
 $('#tsession-back').addEventListener('click', () => show('tstudent'));
 
 $('#record-back').addEventListener('click', openHistory);
+$('#record-share').addEventListener('click', shareRecord);
 $('#back').addEventListener('click', () => show('list'));
 $('#talk-start').addEventListener('click', beginTalk);
 $('#talk-end').addEventListener('click', () => { if (live) { talk.endReason = 'user'; live.stop(''); } });

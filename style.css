@@ -263,6 +263,10 @@ textarea {
 .record-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .record-head h3 { margin: 0; }
 #view-record .card + .card { margin-top: 12px; }
+.record-actions { margin: -4px 0 12px; }
+.record-actions button { margin-top: 0; width: 100%; }
+.record-actions .hint { text-align: center; margin: 6px 0 0; }
+.record-actions .hint:empty { display: none; }
 #record-lines { margin-top: 8px; }
 
 /* 문장 연습 */
