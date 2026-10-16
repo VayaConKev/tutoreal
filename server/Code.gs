@@ -64,12 +64,13 @@
  * v0.38 (39단계): AI가 붐빌 때(503 등) 피드백 — 간격을 늘려 가며 다시 시도(45초 안 최대 5번), 붐빈 실패는 3번 한도에 안 셈,
  *                 settings의 fallback_text_model(선택)로 한 번 더. 붐빈 실패는 AI_BUSY로 알린다.
  * v0.39 (40단계): '내 기록'에서 피드백 받기 — 피드백 없이 공유된 대화에 나중에 피드백을 받으면 시트(feedback, keyword_checks)에도 채운다.
+ * v0.40: 피드백 실패 횟수를 30분만 기억 (전에는 6시간), 이름을 바꿔 예전 서버의 횟수는 무시 — 업데이트 전에 막힌 대화도 바로 받게.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.39';
+const SERVER_VERSION = 'v0.40';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -1139,6 +1140,8 @@ ZH_FEEDBACK_SCHEMA.properties.next_practice.items = {
 
 const FEEDBACK_CACHE_SEC = 6 * 3600;   // 같은 대화의 피드백은 6시간 동안 다시 만들지 않고 그대로 준다
 const FEEDBACK_MAX_TRIES = 3;          // 실패해도 한 대화에 3번까지만 시도
+const FEEDBACK_TRY_WINDOW_SEC = 1800;  // 실패 횟수는 30분만 기억한다 → 30분 뒤에는 '내 기록'에서 다시 받을 수 있다 (v0.40)
+// 실패 횟수의 이름: v0.40부터 'fbt_' (예전 서버가 'fbn_'에 6시간 동안 남긴 횟수는 무시 — 붐빔 실패까지 세던 때의 기록)
 const FEEDBACK_WAIT_MS = 100000;       // 같은 대화의 피드백을 다른 요청이 만드는 중이면 그 결과를 이만큼 기다린다 (v0.36)
 const FEEDBACK_RUNNING_SEC = 360;      // '만드는 중' 표시가 남는 최대 시간 (Apps Script 한 번 실행의 최대 6분)
 
@@ -1161,7 +1164,7 @@ function feedback_(code, sessionId, lines) {
   // 새로 만들지 않고 그 결과를 기다린다. AI에 같은 일이 겹겹이 쌓이지 않게 (v0.36)
   if (!claimFeedback_(cache, sessionId)) return waitFeedback_(cache, sessionId);
   try {
-    const tries = Number(cache.get('fbn_' + sessionId) || 0);
+    const tries = Number(cache.get('fbt_' + sessionId) || 0);
     if (tries >= FEEDBACK_MAX_TRIES) return { ok: false, error: 'FEEDBACK_LIMIT' };
 
     const chapter = readTable_('chapters').filter(function (c) { return String(c.chapter_id) === String(session.chapter_id); })[0];
@@ -1173,7 +1176,7 @@ function feedback_(code, sessionId, lines) {
     diag_(sessionId, 'feedback', '시작 · ' + String(getSettings_().text_model || '') + ' · 대화 ' + clean.length + '줄 · ' + (tries + 1) + '번째');
     const result = makeFeedback_(chapter, scenario, clean, auth.student);
     // AI가 붐벼서(429·500·503) 못 받은 경우는 3번 한도에 세지 않는다 (요금이 나가지 않고, 학생 잘못도 아니다) (v0.38)
-    if (!(result.meta && result.meta.transient)) cache.put('fbn_' + sessionId, String(tries + 1), FEEDBACK_CACHE_SEC);
+    if (!(result.meta && result.meta.transient)) cache.put('fbt_' + sessionId, String(tries + 1), FEEDBACK_TRY_WINDOW_SEC);
     diag_(sessionId, 'feedback', (result.ok ? '완료 · ' : '실패 · ' + (result.error || '') + ' · ') + metaNote_(result.meta));
     if (result.cost) addCost_(sessionId, result.cost);
     delete result.cost;
