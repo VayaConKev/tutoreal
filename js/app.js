@@ -426,16 +426,13 @@ function openReview() {
 /* 4/4 피드백: 대화 글자를 서버로 보내 AI 피드백을 받는다 (저장은 하지 않는다). 숨겨진 4단계 칸에 미리 그려 둔다. */
 function loadFeedback(data) {
   const box = $('#feedback');
-  // 기다리는 동안 걸린 시간을 보여 준다 (v0.39). 붐빌 때는 1분을 넘기기도 한다.
-  const started = Date.now();
-  box.innerHTML = '<p class="state">피드백을 만드는 중… <span id="fb-elapsed"></span><br>1분 안팎 걸릴 수 있어요.</p>';
-  const tick = setInterval(() => {
-    const el = $('#fb-elapsed');
-    if (el && review.data === data) el.textContent = `(${Math.round((Date.now() - started) / 1000)}초)`;
-  }, 1000);
+  // 기다리는 동안: 파도 애니메이션, 걸린 시간, 복습 문장 (36단계). 붐빌 때는 1분을 넘기기도 한다.
+  if (data.stopWait) data.stopWait();   // '다시 시도': 앞의 기다림 화면을 멈춘다
+  const stop = startWaitScreen(box, data);
+  data.stopWait = stop;
   const lines = data.lines.map((l) => ({ who: l.who, text: l.text }));
   data.feedbackJob = getFeedback(loadCode(), data.sessionId, lines)
-    .finally(() => clearInterval(tick))
+    .finally(() => { stop(); if (data.stopWait === stop) data.stopWait = null; })
     .then((fb) => {
       data.feedback = fb;
       if (review.data === data) box.innerHTML = feedbackHtml(fb);
@@ -471,6 +468,77 @@ function checklistHtml(list) {
           ${c.en ? `<span class="ck-en" lang="en">${escapeHtml(c.en)}</span>` : ''}</span>
         <span class="chk-state">${STATE[state][1]}</span></li>`;
     }).join('')}</ul>`;
+}
+
+/** 기다리는 동안 보여 줄 복습 문장: 체크리스트(성별 표시가 없는 항목)가 있으면 그것, 없으면 문장 연습. [{ ko, target, py }] */
+function waitTips(chapter) {
+  const zh = (chapter.course || me.course) === 'zh';
+  const plain = (s) => s.replace(/\[([^\]]+)\]/g, '$1');
+  const fromChecklist = (chapter.checklist || []).filter((c) => !c.sex && c.en)
+    .map((c) => ({ ko: c.text, target: c.en, py: zh ? localPinyin(c.en) : '' }));
+  if (fromChecklist.length) return fromChecklist;
+  return (chapter.drills || []).filter((d) => /\s/.test(plain(d.sentence).trim()) || zh)   // 단어 하나짜리는 빼고 문장만
+    .map((d) => ({ ko: d.situation.replace(/^단어:\s*/, ''), target: plain(d.sentence), py: zh ? d.pron : '' }));
+}
+
+/**
+ * 피드백 기다림 화면 (36단계). 앱 색의 파도 두 줄(라이트: 남색+청록, 다크: 회청색+청록), 걸린 시간,
+ * 5초마다 바뀌는 복습 문장. 진행률(%)은 알 수 없으므로 보여 주지 않는다. '동작 줄이기'를 켠 휴대폰에서는 멈춘 그림.
+ * 끝낼 때 부르는 함수를 돌려준다.
+ */
+function startWaitScreen(box, data) {
+  const tips = waitTips(data.chapter);
+  box.innerHTML = `<div class="fb-wait">
+      <svg class="fb-wave" viewBox="0 0 240 100" aria-hidden="true"><path class="back"/><path class="front"/></svg>
+      <p class="fb-wait-msg">AI가 대화를 읽고 있어요… <span class="fb-elapsed">0초</span></p>
+      <p class="fb-wait-hint">1분 안팎 걸릴 수 있어요.</p>
+      ${tips.length ? `<p class="fb-tip-label">기다리는 동안 한 번 더 말해 봐요</p>
+        <div class="fb-tip" aria-live="polite"><span class="tip-ko"></span><span class="tip-target"></span><span class="tip-py"></span></div>` : ''}
+    </div>`;
+  const paths = box.querySelectorAll('.fb-wave path');
+  const tipEl = box.querySelector('.fb-tip');
+  const elapsedEl = box.querySelector('.fb-elapsed');
+  const still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // 뒤쪽 선(작고 느림)과 앞쪽 선(크고 빠름). 가운데가 크게 출렁이고 양 끝은 모인다.
+  const LINES = [{ amp: 16, k: 1.4, speed: 1.4, shift: 1.6 }, { amp: 34, k: 1.7, speed: 2.0, shift: 0 }];
+  const wave = (l, t) => {
+    let d = '';
+    for (let i = 0; i <= 48; i++) {
+      const u = i / 48;
+      const env = Math.pow(Math.sin(Math.PI * u), 1.6) * (0.75 + 0.25 * Math.sin(t * 0.9 + l.shift));
+      d += `${i ? ' L' : 'M'}${(8 + 224 * u).toFixed(1)} ${(50 + l.amp * env * Math.sin(2 * Math.PI * l.k * u - t * l.speed + l.shift)).toFixed(1)}`;
+    }
+    return d;
+  };
+  let raf = 0;
+  let running = true;
+  const draw = (ms) => {
+    if (!running) return;
+    // 숨겨진 단계(1~3단계)에 있는 동안은 그리지 않는다
+    if (box.offsetParent !== null || still) paths.forEach((p, i) => p.setAttribute('d', wave(LINES[i], still ? 1 : ms / 1000)));
+    if (!still) raf = requestAnimationFrame(draw);
+  };
+  draw(1000);
+  const started = Date.now();
+  const tick = setInterval(() => { elapsedEl.textContent = `${Math.round((Date.now() - started) / 1000)}초`; }, 1000);
+  let n = Math.floor(Math.random() * Math.max(tips.length, 1));
+  const showTip = () => {
+    if (!tipEl) return;
+    const t = tips[n % tips.length];
+    n++;
+    const fill = () => {
+      tipEl.querySelector('.tip-ko').textContent = t.ko;
+      tipEl.querySelector('.tip-target').textContent = t.target;
+      tipEl.querySelector('.tip-py').textContent = t.py || '';
+      tipEl.style.opacity = 1;
+    };
+    if (still) return fill();
+    tipEl.style.opacity = 0;
+    setTimeout(fill, 350);
+  };
+  showTip();
+  const rotate = tips.length > 1 ? setInterval(showTip, 5000) : 0;
+  return () => { running = false; cancelAnimationFrame(raf); clearInterval(tick); clearInterval(rotate); };
 }
 
 function feedbackHtml(fb) {
