@@ -3,6 +3,7 @@ import { APP_VERSION } from './config.js';
 import { getChapters, login, startTalk, endTalk, getFeedback, shareTalk, getSummary, checkPronunciation, setAvatar, getGloss, getStudentTalks } from './api.js';
 import { LiveSession } from './live.js';
 import { Recorder } from './recorder.js';
+import { WAIT_CAT_SVG } from './wait-cat.js';
 
 const $ = (sel) => document.querySelector(sel);
 const views = {
@@ -510,43 +511,23 @@ function waitTips(chapter) {
 }
 
 /**
- * 피드백 기다림 화면 (36단계). 앱 색의 파도 두 줄(라이트: 남색+청록, 다크: 회청색+청록), 걸린 시간,
- * 5초마다 바뀌는 복습 문장. 진행률(%)은 알 수 없으므로 보여 주지 않는다. '동작 줄이기'를 켠 휴대폰에서는 멈춘 그림.
+ * 피드백 기다림 화면 (36단계, 45단계에 파도 → 고양이). 이마의 로딩 표시가 도는 고양이(js/wait-cat.js), 걸린 시간,
+ * 5초마다 바뀌는 복습 문장. 진행률(%)은 알 수 없으므로 보여 주지 않는다.
+ * 로딩 표시는 CSS 애니메이션이라 숨겨진 단계에서는 저절로 멈추고, '동작 줄이기'를 켠 휴대폰에서는 멈춘 그림.
  * 끝낼 때 부르는 함수를 돌려준다.
  */
 function startWaitScreen(box, data) {
   const tips = waitTips(data.chapter);
   box.innerHTML = `<div class="fb-wait">
-      <svg class="fb-wave" viewBox="0 0 240 100" aria-hidden="true"><path class="back"/><path class="front"/></svg>
+      ${WAIT_CAT_SVG}
       <p class="fb-wait-msg">AI가 대화를 읽고 있어요… <span class="fb-elapsed">0초</span></p>
       <p class="fb-wait-hint">1분 안팎 걸릴 수 있어요.</p>
       ${tips.length ? `<p class="fb-tip-label">기다리는 동안 한 번 더 말해 봐요</p>
         <div class="fb-tip" aria-live="polite"><span class="tip-ko"></span><span class="tip-target"></span><span class="tip-py"></span></div>` : ''}
     </div>`;
-  const paths = box.querySelectorAll('.fb-wave path');
   const tipEl = box.querySelector('.fb-tip');
   const elapsedEl = box.querySelector('.fb-elapsed');
   const still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // 뒤쪽 선(작고 느림)과 앞쪽 선(크고 빠름). 가운데가 크게 출렁이고 양 끝은 모인다.
-  const LINES = [{ amp: 16, k: 1.4, speed: 1.4, shift: 1.6 }, { amp: 34, k: 1.7, speed: 2.0, shift: 0 }];
-  const wave = (l, t) => {
-    let d = '';
-    for (let i = 0; i <= 48; i++) {
-      const u = i / 48;
-      const env = Math.pow(Math.sin(Math.PI * u), 1.6) * (0.75 + 0.25 * Math.sin(t * 0.9 + l.shift));
-      d += `${i ? ' L' : 'M'}${(8 + 224 * u).toFixed(1)} ${(50 + l.amp * env * Math.sin(2 * Math.PI * l.k * u - t * l.speed + l.shift)).toFixed(1)}`;
-    }
-    return d;
-  };
-  let raf = 0;
-  let running = true;
-  const draw = (ms) => {
-    if (!running) return;
-    // 숨겨진 단계(1~3단계)에 있는 동안은 그리지 않는다
-    if (box.offsetParent !== null || still) paths.forEach((p, i) => p.setAttribute('d', wave(LINES[i], still ? 1 : ms / 1000)));
-    if (!still) raf = requestAnimationFrame(draw);
-  };
-  draw(1000);
   const started = Date.now();
   const tick = setInterval(() => { elapsedEl.textContent = `${Math.round((Date.now() - started) / 1000)}초`; }, 1000);
   let n = Math.floor(Math.random() * Math.max(tips.length, 1));
@@ -566,7 +547,7 @@ function startWaitScreen(box, data) {
   };
   showTip();
   const rotate = tips.length > 1 ? setInterval(showTip, 5000) : 0;
-  return () => { running = false; cancelAnimationFrame(raf); clearInterval(tick); clearInterval(rotate); };
+  return () => { clearInterval(tick); clearInterval(rotate); };
 }
 
 function feedbackHtml(fb) {

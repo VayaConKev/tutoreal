@@ -7,7 +7,9 @@
   --accent: #003876; --accent-soft: #e3ecf5; --on-accent: #ffffff;
   --teal: #50b3b2; --teal-ink: #1c7473; --teal-soft: #e2f3f2;
   --nav-bg: #e8f1f3; --danger: #c43d3d; --radius: 14px;
-  --wave-back: #003876;   /* 피드백 기다림 파도의 뒤쪽 선: 라이트는 남색, 다크는 남색이 안 보여 회청색 */
+  /* 피드백 기다림 고양이: 라이트는 검은 고양이(눈·귀·턱 아이보리), 다크는 흰 고양이(하늘색 눈, 분홍 귀, 베이지 턱) */
+  --cat: #121417; --cat-eye: #f3e6cc; --cat-ear: #f3e6cc; --cat-chin: #f3e6cc; --cat-pupil: #121417;
+  --cat-whisker: #ffffff; --cat-tick: #e9edf1;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -15,14 +17,16 @@
     --bg: #0b141d; --card: #13202b; --text: #e5edf2; --muted: #93a7b6; --line: #233441;
     --accent: #50b3b2; --accent-soft: #133236; --on-accent: #04223f;
     --teal: #50b3b2; --teal-ink: #6dcac8; --teal-soft: #12302f;
-    --nav-bg: #0f1c26; --danger: #ef7b7b; --wave-back: #93a7b6; color-scheme: dark;
+    --nav-bg: #0f1c26; --danger: #ef7b7b; color-scheme: dark;
+    --cat: #f2f4f6; --cat-eye: #9fd4f2; --cat-ear: #f4b4c4; --cat-chin: #e2cfa8; --cat-whisker: #8d979f; --cat-tick: #2a3138;
   }
 }
 :root[data-theme="dark"] {
   --bg: #0b141d; --card: #13202b; --text: #e5edf2; --muted: #93a7b6; --line: #233441;
   --accent: #50b3b2; --accent-soft: #133236; --on-accent: #04223f;
   --teal: #50b3b2; --teal-ink: #6dcac8; --teal-soft: #12302f;
-  --nav-bg: #0f1c26; --danger: #ef7b7b; --wave-back: #93a7b6; color-scheme: dark;
+  --nav-bg: #0f1c26; --danger: #ef7b7b; color-scheme: dark;
+  --cat: #f2f4f6; --cat-eye: #9fd4f2; --cat-ear: #f4b4c4; --cat-chin: #e2cfa8; --cat-whisker: #8d979f; --cat-tick: #2a3138;
 }
 * { box-sizing: border-box; }
 body {
@@ -341,10 +345,16 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 
 /* 피드백을 기다리는 동안 (36단계): 앱 색 파도 두 줄 + 걸린 시간 + 5초마다 바뀌는 복습 문장 */
 .fb-wait { padding: 4px 0 2px; }
-.fb-wave { display: block; width: 100%; max-width: 240px; height: 100px; margin: 0 auto; overflow: visible; }
-.fb-wave path { fill: none; stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; }
-.fb-wave .back { stroke: var(--wave-back); }
-.fb-wave .front { stroke: var(--teal); }
+.fb-cat { display: block; width: 160px; max-width: 60%; height: auto; aspect-ratio: 1190 / 1250; margin: 4px auto 6px; }
+.fb-cat .body { fill: var(--cat); }
+.fb-cat .eye { fill: var(--cat-eye); }
+.fb-cat .ear { fill: var(--cat-ear); }
+.fb-cat .chin { fill: var(--cat-chin); }
+.fb-cat .pupil { fill: var(--cat-pupil); }
+.fb-cat .whisker { fill: none; stroke: var(--cat-whisker); stroke-width: 8; stroke-linecap: round; }
+.fb-cat .tick { fill: var(--cat-tick); animation: cat-tick 1.2s linear infinite; }
+@keyframes cat-tick { from { opacity: 1; } to { opacity: .15; } }
+@media (prefers-reduced-motion: reduce) { .fb-cat .tick { animation: none; opacity: .6; } }
 .fb-wait-msg { text-align: center; color: var(--muted); margin: 2px 0 0; }
 .fb-wait-hint { text-align: center; color: var(--muted); font-size: 13px; margin: 2px 0 16px; }
 .fb-tip-label { font-size: 13px; color: var(--muted); margin: 0 0 6px; }
