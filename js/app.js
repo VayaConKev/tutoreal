@@ -180,7 +180,7 @@ function renderList() {
     <button class="chapter" data-id="${escapeHtml(c.chapter_id)}">
       <span class="chapter-no">${escapeHtml(c.order)}</span>
       <span class="chapter-text">
-        <span class="chapter-title">${escapeHtml(c.title)}</span>
+        <span class="chapter-title">${escapeHtml(c.title)}${c.preview ? ' <span class="opt-tag preview-tag">미리 보기</span>' : ''}</span>
         <span class="chapter-goal">${goalHtml(c.goal)}</span>
       </span>
       <span class="chevron" aria-hidden="true">›</span>
@@ -194,7 +194,8 @@ function openChapter(id) {
   const c = chapters.find((x) => x.chapter_id === id);
   if (!c) return;
   $('#detail-no').textContent = `${c.order}장`;
-  $('#detail-title').textContent = c.title;
+  // 미리 보기 챕터 (43단계): 선생님·테스터에게만 보이고 학생에게는 아직 열리지 않았다
+  $('#detail-title').innerHTML = escapeHtml(c.title) + (c.preview ? ' <span class="opt-tag preview-tag">미리 보기 · 학생에게는 안 보여요</span>' : '');
   $('#detail-goal').innerHTML = goalHtml(c.goal);
   $('#detail-keywords').innerHTML = c.keywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join('');
   // 안내 체크리스트 (시트의 checklist 칸이 있는 챕터만): 대화 전에 미리 보고 공부한다 (33단계)
@@ -1393,7 +1394,7 @@ function renderTeacher() {
         <span><span class="tile-n">${s.totals.count}회</span><span class="tile-l">연습</span></span>
         <span><span class="tile-n">${s.totals.minutes}분</span><span class="tile-l">시간</span></span>
       </div>
-      <p class="t-note">예상 비용 $${s.totals.cost_usd}</p>
+      <p class="t-note">학생 연습만 셉니다 (선생님·테스트 계정 제외) · 예상 비용 $${s.totals.cost_usd} (테스트 포함)</p>
     </div>
     <div class="card t-card">
       <h3>학생</h3>

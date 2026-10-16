@@ -355,3 +355,6 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 @media (prefers-reduced-motion: reduce) { .fb-tip { transition: none; } }
 /* 피드백을 못 받았을 때의 안내 (40단계) */
 .fb-later { text-align: center; margin: 12px 0 0; }
+
+/* 미리 보기 챕터 표시 (43단계): 선생님·테스터에게만 보이는 챕터 */
+.preview-tag { border-color: var(--accent); color: var(--accent); font-weight: 600; }

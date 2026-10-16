@@ -65,12 +65,14 @@
  *                 settings의 fallback_text_model(선택)로 한 번 더. 붐빈 실패는 AI_BUSY로 알린다.
  * v0.39 (40단계): '내 기록'에서 피드백 받기 — 피드백 없이 공유된 대화에 나중에 피드백을 받으면 시트(feedback, keyword_checks)에도 채운다.
  * v0.40: 피드백 실패 횟수를 30분만 기억 (전에는 6시간), 이름을 바꿔 예전 서버의 횟수는 무시 — 업데이트 전에 막힌 대화도 바로 받게.
+ * v0.41 (43단계): 미리 보기 — chapters 탭 published 칸에 preview라고 적으면 선생님(teacher)과 테스터(tester, students 탭 role 칸)에게만 보인다.
+ * v0.42 (44단계): 선생님 요약에서 선생님·테스터 계정의 연습을 뺀다 (학생 목록, 연습 통계, 핵심 단어, 어려웠던 점, AI 정리). 비용 합계에는 넣는다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.40';
+const SERVER_VERSION = 'v0.42';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -615,8 +617,28 @@ function canUseCourse_(student, course) {
  */
 function usableChapter_(chapterId, student) {
   return readTable_('chapters').filter(function (c) {
-    return String(c.chapter_id) === chapterId && isTrue_(c.published) && canUseCourse_(student, courseOf_(c));
+    return String(c.chapter_id) === chapterId && chapterVisible_(c, student) && canUseCourse_(student, courseOf_(c));
   })[0] || null;
+}
+
+/**
+ * 미리 보기 (43단계): chapters 탭 published 칸이 TRUE면 모두, preview면 선생님(role: teacher)과
+ * 테스터(role: tester)만 본다. 새 챕터를 학생에게 열기 전에 시험해 보는 용도. FALSE·빈칸은 아무도 못 본다.
+ */
+function isPreview_(chapter) {
+  return String((chapter && chapter.published) || '').trim().toLowerCase() === 'preview';
+}
+function canPreview_(student) {
+  const role = String((student && student.role) || '').trim().toLowerCase();
+  return role === 'teacher' || role === 'tester';
+}
+/** 선생님·테스터 계정: 미리 보기를 볼 수 있고, 선생님 요약의 학습 통계에서는 빠진다 (44단계) */
+function isTestAccount_(student) {
+  return canPreview_(student);
+}
+
+function chapterVisible_(chapter, student) {
+  return isTrue_(chapter.published) || (isPreview_(chapter) && canPreview_(student));
 }
 
 /** 이 사람이 쓸 수 있는 공개(published) 챕터를 과정별·순서(order)대로. 학생 화면에 필요한 칸만 보낸다. */
@@ -633,7 +655,7 @@ function listChapters_(student) {
       });
     });
   return readTable_('chapters')
-    .filter(function (c) { return c.chapter_id && isTrue_(c.published) && canUseCourse_(student, courseOf_(c)); })
+    .filter(function (c) { return c.chapter_id && chapterVisible_(c, student) && canUseCourse_(student, courseOf_(c)); })
     .sort(function (a, b) {
       return (courseOf_(a) === 'en' ? 0 : 1) - (courseOf_(b) === 'en' ? 0 : 1) ||
         (courseOf_(a) < courseOf_(b) ? -1 : courseOf_(a) > courseOf_(b) ? 1 : 0) || Number(a.order) - Number(b.order);
@@ -647,6 +669,7 @@ function listChapters_(student) {
         goal: String(c.goal || ''),
         keywords: String(c.keywords || '').split(',').map(function (k) { return k.trim(); }).filter(Boolean),
         ai_captions: captionMode_(c.ai_captions),
+        preview: isPreview_(c),   // 미리 보기 챕터 (선생님·테스터에게만 보임) — 앱이 '미리 보기' 표시를 붙인다
         checklist: checklistOf_(c),
         drills: drills[String(c.chapter_id)] || []
       };
@@ -893,7 +916,7 @@ function startTalk_(code, chapterId) {
 function createLiveToken_(chapterId, maxSec, student) {
   maxSec = maxSec || LIVE_SESSION_MAX_MIN * 60;
   const chapter = readTable_('chapters').filter(function (c) {
-    return String(c.chapter_id) === chapterId && isTrue_(c.published);
+    return String(c.chapter_id) === chapterId && chapterVisible_(c, student);
   })[0];
   if (!chapter) return { ok: false, error: 'NO_CHAPTER' };
 
@@ -1709,11 +1732,12 @@ function buildSummary_(course) {
     const day = Utilities.formatDate(s.started_at, tz, 'yyyy-MM-dd');
     return day >= period.from && day <= period.to && sessionCourse(s) === course;
   });
-  // 학생: 이 과정의 활성 학생 + 이 기간에 이 과정 챕터를 연습한 다른 활성 사람(예: 선생님)
+  // 학생: 이 과정의 활성 학생 + 이 기간에 이 과정 챕터를 연습한 다른 활성 학생.
+  // 선생님(teacher)과 테스터(tester) 계정의 연습은 빼서 학습 통계에 섞이지 않게 한다 (44단계). 비용 합계에는 넣는다.
   const practiced = {};
   allInPeriod.forEach(function (s) { practiced[String(s.student_id)] = true; });
   const students = allStudents.filter(function (s) {
-    return s.student_id && String(s.status).trim().toLowerCase() === 'active' &&
+    return s.student_id && String(s.status).trim().toLowerCase() === 'active' && !isTestAccount_(s) &&
       (courseOf_(s) === course || practiced[String(s.student_id)]);
   });
   const nameOf = {};
@@ -1840,7 +1864,7 @@ function writeSummary_(list) {
     rows.push(['연습한 학생', sm.totals.students]);
     rows.push(['연습 횟수', sm.totals.count]);
     rows.push(['연습 시간(분)', sm.totals.minutes]);
-    rows.push(['예상 비용(USD, 이 과정, 비활성 학생 포함)', sm.totals.cost_usd]);
+    rows.push(['예상 비용(USD, 이 과정, 비활성 학생·선생님·테스트 포함)', sm.totals.cost_usd]);
     blank();
 
     title('학생 × 챕터 (횟수 / 분)');
@@ -1942,8 +1966,11 @@ function storedInsight_(chapterId, period, sharedCount) {
 /** 공유된 대화가 있고 저장된 정리가 없거나 낡은 챕터만 AI로 새로 정리한다. */
 function updateInsights_(sm) {
   const chapters = readTable_('chapters');
+  // 선생님·테스터 계정의 대화는 AI 정리에 넣지 않는다 (44단계)
+  const testIds = {};
+  readTable_('students').forEach(function (st) { if (isTestAccount_(st)) testIds[String(st.student_id)] = true; });
   const shared = readTable_('sessions').filter(function (s) {
-    return isTrue_(s.shared) && s.started_at instanceof Date &&
+    return isTrue_(s.shared) && s.started_at instanceof Date && !testIds[String(s.student_id)] &&
       Utilities.formatDate(s.started_at, SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), 'yyyy-MM-dd') >= sm.period.from;
   });
   sm.chapterStats.forEach(function (c) {

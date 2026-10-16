@@ -40,7 +40,7 @@ Tutoreal의 교과서 내용은 **모두 구글 시트(Tutoreal DB)에만** 있�
 | goal | 학습 개요 (한국어). 줄바꿈이나 `-`로 나누면 앱에서 글머리표 | `- 회복실 안내하기` | `- 원단 이름 말하기` |
 | keywords | 핵심 표현, 쉼표로 구분. 피드백이 사용 여부를 확인하고, 받아쓰기 단어 힌트로도 쓴다 | `recovery room, dizzy, results` | `面料, 棉, 羊毛` |
 | scene | **AI에게 주는 장면 설명. 영어로** 쓴다. 장소, 상황, AI가 할 일, 언제 끝내는지 | 아래 예 | 아래 예 |
-| published | 학생에게 보일지 | TRUE / FALSE | TRUE / FALSE |
+| published | 학생에게 보일지. **preview**는 선생님·테스터(students 탭 role이 tester)에게만 보이는 미리 보기 — 새 챕터는 preview로 시험한 뒤 TRUE로 연다 | TRUE / FALSE / preview | TRUE / FALSE / preview |
 | ai_captions | AI 말 자막: `tap`(눌러서 보기) / `show`(항상) / `off`(없음) | 보통 `tap` | 초보라 `show` |
 | course | 과정 | `en` 또는 빈칸 | `zh` |
 | checklist | 꼭 해야 할 안내 (**한 칸 안에 한 줄에 하나**). `한국어 \| 따라 읽을 문장`. 가끔만 하는 안내는 앞에 `(선택)`. 챕터 화면에 미리 보이고, 피드백이 항목마다 했는지(✓/✗) 확인한다. 없으면 비움 | `저를 바라보면서 왼쪽으로 누워주세요. \| Please lie down on your left side, facing me.` | `원단 성분 묻기 \| 这个面料是什么成分？` |
