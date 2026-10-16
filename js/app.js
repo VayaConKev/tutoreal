@@ -645,10 +645,11 @@ function nextStep() {
   finishReview();
 }
 
-/* ── 기록: 이 휴대폰에 최근 30개까지 (공유 여부와 관계없이). 공유를 고르면 시트에도 저장한다. ── */
+/* ── 기록: 이 휴대폰에 최근 100개까지 (공유 여부와 관계없이). 공유를 고르면 시트에도 저장한다.
+   42단계에서 30개 → 100개 (백업 파일로 옮겨 둘 수 있게 되어서). 저장 공간이 모자라면 오래된 것부터 뺀다. ── */
 
 const HISTORY_KEY = 'tutoreal.history';
-const HISTORY_MAX = 30;
+const HISTORY_MAX = 100;
 
 function saveLocal(d) {
   const entry = {
@@ -664,11 +665,107 @@ function saveLocal(d) {
   try {
     const list = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]').filter((e) => e.sessionId !== entry.sessionId);
     list.unshift(entry);
-    // 휴대폰 저장 공간이 모자라면 오래된 기록부터 지운다.
-    for (let n = Math.min(list.length, HISTORY_MAX); n > 0; n--) {
-      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, n))); return; } catch { /* 줄여서 다시 */ }
-    }
+    storeHistory(list);
   } catch { /* 저장 못 해도 진행 */ }
+}
+
+/** 기록 목록(최근 것이 앞)을 저장한다. 최대 100개, 휴대폰 저장 공간이 모자라면 오래된 기록부터 뺀다. 저장한 개수를 돌려준다. */
+function storeHistory(list) {
+  for (let n = Math.min(list.length, HISTORY_MAX); n > 0; n--) {
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, n))); return n; } catch { /* 줄여서 다시 */ }
+  }
+  return 0;
+}
+
+/* ── 기록 백업 (42단계): 내 기록 전체를 파일 하나(JSON)로 내보내고, 다른 휴대폰에서 불러온다.
+   파일은 학생이 공유 창에서 고른 곳(파일 앱, iCloud, 카카오톡 나에게 보내기 등)에만 가고 서버를 거치지 않는다.
+   접속 코드는 넣지 않는다. 불러올 때는 모양이 맞는 기록만 받아들이고, 같은 대화는 겹치지 않게 합친다. ── */
+const BACKUP_TYPE = 'tutoreal-history';
+
+async function exportBackup() {
+  const msg = $('#backup-msg');
+  msg.textContent = '';
+  const list = loadHistory();
+  if (!list.length) { msg.textContent = '아직 백업할 기록이 없어요.'; return; }
+  const today = new Date().toISOString().slice(0, 10);
+  const json = JSON.stringify({ type: BACKUP_TYPE, version: 1, exported_at: new Date().toISOString(), records: list });
+  const name = `tutoreal-backup-${today}.json`;
+  const file = new File([json], name, { type: 'application/json' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: 'Tutoreal 기록 백업' });
+      msg.textContent = `기록 ${list.length}개를 백업했어요. 이 파일에는 내 대화가 들어 있으니 다른 사람에게 보내지 마세요.`;
+      return;
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;   // 공유 창을 닫음
+      console.warn(err);
+    }
+  }
+  // 공유 창으로 파일을 보낼 수 없으면 내려받기
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  msg.textContent = `기록 ${list.length}개를 '${name}' 파일로 내려받았어요.`;
+}
+
+/** 불러온 기록 하나를 검사해 필요한 칸만 남긴다. 모양이 맞지 않으면 null. */
+function cleanRecord(r) {
+  if (!r || typeof r !== 'object' || typeof r.sessionId !== 'string' || !r.sessionId || !Array.isArray(r.lines)) return null;
+  if (Number.isNaN(Date.parse(r.at))) return null;
+  const str = (v) => (typeof v === 'string' ? v : '');
+  const lines = r.lines.filter((l) => l && (l.who === 'me' || l.who === 'ai') && typeof l.text === 'string')
+    .map((l) => ({ who: l.who, text: l.text, ...(typeof l.py === 'string' && l.py ? { py: l.py } : {}),
+      ...(typeof l.ko === 'string' && l.ko ? { ko: l.ko } : {}), ...(l.hard === true ? { hard: true } : {}) }));
+  const fb = r.feedback;
+  const fbOk = fb && typeof fb === 'object' && typeof fb.summary === 'string' &&
+    ['strengths', 'fixes', 'keywords', 'next_practice'].every((k) => Array.isArray(fb[k]));
+  return {
+    sessionId: r.sessionId, scenarioId: str(r.scenarioId), chapterId: str(r.chapterId),
+    chapterOrder: Number(r.chapterOrder) || '', course: r.course === 'zh' ? 'zh' : 'en', chapterTitle: str(r.chapterTitle),
+    at: new Date(r.at).toISOString(), durationSec: Number(r.durationSec) || 0,
+    patient: { name: str(r.patient && r.patient.name) }, confidence: [1, 2, 3].includes(r.confidence) ? r.confidence : undefined,
+    difficulty: str(r.difficulty), shared: r.shared === true, lines, feedback: fbOk ? fb : null
+  };
+}
+
+async function importBackup(file) {
+  const msg = $('#backup-msg');
+  msg.textContent = '';
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+  } catch {
+    msg.textContent = '백업 파일을 읽지 못했어요. Tutoreal에서 만든 백업 파일인지 확인해 주세요.';
+    return;
+  }
+  if (!data || data.type !== BACKUP_TYPE || !Array.isArray(data.records)) {
+    msg.textContent = 'Tutoreal 기록 백업 파일이 아니에요.';
+    return;
+  }
+  const incoming = data.records.map(cleanRecord).filter(Boolean);
+  const list = loadHistory();
+  const byId = new Map(list.map((e) => [e.sessionId, e]));
+  let added = 0;
+  let filled = 0;
+  incoming.forEach((r) => {
+    const have = byId.get(r.sessionId);
+    if (!have) { byId.set(r.sessionId, r); added++; return; }
+    if (!have.feedback && r.feedback) { have.feedback = r.feedback; filled++; }   // 이 휴대폰에는 없던 피드백만 채운다
+  });
+  const merged = [...byId.values()].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  const kept = storeHistory(merged);
+  const parts = [added ? `새 기록 ${added}개를 불러왔어요.` : '새로 불러올 기록은 없었어요.'];
+  if (filled) parts.push(`피드백 ${filled}개를 채웠어요.`);
+  if (incoming.length - added - filled > 0) parts.push(`이미 있던 기록 ${incoming.length - added - filled}개는 그대로 두었어요.`);
+  if (data.records.length > incoming.length) parts.push(`읽을 수 없는 기록 ${data.records.length - incoming.length}개는 건너뛰었어요.`);
+  if (kept < merged.length) parts.push(`최근 ${kept}개까지만 남겼어요.`);
+  openHistory();
+  $('#backup-msg').textContent = parts.join(' ');
 }
 
 async function finishReview() {
@@ -719,7 +816,7 @@ document.querySelectorAll('.choice').forEach((btn) => {
 $('#review-next').addEventListener('click', nextStep);
 $('#review-prev').addEventListener('click', () => goStep(review.step - 1));
 
-/* ── 내 기록 보기: 이 휴대폰에 저장된 지난 대화 (최근 30개) ── */
+/* ── 내 기록 보기: 이 휴대폰에 저장된 지난 대화 (최근 100개) ── */
 
 const CONFIDENCE = { 1: '😣 어려웠어요', 2: '🙂 보통이에요', 3: '😄 자신 있어요' };
 
@@ -859,6 +956,7 @@ function recordMeta(entry) {
 }
 
 function openHistory() {
+  $('#backup-msg').textContent = '';
   const list = loadHistory();
   const box = $('#history-list');
   if (!list.length) {
@@ -1509,6 +1607,9 @@ $('#tsession-back').addEventListener('click', () => show('tstudent'));
 
 $('#record-back').addEventListener('click', openHistory);
 $('#record-share').addEventListener('click', shareRecord);
+$('#backup-export').addEventListener('click', exportBackup);
+$('#backup-import').addEventListener('click', () => { $('#backup-file').value = ''; $('#backup-file').click(); });
+$('#backup-file').addEventListener('change', (ev) => { const f = ev.target.files && ev.target.files[0]; if (f) importBackup(f); });
 $('#back').addEventListener('click', () => show('list'));
 $('#talk-start').addEventListener('click', beginTalk);
 $('#talk-end').addEventListener('click', () => { if (live) { talk.endReason = 'user'; live.stop(''); } });

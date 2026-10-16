@@ -264,6 +264,12 @@ textarea {
 .record-head h3 { margin: 0; }
 #view-record .card + .card { margin-top: 12px; }
 .record-actions { margin: -4px 0 12px; }
+/* 내 기록 백업 (42단계) */
+.backup-row { display: flex; gap: 8px; margin: 0 0 6px; }
+.backup-row button { flex: 1; margin-top: 0; }
+.file-pick { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.backup-msg { margin: 0 0 10px; }
+.backup-msg:empty { display: none; }
 .record-actions button { margin-top: 0; width: 100%; }
 .record-actions .hint { text-align: center; margin: 6px 0 0; }
 .record-actions .hint:empty { display: none; }

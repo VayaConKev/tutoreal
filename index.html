@@ -124,7 +124,14 @@
 
     <section id="view-history" hidden>
       <h2>내 기록</h2>
-      <p class="hint history-note">이 휴대폰에만 저장돼요 (최근 30개). Safari 데이터를 지우면 사라져요.</p>
+      <p class="hint history-note">이 휴대폰에만 저장돼요 (최근 100개). Safari 데이터를 지우거나 휴대폰을 바꾸면 사라지니, 가끔 백업해 두세요.</p>
+      <!-- 기록 백업 (42단계): 파일 하나로 내보내고, 다른 휴대폰에서 불러온다. 서버를 거치지 않는다 -->
+      <div class="backup-row">
+        <button class="secondary" id="backup-export">백업하기</button>
+        <button class="secondary" id="backup-import">불러오기</button>
+        <input type="file" id="backup-file" class="file-pick" accept=".json,application/json" tabindex="-1" aria-hidden="true">
+      </div>
+      <p class="hint backup-msg" id="backup-msg" role="status"></p>
       <div id="history-list"></div>
     </section>
 
