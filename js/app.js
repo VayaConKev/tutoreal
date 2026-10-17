@@ -240,13 +240,18 @@ async function loadChapters() {
 function showSlip(slip, patient) {
   const exams = ['G', 'C'].map((x) => (slip.exams.includes(x) ? `<span class="circ">${x}</span>` : x)).join(' / ');
   const big = slip.results.join(' ');
+  // 결과 글자 크기 (52단계): 적은 그대로라 길이가 다양하다 (S, GU Scar, BG / 특이사항 없음).
+  // 대문자 한 글자 너비를 1로 어림해 짧으면 이름 옆에 크게, 길면 이름 아래 한 줄 전체에 맞는 크기로.
+  const units = [...big].reduce((n, ch) => n + (/[\uac00-\ud7a3]/.test(ch) ? 1.6 : /[A-Z]/.test(ch) ? 1 : /[a-z0-9]/.test(ch) ? 0.85 : /\s/.test(ch) ? 0.45 : 0.55), 0);
+  const wide = units > 3.2;
+  const px = wide ? Math.max(20, Math.min(48, Math.floor(400 / units))) : Math.min(64, Math.floor(150 / Math.max(units, 1)));
   $('#talk-slip').innerHTML = `
     <div class="slip-top"><span>( ${exams} )</span><span>( ${slip.sedation === '-' ? '−' : slip.sedation || '&nbsp;'} )</span></div>
     <div class="slip-locker"><small>소지품</small>${escapeHtml(String(slip.locker))}</div>
     <div class="slip-body">
       <p>이름: ${escapeHtml(patient.name)}</p>
       <p>생년월일: ${escapeHtml(patient.dob || '')}</p>
-      <p class="slip-dx${slip.results.length > 1 ? ' many' : ''}" aria-label="결과 ${escapeHtml(big)}">${escapeHtml(big)}</p>
+      <p class="slip-dx${wide ? ' wide' : ''}" style="font-size: ${px}px" aria-label="결과 ${escapeHtml(big)}">${escapeHtml(big)}</p>
     </div>`;
   $('#talk-slip').hidden = false;
   $('#talk-meta').hidden = true;

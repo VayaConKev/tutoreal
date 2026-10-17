@@ -74,12 +74,14 @@
  * v0.45 (48단계): 검사 결과 슬립 — scenarios 탭 slip 칸(예: G + S)이 있는 시나리오는 대화 전에 앱이 슬립을 보여 주고,
  *                 학생이 '말하기 시작'을 누를 때 연결한다. 그래서 토큰으로 대화를 시작할 수 있는 시간을 1분 → 10분으로 늘린다.
  *                 소지품 번호는 대화마다 무작위. settings의 slip_legend(결과 글자 풀이)를 슬립 아래에 보여 준다. setup()이 칸과 설정을 추가한다.
+ * v0.46 (52단계): 슬립 결과를 적은 그대로 — 여러 글자 약어(IM, GU Scar, B1yr), 한글(치질), 위대장 세트 '위 결과 / 대장 결과'.
+ *                 글자 풀이(slip_legend)는 그 챕터 시나리오의 슬립에 나오는 약어만 골라 보여 준다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.45';
+const SERVER_VERSION = 'v0.46';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -282,6 +284,11 @@ const ZH_INSIGHT_PROMPT_V1 = [
   'Use only the given items. Do not invent mistakes or facts.'
 ].join('\n');
 
+// 결과 약어 풀이 기본값 (병원 슬립 약어). 시트 settings 탭 slip_legend에서 고친다. 한글로 적는 결과(치질 등)는 풀이가 필요 없다.
+const SLIP_LEGEND_DEFAULT = 'S 표재성 위염 · A 위축성 위염 · E 미란성 위염 · R 역류성 식도염 · P 용종 · IM 장상피화생 · BG 담즙역류성위염 · ' +
+  'LFG 임파여포성위염 · D 십이지장염 · GU 위궤양 · DU 십이지장궤양 · GU Scar 위궤양 반흔 · DU Scar 십이지장궤양 반흔 · ' +
+  'SMT 점막하종양 · CLO 헬리코박터균 검사 · Bx 조직검사 · EMR 내시경 점막절제술';
+
 const SEED = {
   chapters: [
     ['ch01', 1, '호명과 본인 확인', '수검자를 호명해 창구로 부르고 이름과 생년월일로 본인 확인하기',
@@ -352,7 +359,7 @@ const SEED = {
     ['last_class_date_zh', '', '중국어 과정의 최근 수업일 (요약 기간 시작). 비우면 last_class_date'],
     ['fallback_text_model', '', '피드백을 만들 때 text_model이 계속 붐비면(503 등) 한 번 더 시도할 다른 모델. 비우면 쓰지 않음. 예: gemini-3.6-flash (같은 요금)'],
     ['diag_log', true, '피드백 진단 기록을 quality 탭에 남김 (TRUE 켜짐 / FALSE 꺼짐, 비우면 켜짐). 대화 내용·이름은 남기지 않음'],
-    ['slip_legend', 'S 표재성 · E 미란성 · A 위축성 · R 역류성 식도염 · P 용종', '검사 결과 슬립 아래에 보이는 결과 글자 풀이. 비우면 보이지 않음 (실전처럼 글자만)']
+    ['slip_legend', SLIP_LEGEND_DEFAULT, '검사 결과 슬립 아래에 보이는 결과 약어 풀이 (· 로 구분, \'약어 뜻\'). 챕터마다 그 챕터 슬립에 나오는 약어만 보인다. 비우면 보이지 않음 (실전처럼 글자만)']
   ]
 };
 
@@ -1077,7 +1084,7 @@ function createLiveToken_(chapterId, maxSec, student) {
     slip: slip ? {
       exams: slip.exams, sedation: slip.sedation, results: slip.results,
       locker: 1 + Math.floor(Math.random() * 40),
-      legend: String(settings.slip_legend || '').trim(),
+      legend: slipLegendFor_(settings.slip_legend, chapterId),
       start_within_sec: SLIP_START_WITHIN_SEC
     } : null
   };
@@ -1087,19 +1094,40 @@ function createLiveToken_(chapterId, maxSec, student) {
 const SLIP_START_WITHIN_SEC = 600;
 
 /**
- * scenarios 탭 slip 칸을 읽는다. '검사 수면 결과' 순서, 띄어쓰기나 쉼표로 구분. 예: 'G + S', 'GC - P', 'G,+,S P'.
- * 검사: G(위), C(대장), GC(둘 다). 수면: + 수면 / - 비수면. 나머지는 결과 글자. 빈칸이거나 결과가 없으면 null.
+ * scenarios 탭 slip 칸을 읽는다: '검사 수면 결과'. 예: 'G + S', 'GC - P', 'G + GU Scar', 'GC + BG / 치질', 'C + B1yr'.
+ * 검사: 맨 앞 G(위) / C(대장) / GC(둘 다). 수면: 그다음 + 수면 / - 비수면 (없어도 됨).
+ * 결과: 나머지 전부를 적은 그대로 (여러 글자 약어, 한글, 위대장 세트의 '위 결과 / 대장 결과') (v0.46). 결과가 없으면 null.
  */
 function parseSlip_(v) {
-  const parts = String(v || '').toUpperCase().replace(/[−–]/g, '-').split(/[\s,]+/).filter(Boolean);
+  const parts = String(v || '').replace(/[−–]/g, '-').trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return null;
   const out = { exams: [], sedation: '', results: [] };
-  parts.forEach(function (p, i) {
-    if (p === '+' || p === '-') out.sedation = p;
-    else if (i === 0 && /^[GC/]+$/.test(p)) out.exams = ['G', 'C'].filter(function (x) { return p.indexOf(x) >= 0; });
-    else out.results.push(p);
-  });
+  if (/^[GCgc/]+$/.test(parts[0])) {
+    const exam = parts.shift().toUpperCase();
+    out.exams = ['G', 'C'].filter(function (x) { return exam.indexOf(x) >= 0; });
+  }
+  if (parts[0] === '+' || parts[0] === '-') out.sedation = parts.shift();
+  const text = parts.join(' ').trim();
+  if (text) out.results = [text];
   return out.results.length ? out : null;
+}
+
+/**
+ * 약어 풀이 중 이 챕터의 (active) 시나리오 슬립에 나오는 약어만 남긴다 (v0.46). 풀이 한 개 = '약어 뜻',
+ * 약어는 첫 한글 앞까지 (예: 'GU Scar 위궤양 반흔' → 'GU Scar'). 슬립에서는 띄어쓰기·쉼표·/ 로 나뉜 약어와 맞춘다.
+ */
+function slipLegendFor_(legend, chapterId) {
+  const items = String(legend || '').split('·').map(function (x) { return x.trim(); }).filter(Boolean);
+  if (!items.length) return '';
+  const texts = readTable_('scenarios').filter(function (sc) {
+    return String(sc.chapter_id) === String(chapterId) && isTrue_(sc.active);
+  }).map(function (sc) { const p = parseSlip_(sc.slip); return p ? ' ' + p.results.join(' ').replace(/[,/]/g, ' ') + ' ' : ''; }).join('');
+  return items.filter(function (item) {
+    const code = item.split(/[\uac00-\ud7a3]/)[0].trim();
+    if (!code) return false;
+    const pattern = new RegExp('\\s' + code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+') + '\\s');
+    return pattern.test(texts);
+  }).join(' · ');
 }
 
 /** 생년월일이 날짜로 바뀌어 있어도 2003-05-11 형태의 글자로 돌려준다. */
