@@ -141,6 +141,22 @@ input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px
 #talk-go:not([hidden]) + #talk-end { margin-top: 8px; background: var(--accent-soft); color: var(--accent); }   /* 슬립을 보는 동안 '끝내기'는 보조 버튼 모양 */
 .talk-time { font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
 .talk-status { color: var(--muted); text-align: center; font-size: 14px; margin: 12px 0; }
+/* 수검자를 부르는 동안: 수검자가 발자국을 남기며 문 쪽으로 걸어오다 사라지기를 반복 (49단계, 영어 과정) */
+.calling { position: relative; width: 250px; height: 150px; margin: 28px auto 0; }
+.calling[hidden] { display: none; }
+.calling-floor { position: absolute; left: 10px; right: 10px; bottom: 22px; height: 3px; border-radius: 2px; background: var(--line); }
+.calling-door { position: absolute; right: 22px; bottom: 25px; width: 46px; height: 90px; border: 3px solid var(--accent); border-bottom: none; border-radius: 6px 6px 0 0; }
+.calling-door::after { content: ""; position: absolute; right: 6px; top: 46px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.calling-walker { position: absolute; bottom: 25px; left: 6px; animation: calling-walk 3.2s linear infinite; }
+.calling-walker svg { display: block; width: 40px; height: 72px; fill: var(--teal); animation: calling-bob .4s ease-in-out infinite alternate; }
+.calling-step { position: absolute; bottom: 14px; width: 8px; height: 4px; border-radius: 2px; background: var(--teal); opacity: 0; animation: calling-step 3.2s linear infinite; }
+@keyframes calling-walk { 0% { left: 6px; opacity: 0; } 12% { opacity: 1; } 80% { left: 150px; opacity: 1; } 100% { left: 150px; opacity: 0; } }
+@keyframes calling-bob { from { transform: translateY(0); } to { transform: translateY(-4px); } }
+@keyframes calling-step { 0%, 100% { opacity: 0; } 20% { opacity: .7; } 60% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {   /* '동작 줄이기': 문 앞에 선 수검자 그림만 */
+  .calling-walker, .calling-walker svg, .calling-step { animation: none; }
+  .calling-walker { left: 110px; }
+}
 .talk-info { color: var(--muted); font-size: 12px; text-align: center; margin: 0 0 12px; white-space: pre-line; }
 
 .transcript { display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; }

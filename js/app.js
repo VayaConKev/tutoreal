@@ -250,6 +250,7 @@ function showSlip(slip, patient) {
     </div>`;
   $('#talk-slip').hidden = false;
   $('#talk-meta').hidden = true;
+  $('#talk-calling').hidden = true;
   $('#talk-slip-legend').textContent = slip.legend || '';
   $('#talk-slip-legend').hidden = !slip.legend;
   $('#talk-go').hidden = false;
@@ -377,7 +378,7 @@ async function beginTalk() {
   // 오디오는 버튼을 누른 이 순간에 켜야 한다 (iOS). 그래서 다른 일보다 먼저 만든다.
   live = new LiveSession({
     onStatus: (s) => {
-      if (s === 'ready') { t.readyAt = Date.now(); setTalkStatus('연결됐어요. 먼저 말을 걸어 보세요.'); startClock(t); }
+      if (s === 'ready') { t.readyAt = Date.now(); $('#talk-calling').hidden = true; setTalkStatus('연결됐어요. 먼저 말을 걸어 보세요.'); startClock(t); }
       if (s === 'goaway') setTalkStatus('곧 연결이 끝나요.');
     },
     onEnd: (reason, info) => { t.aiSec = session.recv; endedTalk(reason, info, t); reportEnd(t); },
@@ -387,7 +388,10 @@ async function beginTalk() {
 
   $('#talk-head').hidden = false;
   $('#talk-chapter').textContent = `${currentChapter.order}장 · ${currentChapter.title}`;
-  $('#talk-name').textContent = `${partnerTitle()} 준비 중…`;
+  // 영어 과정: '수검자가 오고 있습니다…'와 걸어오는 수검자 그림 (49단계). 수검자가 준비되면(슬립·연결) 또는 끝나면 숨긴다
+  const en = courseNow() !== 'zh';
+  $('#talk-name').textContent = en ? '수검자가 오고 있습니다…' : `${partnerTitle()} 준비 중…`;
+  $('#talk-calling').hidden = !en;
   $('#talk-avatar').innerHTML = '';
   $('#talk-meta').textContent = '–';
   $('#talk-meta').hidden = false;
@@ -447,6 +451,7 @@ function endedTalk(reason, info, t) {
   clearInterval(clock);
   live = null;
   $('#talk-go').hidden = true;
+  $('#talk-calling').hidden = true;
   // 예상하지 못한 이유로 끝난 경우(연결 끊김 등)에만 연결 정보(보낸·받은 소리 등)를 보여 준다.
   $('#talk-info').textContent = info;
   $('#talk-info').hidden = !reason || !!t.endReason || !t.readyAt;
