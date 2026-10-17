@@ -46,7 +46,7 @@ export async function startTalk(code, chapterId) {
   const data = await postServer('talk', { code, chapter_id: chapterId });
   return {
     token: data.token, model: data.model, patient: data.patient, sessionId: data.session_id, scenarioId: data.scenario_id, server: data.server,
-    limitSec: data.limit_sec, limitKind: data.limit_kind
+    limitSec: data.limit_sec, limitKind: data.limit_kind, slip: data.slip || null
   };
 }
 

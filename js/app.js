@@ -233,6 +233,28 @@ async function loadChapters() {
 
 /* ── 음성 대화 ── */
 
+/**
+ * 검사 결과 슬립 (48단계). 검사실 간호사가 적어 회복실 간호사에게 주는 종이처럼:
+ * 위 (G / C)에 한 검사에 동그라미, (+ 수면 / - 비수면), 오른쪽 위 소지품 번호, 이름, 생년월일, 큰 결과 글자.
+ */
+function showSlip(slip, patient) {
+  const exams = ['G', 'C'].map((x) => (slip.exams.includes(x) ? `<span class="circ">${x}</span>` : x)).join(' / ');
+  const big = slip.results.join(' ');
+  $('#talk-slip').innerHTML = `
+    <div class="slip-top"><span>( ${exams} )</span><span>( ${slip.sedation === '-' ? '−' : slip.sedation || '&nbsp;'} )</span></div>
+    <div class="slip-locker"><small>소지품</small>${escapeHtml(String(slip.locker))}</div>
+    <div class="slip-body">
+      <p>이름: ${escapeHtml(patient.name)}</p>
+      <p>생년월일: ${escapeHtml(patient.dob || '')}</p>
+      <p class="slip-dx${slip.results.length > 1 ? ' many' : ''}" aria-label="결과 ${escapeHtml(big)}">${escapeHtml(big)}</p>
+    </div>`;
+  $('#talk-slip').hidden = false;
+  $('#talk-meta').hidden = true;
+  $('#talk-slip-legend').textContent = slip.legend || '';
+  $('#talk-slip-legend').hidden = !slip.legend;
+  $('#talk-go').hidden = false;
+}
+
 function setTalkStatus(text) {
   $('#talk-status').textContent = text;
 }
@@ -368,6 +390,10 @@ async function beginTalk() {
   $('#talk-name').textContent = `${partnerTitle()} 준비 중…`;
   $('#talk-avatar').innerHTML = '';
   $('#talk-meta').textContent = '–';
+  $('#talk-meta').hidden = false;
+  $('#talk-slip').hidden = true;
+  $('#talk-slip-legend').hidden = true;
+  $('#talk-go').hidden = true;
   $('#talk-time').textContent = '0:00';
   $('#talk-info').hidden = true;
   $('#transcript').innerHTML = '';
@@ -384,7 +410,8 @@ async function beginTalk() {
     await session.openMic();
     if (session.ended) return;   // 준비 중에 '끝내기'를 누른 경우
     setTalkStatus(`${partnerTitle()}를 부르는 중…`);
-    const { token, model, patient, sessionId, scenarioId, server, limitSec, limitKind } = await startTalk(loadCode(), currentChapter.chapter_id);
+    const { token, model, patient, sessionId, scenarioId, server, limitSec, limitKind, slip } = await startTalk(loadCode(), currentChapter.chapter_id);
+    const gotAt = Date.now();
     t.sessionId = sessionId;
     t.scenarioId = scenarioId || '';
     t.patient = patient;
@@ -396,6 +423,18 @@ async function beginTalk() {
     $('#talk-avatar').innerHTML = patientAvatar(patient.name, scenarioId);
     // 영어: 생년월일 · 검사 / 중국어: 역할·장소 (생년월일 칸은 비어 있다)
     $('#talk-meta').textContent = [patient.dob, patient.exam].filter(Boolean).join(' · ') || '–';
+    if (slip) {
+      // 검사 결과 슬립 (48단계): 슬립을 먼저 보여 주고, 학생이 '말하기 시작'을 누르면 연결한다.
+      // 결과(진단명)는 슬립의 글자로만 보이게 차트 줄은 숨긴다. 토큰은 slip.start_within_sec 안에만 연결할 수 있다.
+      showSlip(slip, patient);
+      setTalkStatus(`슬립을 확인하고, 준비되면 '말하기 시작'을 눌러 주세요.`);
+      await new Promise((resolve) => { $('#talk-go').onclick = resolve; });
+      $('#talk-go').hidden = true;
+      if (session.ended) return;
+      if (Date.now() - gotAt > (slip.start_within_sec - 15) * 1000) {
+        return session.stop('슬립을 오래 보고 있어서 연결할 수 있는 시간이 지났어요. 챕터로 돌아가 다시 시작해 주세요.');
+      }
+    }
     setTalkStatus('연결 중…');
     session.connect(token, model);
   } catch (err) {
@@ -407,6 +446,7 @@ async function beginTalk() {
 function endedTalk(reason, info, t) {
   clearInterval(clock);
   live = null;
+  $('#talk-go').hidden = true;
   // 예상하지 못한 이유로 끝난 경우(연결 끊김 등)에만 연결 정보(보낸·받은 소리 등)를 보여 준다.
   $('#talk-info').textContent = info;
   $('#talk-info').hidden = !reason || !!t.endReason || !t.readyAt;

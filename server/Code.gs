@@ -71,12 +71,15 @@
  *                 setup()이 prompts 탭에 patient-v3 줄을 추가한다. patient-v2 줄의 active를 FALSE로 바꾸면 v3을 쓴다.
  * v0.44 (47단계): 너그러운 피드백 — chapters 탭 feedback_style 칸에 gentle이라고 적은 챕터는 '뜻이 통했나'를 기준으로
  *                 부드럽게 피드백한다 (총평 세 가지, 고칠 점 대신 '이렇게도 말할 수 있어요', 체크리스트도 너그럽게). setup()이 칸을 추가한다.
+ * v0.45 (48단계): 검사 결과 슬립 — scenarios 탭 slip 칸(예: G + S)이 있는 시나리오는 대화 전에 앱이 슬립을 보여 주고,
+ *                 학생이 '말하기 시작'을 누를 때 연결한다. 그래서 토큰으로 대화를 시작할 수 있는 시간을 1분 → 10분으로 늘린다.
+ *                 소지품 번호는 대화마다 무작위. settings의 slip_legend(결과 글자 풀이)를 슬립 아래에 보여 준다. setup()이 칸과 설정을 추가한다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.44';
+const SERVER_VERSION = 'v0.45';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -84,7 +87,9 @@ const SCHEMA = {
   // checklist: 이 챕터에서 꼭 해야 할 안내 (한 줄에 하나, '(선택)'으로 시작하면 가끔만 하는 안내). 비우면 체크리스트 없음.
   // feedback_style: 비우면 보통 피드백, gentle이면 '뜻이 통했나'를 기준으로 너그럽게 (예: 쉽게 설명하기 챕터) (v0.44)
   chapters:       ['chapter_id', 'order', 'title', 'goal', 'keywords', 'scene', 'published', 'ai_captions', 'course', 'checklist', 'feedback_style'],
-  scenarios:      ['scenario_id', 'chapter_id', 'name', 'sex', 'dob', 'country', 'exam', 'twist', 'level', 'active'],
+  // slip: 검사 결과 슬립 (48단계). '검사 수면 결과' 순서로 띄어 쓴다. 예: G + S (위내시경, 수면, 표재성) / GC - P (위대장, 비수면, 용종).
+  //       비우면 슬립 없이 지금처럼 바로 대화. 결과 글자는 여러 개 가능 (G + S P)
+  scenarios:      ['scenario_id', 'chapter_id', 'name', 'sex', 'dob', 'country', 'exam', 'twist', 'level', 'active', 'slip'],
   prompts:        ['prompt_id', 'text', 'active'],
   // profile: 학생 소개 (이름·회사·하는 일 등 사실). AI 상대의 힌트와 피드백 예문이 이 사실로 문장을 만든다. 시트에만 둔다.
   students:       ['student_id', 'display_name', 'access_code', 'status', 'daily_limit_min', 'created_at', 'role', 'avatar', 'course', 'profile'],
@@ -346,7 +351,8 @@ const SEED = {
     ['pron_model', 'gemini-3.5-flash-lite', '발음 코칭용 빠른 모델 (생각 minimal, 소리를 듣는 모델: gemini-3.5-flash-lite 또는 gemini-3.6-flash). 비우면 text_model (느림)'],
     ['last_class_date_zh', '', '중국어 과정의 최근 수업일 (요약 기간 시작). 비우면 last_class_date'],
     ['fallback_text_model', '', '피드백을 만들 때 text_model이 계속 붐비면(503 등) 한 번 더 시도할 다른 모델. 비우면 쓰지 않음. 예: gemini-3.6-flash (같은 요금)'],
-    ['diag_log', true, '피드백 진단 기록을 quality 탭에 남김 (TRUE 켜짐 / FALSE 꺼짐, 비우면 켜짐). 대화 내용·이름은 남기지 않음']
+    ['diag_log', true, '피드백 진단 기록을 quality 탭에 남김 (TRUE 켜짐 / FALSE 꺼짐, 비우면 켜짐). 대화 내용·이름은 남기지 않음'],
+    ['slip_legend', 'S 표재성 · E 미란성 · A 위축성 · R 역류성 식도염 · P 용종', '검사 결과 슬립 아래에 보이는 결과 글자 풀이. 비우면 보이지 않음 (실전처럼 글자만)']
   ]
 };
 
@@ -1031,6 +1037,10 @@ function createLiveToken_(chapterId, maxSec, student) {
   const voice = String(settings[patient.sex.toLowerCase() === 'female' ? 'voice_female' : 'voice_male'] || '').trim();
   if (voice) setup.generationConfig.speechConfig = { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } };
 
+  // 슬립이 있는 시나리오: 학생이 슬립을 보고 '말하기 시작'을 누를 때 연결하므로, 연결을 시작할 수 있는 시간을 늘린다 (48단계)
+  const slip = parseSlip_(sc.slip);
+  const startWithinMs = slip ? SLIP_START_WITHIN_SEC * 1000 : 60000;
+
   // bidiGenerateContentSetup을 넣고 fieldMask를 비우면, 브라우저가 보내는 설정 대신 이 설정이 통째로 쓰인다.
   const now = Date.now();
   const res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/auth_tokens', {
@@ -1040,8 +1050,9 @@ function createLiveToken_(chapterId, maxSec, student) {
     payload: JSON.stringify({
       uses: 1,
       // 앱이 maxSec에 맞춰 대화를 끝낸다. 토큰은 1분 여유를 두고 만료되어, 앱이 끝내지 못해도 Gemini가 끊는다.
-      expireTime: new Date(now + maxSec * 1000 + 60000).toISOString(),
-      newSessionExpireTime: new Date(now + 60000).toISOString(),
+      // 연결은 보통 1분 안에, 슬립이 있으면 10분 안에 시작해야 한다 (공식 한도 20시간보다 훨씬 짧다). 슬립을 보는 시간만큼 만료도 늦춘다
+      expireTime: new Date(now + (slip ? startWithinMs : 0) + maxSec * 1000 + 60000).toISOString(),
+      newSessionExpireTime: new Date(now + startWithinMs).toISOString(),
       bidiGenerateContentSetup: setup
     }),
     muteHttpExceptions: true
@@ -1061,8 +1072,34 @@ function createLiveToken_(chapterId, maxSec, student) {
     token: token,
     model: model,
     scenario_id: String(sc.scenario_id),
-    patient: { name: patient.name, dob: patient.dob, exam: patient.exam }
+    patient: { name: patient.name, dob: patient.dob, exam: patient.exam },
+    // 검사 결과 슬립 (없으면 null). 소지품 번호는 대화마다 1~40 무작위. start_within_sec: 이 안에 '말하기 시작'을 눌러야 연결된다
+    slip: slip ? {
+      exams: slip.exams, sedation: slip.sedation, results: slip.results,
+      locker: 1 + Math.floor(Math.random() * 40),
+      legend: String(settings.slip_legend || '').trim(),
+      start_within_sec: SLIP_START_WITHIN_SEC
+    } : null
   };
+}
+
+// 슬립을 보는 동안 기다려 주는 시간 (48단계). 이 안에 '말하기 시작'을 누르지 않으면 토큰이 만료되어 다시 시작해야 한다.
+const SLIP_START_WITHIN_SEC = 600;
+
+/**
+ * scenarios 탭 slip 칸을 읽는다. '검사 수면 결과' 순서, 띄어쓰기나 쉼표로 구분. 예: 'G + S', 'GC - P', 'G,+,S P'.
+ * 검사: G(위), C(대장), GC(둘 다). 수면: + 수면 / - 비수면. 나머지는 결과 글자. 빈칸이거나 결과가 없으면 null.
+ */
+function parseSlip_(v) {
+  const parts = String(v || '').toUpperCase().replace(/[−–]/g, '-').split(/[\s,]+/).filter(Boolean);
+  if (!parts.length) return null;
+  const out = { exams: [], sedation: '', results: [] };
+  parts.forEach(function (p, i) {
+    if (p === '+' || p === '-') out.sedation = p;
+    else if (i === 0 && /^[GC/]+$/.test(p)) out.exams = ['G', 'C'].filter(function (x) { return p.indexOf(x) >= 0; });
+    else out.results.push(p);
+  });
+  return out.results.length ? out : null;
 }
 
 /** 생년월일이 날짜로 바뀌어 있어도 2003-05-11 형태의 글자로 돌려준다. */

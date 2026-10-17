@@ -69,7 +69,7 @@ Tutoreal의 교과서 내용은 **모두 구글 시트(Tutoreal DB)에만** 있�
 
 ## 4. scenarios 탭
 
-칸 순서: `scenario_id` `chapter_id` `name` `sex` `dob` `country` `exam` `twist` `level` `active`
+칸 순서: `scenario_id` `chapter_id` `name` `sex` `dob` `country` `exam` `twist` `level` `active` `slip`
 
 대화를 시작할 때 그 챕터의 active 시나리오 중 하나를 **무작위로** 고른다. 챕터마다 2~3개를 두면 매번 조금씩 다르다.
 
@@ -85,6 +85,13 @@ Tutoreal의 교과서 내용은 **모두 구글 시트(Tutoreal DB)에만** 있�
 | twist | 숨은 설정 (영어). 학생 화면에는 안 보이고 AI만 안다. 없으면 비움 | 같음. 예: 대만이면 `Use Taiwan Mandarin words (for example 型錄 for catalog). You use LINE, not WeChat.` |
 | level | 난이도 메모 1~3 (지금은 고를 때 쓰지 않는 참고용) | 같음 |
 | active | TRUE / FALSE | TRUE / FALSE |
+| slip | 검사 결과 슬립 (선택). `검사 수면 결과` 순서로 띄어 쓴다 — 아래 참고. 비우면 슬립 없이 바로 대화 | 보통 비움 |
+
+**slip (검사 결과 슬립)**
+- 검사실 간호사가 적어 회복실 간호사에게 주는 결과 종이를 화면에 보여 준다. 슬립이 있는 시나리오는 대화 전에 슬립을 먼저 보여 주고, 학생이 **말하기 시작**을 누를 때 수검자와 연결한다 (10분 안에 누르지 않으면 다시 시작).
+- 쓰는 법: 검사 `G`(위) / `C`(대장) / `GC`(위대장) → 수면 `+` / 비수면 `-` → 결과 글자 (여러 개면 띄어서). 예: `G + S`, `GC - P`, `G + S P`
+- 슬립에는 (G / C) 동그라미, (+/−), 소지품 번호(대화마다 1~40 무작위), 이름, 생년월일, 큰 결과 글자가 보인다. 이때 `exam` 칸의 글은 화면에서 숨고 AI(수검자·피드백)만 본다 — 결과 이름과 자세한 내용(예: 용종 크기)은 exam에 적는다.
+- 결과 글자 풀이는 settings 탭 `slip_legend` (예: `S 표재성 · E 미란성 · A 위축성 · R 역류성 식도염 · P 용종`). 비우면 풀이 없이 글자만 (실전처럼).
 
 - twist 예 (영어): `You say your birth year as "two thousand and three".`, `You do not understand "glaucoma" at first.`
 - 영어 수검자 캐릭터 그림은 `img/avatars/patients/<scenario_id>.jpg`와 `manifest.json`에 따로 추가해야 보인다 (docs/avatar-prompts.md). 그림이 없으면 이름 첫 글자로 보인다.
