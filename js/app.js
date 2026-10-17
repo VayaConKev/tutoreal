@@ -485,13 +485,14 @@ function checklistTags(item) {
 }
 
 /** 안내 체크리스트 결과 (33단계): 했음 ✓ / 빠짐 ✗ / 선택 항목을 안 함 –. 숫자는 선택이 아닌 항목만 센다. */
-function checklistHtml(list) {
+function checklistHtml(list, gentle) {
   if (!list || !list.length) return '';
   const required = list.filter((c) => !c.optional);
-  const STATE = { done: ['✓', '했어요'], miss: ['✗', '빠졌어요'], opt: ['–', ''] };   // 선택 항목은 글 옆의 '선택' 표시로 충분
+  // 선택 항목은 글 옆의 '선택' 표시로 충분. 너그러운 피드백 챕터(47단계)는 안 한 항목을 빨간 ✗ 대신 회색으로 부드럽게
+  const STATE = { done: ['✓', '했어요'], miss: ['✗', '빠졌어요'], soft: ['–', '다음엔 이것도'], opt: ['–', ''] };
   return `<p class="fb-title">안내 체크리스트 ${required.filter((c) => c.done).length} / ${required.length}</p>
     <ul class="fb-check">${list.map((c) => {
-      const state = c.done ? 'done' : c.optional ? 'opt' : 'miss';
+      const state = c.done ? 'done' : c.optional ? 'opt' : gentle ? 'soft' : 'miss';
       return `<li class="${state}"><span class="mark" aria-hidden="true">${STATE[state][0]}</span>
         <span class="txt">${escapeHtml(c.item)}${checklistTags(c)}
           ${c.en ? `<span class="ck-en" lang="en">${escapeHtml(c.en)}</span>` : ''}</span>
@@ -554,10 +555,10 @@ function feedbackHtml(fb) {
   const used = fb.keywords.filter((k) => k.used).length;
   return `
     <p class="fb-summary">${escapeHtml(fb.summary)}</p>
-    ${checklistHtml(fb.checklist)}
+    ${checklistHtml(fb.checklist, fb.gentle)}
     ${fb.strengths.length ? `<p class="fb-title">잘한 점</p>
       <ul class="fb-list">${fb.strengths.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>` : ''}
-    ${fb.fixes.length ? `<p class="fb-title">더 좋은 표현</p>
+    ${fb.fixes.length ? `<p class="fb-title">${fb.gentle ? '이렇게도 말할 수 있어요' : '더 좋은 표현'}</p>
       ${fb.fixes.map((f) => `<div class="fb-fix">
         <p class="fb-said">${escapeHtml(f.said)}</p>
         <p class="fb-better">→ ${escapeHtml(f.better)}</p>
@@ -1039,11 +1040,11 @@ function recordText(e) {
     if ((fb.checklist || []).length) {
       const req = fb.checklist.filter((c) => !c.optional);
       out.push('', `안내 체크리스트 ${req.filter((c) => c.done).length} / ${req.length}`);
-      fb.checklist.forEach((c) => out.push(`${c.done ? '✓' : c.optional ? '–' : '✗'} ${c.item}${c.optional ? ' (선택)' : ''}${c.en ? ` / ${c.en}` : ''}`));
+      fb.checklist.forEach((c) => out.push(`${c.done ? '✓' : c.optional ? '–' : fb.gentle ? '– (다음엔 이것도)' : '✗'} ${c.item}${c.optional ? ' (선택)' : ''}${c.en ? ` / ${c.en}` : ''}`));
     }
     if (fb.strengths.length) out.push('', '잘한 점', ...fb.strengths.map((x) => `- ${x}`));
     if (fb.fixes.length) {
-      out.push('', '더 좋은 표현');
+      out.push('', fb.gentle ? '이렇게도 말할 수 있어요' : '더 좋은 표현');
       fb.fixes.forEach((f) => out.push(`- 내가 한 말: ${f.said}`, `  → ${f.better}${f.better_py ? ` (${f.better_py})` : ''}`, `  ${f.why}`));
     }
     if (fb.keywords.length) {

@@ -69,18 +69,21 @@
  * v0.42 (44단계): 선생님 요약에서 선생님·테스터 계정의 연습을 뺀다 (학생 목록, 연습 통계, 핵심 단어, 어려웠던 점, AI 정리). 비용 합계에는 넣는다.
  * v0.43 (46단계): 환자 지시문 v3 — 건강 질문에 '의학적 조언이 아니에요' 같은 안내문을 붙이지 않고 환자로서 답한다.
  *                 setup()이 prompts 탭에 patient-v3 줄을 추가한다. patient-v2 줄의 active를 FALSE로 바꾸면 v3을 쓴다.
+ * v0.44 (47단계): 너그러운 피드백 — chapters 탭 feedback_style 칸에 gentle이라고 적은 챕터는 '뜻이 통했나'를 기준으로
+ *                 부드럽게 피드백한다 (총평 세 가지, 고칠 점 대신 '이렇게도 말할 수 있어요', 체크리스트도 너그럽게). setup()이 칸을 추가한다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.43';
+const SERVER_VERSION = 'v0.44';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
   // course: 과정 (en 영어, zh 중국어). 빈칸은 en. 학생은 자기 과정의 챕터만 받는다.
   // checklist: 이 챕터에서 꼭 해야 할 안내 (한 줄에 하나, '(선택)'으로 시작하면 가끔만 하는 안내). 비우면 체크리스트 없음.
-  chapters:       ['chapter_id', 'order', 'title', 'goal', 'keywords', 'scene', 'published', 'ai_captions', 'course', 'checklist'],
+  // feedback_style: 비우면 보통 피드백, gentle이면 '뜻이 통했나'를 기준으로 너그럽게 (예: 쉽게 설명하기 챕터) (v0.44)
+  chapters:       ['chapter_id', 'order', 'title', 'goal', 'keywords', 'scene', 'published', 'ai_captions', 'course', 'checklist', 'feedback_style'],
   scenarios:      ['scenario_id', 'chapter_id', 'name', 'sex', 'dob', 'country', 'exam', 'twist', 'level', 'active'],
   prompts:        ['prompt_id', 'text', 'active'],
   // profile: 학생 소개 (이름·회사·하는 일 등 사실). AI 상대의 힌트와 피드백 예문이 이 사실로 문장을 만든다. 시트에만 둔다.
@@ -886,7 +889,7 @@ function withLearner_(text, student) {
  * 안내 체크리스트가 있는 챕터는 피드백 지시문 끝에 항목 목록과 판단 방법을 붙인다 (33단계).
  * 지시문(prompts 탭)은 그대로 두고 체크리스트가 있을 때만 붙이므로 다른 챕터의 피드백은 바뀌지 않는다.
  */
-function withChecklist_(text, checklist) {
+function withChecklist_(text, checklist, gentle) {
   if (!checklist.length) return text;
   return text + '\n' + [
     'Guidance checklist (written in Korean): the steps the learner should do in this lesson.',
@@ -895,7 +898,36 @@ function withChecklist_(text, checklist) {
     }).join('\n'),
     'For "checklist", return every item number "n" with "done": true if the learner clearly gave that guidance or asked that question',
     '(any wording, at any point, even with small grammar mistakes; it does not need to match the model sentence), otherwise false. Judge only the learner\'s lines.',
-    'If the learner said only part of an item (for example "lie down" without "on your left side"), it is false.'
+    gentle
+      ? 'Be generous: if the learner got the main idea of an item across, even partly, in other words, or with mistakes, it is true.'
+      : 'If the learner said only part of an item (for example "lie down" without "on your left side"), it is false.'
+  ].join('\n');
+}
+
+/** chapters 탭 feedback_style 칸이 gentle인 챕터 (v0.44). */
+function isGentle_(chapter) {
+  return String((chapter && chapter.feedback_style) || '').trim().toLowerCase() === 'gentle';
+}
+
+/**
+ * 너그러운 피드백 (47단계): 피드백 지시문 끝에 붙인다. 문법보다 '상대가 알아들을 수 있었나'를 본다.
+ * 총평은 세 가지 문장 중 하나로 시작한다 (Kevin이 정한 두 문장 + 뜻이 통하지 않았을 때).
+ */
+function withGentle_(text, zh) {
+  const other = zh ? '상대' : '환자';
+  return text + '\n' + [
+    'Feedback style for this lesson: GENTLE. The goal is to explain things simply so that a foreign ' + (zh ? 'partner' : 'patient') + ' can understand.',
+    'Judge mainly whether the meaning got across, not grammar. These rules come before the rules above.',
+    '- summary: start with exactly one of these Korean sentences, based on the whole talk:',
+    '  (a) the explanations were clear: "그렇게 설명해도 의미는 충분히 통해요!"',
+    '  (b) some words were awkward or had small mistakes, but the ' + (zh ? 'partner' : 'patient') + ' could still understand: "음... 조금 어색하긴 하지만 이해는 할 수 있을 것 같아요!"',
+    '  (c) an important part would be hard to understand: "이 부분은 ' + other + '가 알아듣기 어려웠을 것 같아요." and then name that part in a few words.',
+    '  After (a) or (b), end with "아래와 같은 표현들도 유용하니 참고해 주세요." After (c), end with "아래처럼 말해 보면 어떨까요?"',
+    '  Do not list what the learner did not say in the summary (the checklist shows it).',
+    '- strengths: praise clear, simple explanations and easy words.',
+    '- fixes: these are shown as "other useful ways to say it", not as mistakes. Choose lines where a simpler or more natural sentence would help.',
+    '  Skip small grammar or word-choice errors when the meaning was clear. "why": one short, kind Korean sentence about why the new sentence is easy to understand',
+    '  (for example: 더 쉬운 단어예요, 문장이 짧아서 알아듣기 쉬워요). Do not say the learner was wrong.'
   ].join('\n');
 }
 
@@ -1318,7 +1350,9 @@ function makeFeedback_(chapter, scenario, lines, student) {
     .replace(/\{exam\}/g, String(scenario.exam || ''));
   // 성별 표시((남성)·(여성))가 있는 항목은 이 시나리오 상대의 성별에 맞을 때만 판단하고 보여 준다 (v0.35)
   const checklist = checklistFor_(checklistOf_(chapter), scenario);
-  const systemFull = withChecklist_(withLearner_(system, student), checklist);
+  const gentle = isGentle_(chapter);
+  const base = withChecklist_(withLearner_(system, student), checklist, gentle);
+  const systemFull = gentle ? withGentle_(base, zh) : base;
   const who = zh ? ['Learner: ', 'Partner: '] : ['Nurse: ', 'Patient: '];
   const transcript = 'Transcript:\n' + lines.map(function (l) { return (l.who === 'me' ? who[0] : who[1]) + l.text; }).join('\n');
 
@@ -1368,7 +1402,9 @@ function makeFeedback_(chapter, scenario, lines, student) {
       next_practice: (fb.next_practice || []).slice(0, 2).map(function (n) {
         return zh ? { en: String(n.zh || ''), py: String(n.py || ''), ko: String(n.ko || '') }
                   : { en: String(n.en || ''), ko: String(n.ko || '') };
-      })
+      }),
+      // 너그러운 피드백 챕터: 앱이 '이렇게도 말할 수 있어요', 안 한 체크리스트 항목은 '다음엔 이것도'로 보여 준다 (v0.44)
+      gentle: gentle
     }
   };
 }

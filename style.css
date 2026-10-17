@@ -196,6 +196,7 @@ textarea {
 .fb-check .miss .txt { font-weight: 600; }
 .fb-check .miss .chk-state { color: var(--danger); }
 .fb-check .opt .mark { color: var(--muted); border: 1px dashed var(--line); }
+.fb-check .soft .mark { color: var(--muted); border: 1px solid var(--line); }   /* 너그러운 피드백 챕터의 안 한 항목 (47단계) */
 .fb-next .ko { display: block; color: var(--muted); font-size: 14px; }
 /* 중국어 문장 연습: 문장 아래 병음 (1단계는 빈칸 자리를 비워 둔다) */
 .drill-py { color: var(--teal-ink); font-size: 16px; margin: 4px 0 0; }
