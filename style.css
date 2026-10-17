@@ -390,6 +390,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 @media (prefers-reduced-motion: reduce) { .fb-cat .tick { animation: none; opacity: .6; } }
 .fb-wait-msg { text-align: center; color: var(--muted); margin: 2px 0 0; }
 .fb-wait-hint { text-align: center; color: var(--muted); font-size: 13px; margin: 2px 0 16px; }
+.busy-art { display: block; width: 100%; height: auto; border-radius: 10px; margin: 4px 0 12px; }   /* AI가 붐빌 때 그림 (50단계) */
 .fb-tip-label { font-size: 13px; color: var(--muted); margin: 0 0 6px; }
 .fb-tip { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-height: 76px; transition: opacity .35s; }
 .fb-tip span { display: block; }

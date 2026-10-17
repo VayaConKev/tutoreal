@@ -46,7 +46,7 @@ const ERROR_TEXT = {
   FEEDBACK_FAILED: '피드백을 만들지 못했어요.',
   FEEDBACK_LIMIT: '이 대화의 피드백을 여러 번 실패했어요. 30분쯤 뒤에 다시 받아 보세요.',
   FEEDBACK_BUSY: '피드백을 아직 만드는 중이에요. 잠시 뒤 다시 시도해 주세요.',
-  AI_BUSY: 'AI가 지금 붐벼서 피드백을 받지 못했어요. 잠시 뒤 "다시 시도"를 눌러 주세요.',
+  AI_BUSY: '지금 AI에게 요청이 한꺼번에 몰렸어요. 잠시 뒤 "다시 시도"를 눌러 주세요.',
   NO_SESSION: '서버에서 이 대화의 기록을 찾지 못해서 피드백을 받을 수 없어요.',
   DAILY_CONNECT_LIMIT: '오늘 대화 횟수를 다 썼어요. 내일 다시 만나요.',
   DAILY_TIME_LIMIT: '오늘 사용 시간을 다 썼어요. 내일 다시 만나요.',
@@ -512,7 +512,7 @@ function loadFeedback(data) {
     .catch((err) => {
       console.warn(err);
       if (review.data !== data) return;
-      box.innerHTML = `<p class="state">${escapeHtml(errorText(err))}</p>` +
+      box.innerHTML = busyArt(err) + `<p class="state">${escapeHtml(errorText(err))}</p>` +
         (err.message === 'FEEDBACK_LIMIT' ? '' : '<button class="secondary" id="feedback-retry">다시 시도</button>') +
         // 이번에 못 받아도 끝이 아니라는 안내 (40단계): 기록은 '완료' 때 저장되고, 내 기록에서 다시 받을 수 있다
         '<p class="hint fb-later">\'완료\'를 누르면 이 대화가 \'내 기록\'에 저장돼요. 나중에 \'내 기록\'에서 피드백을 다시 받을 수 있어요.</p>';
@@ -520,6 +520,15 @@ function loadFeedback(data) {
       if (retry) retry.addEventListener('click', () => loadFeedback(data));
     });
   return data.feedbackJob;
+}
+
+/**
+ * AI가 붐벼서 피드백을 못 받았을 때의 그림 (50단계): 학생들이 고양이에게 서류를 퍼붓는 픽셀 만화.
+ * 붐빔(AI_BUSY)과 응답이 너무 늦은 경우(TIMEOUT)에만. 다른 실패는 지금처럼 글만.
+ */
+function busyArt(err) {
+  if (!err || !['AI_BUSY', 'TIMEOUT'].includes(err.message)) return '';
+  return '<img class="busy-art" src="img/busy-ai.webp" width="720" height="538" alt="학생들이 고양이에게 대화 리포트와 피드백 문서를 잔뜩 퍼붓는 그림. AI가 붐비는 중이에요.">';
 }
 
 /** 체크리스트 항목 옆의 작은 표시: 선택(가끔만 하는 안내), 남성·여성(그 성별의 상대에게만, 34단계) */
@@ -1010,9 +1019,9 @@ function openHistory() {
    공유한 대화였다면 서버가 시트에도 채운다 (선생님 화면에 반영). ── */
 let recordOpen = '';   // 지금 열려 있는 기록의 대화 번호 (기다리는 사이 다른 기록을 열었는지 확인)
 
-function showRecordNoFeedback(e, message = '') {
+function showRecordNoFeedback(e, message = '', err = null) {
   const box = $('#record-feedback');
-  box.innerHTML = `<p class="state">${escapeHtml(message || '이 대화는 아직 피드백이 없어요.')}</p>
+  box.innerHTML = `${busyArt(err)}<p class="state">${escapeHtml(message || '이 대화는 아직 피드백이 없어요.')}</p>
     ${e.sessionId ? `<button class="primary" id="record-fb-get">${message ? '다시 시도' : '피드백 받기'}</button>` : ''}`;
   const btn = $('#record-fb-get');
   if (btn) btn.addEventListener('click', () => getRecordFeedback(e));
@@ -1045,7 +1054,7 @@ async function getRecordFeedback(e) {
     $('#record-head .talk-meta').textContent = recordMeta(e);
   } catch (err) {
     console.warn(err);
-    if (recordOpen === e.sessionId) showRecordNoFeedback(e, errorText(err));
+    if (recordOpen === e.sessionId) showRecordNoFeedback(e, errorText(err), err);
   } finally {
     stop();
   }
