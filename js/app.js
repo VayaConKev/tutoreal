@@ -1418,7 +1418,8 @@ async function openTeacher(refresh = false) {
 
 function renderTeacher() {
   const s = teacherData;
-  $('#teacher-period').textContent = `${s.period.label} · ${s.generated_at} 기준`;
+  // 두 줄로 (51단계): 기간 / 만든 시각. 한 줄에 이어 쓰면 휴대폰에서 '기준'이 '기 / 준'처럼 끊겼다
+  $('#teacher-period').innerHTML = `${escapeHtml(s.period.label)}<br>${escapeHtml(s.generated_at)} 기준`;
   // 과정이 둘 이상이면 위에 과정 고르기 (영어 / 중국어)
   const courses = s.courses || [];
   $('#teacher-body').innerHTML = `
@@ -1430,7 +1431,7 @@ function renderTeacher() {
         <span><span class="tile-n">${s.totals.count}회</span><span class="tile-l">연습</span></span>
         <span><span class="tile-n">${s.totals.minutes}분</span><span class="tile-l">시간</span></span>
       </div>
-      <p class="t-note">학생 연습만 셉니다 (선생님·테스트 계정 제외) · 예상 비용 $${s.totals.cost_usd} (테스트 포함)</p>
+      <p class="t-note">학생 연습만 셉니다 (선생님·테스트 계정 제외)<br>예상 비용 $${s.totals.cost_usd} (테스트 포함)</p>
     </div>
     <div class="card t-card">
       <h3>학생</h3>

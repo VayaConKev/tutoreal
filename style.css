@@ -34,6 +34,9 @@ body {
   margin: 0; background: var(--bg); color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   line-height: 1.55; -webkit-text-size-adjust: 100%;
+  /* 한국어는 띄어쓰기 단위로만 줄을 바꾼다 (51단계). 기본값은 글자 단위라 '기준'이 '기 / 준'처럼 끊겼다.
+     칸보다 긴 낱말(긴 영어 이름, 띄어쓰기 없는 중국어 문장 등)은 넘치지 않게 칸 끝에서 나눈다 */
+  word-break: keep-all; overflow-wrap: break-word;
 }
 .wrap { max-width: 560px; margin: 0 auto; padding: 24px 16px 40px; }
 header h1 { margin: 0 0 16px; font-size: 22px; letter-spacing: -0.02em; }
