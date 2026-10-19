@@ -221,9 +221,23 @@ function openChapter(id) {
   show('detail');
 }
 
+/* ── 불러오는 동안의 자리 표시 (59단계): 글자 대신, 곧 보일 카드 모양의 회색 틀에 빛이 지나간다 ──
+   화면 읽기 기능에는 '…를 불러오는 중'이라고 읽히고, 회색 틀은 읽지 않는다. */
+const skLine = (w) => `<span class="sk sk-line" style="width:${w}%"></span>`;
+function skeleton(kind, label) {
+  const inner = {
+    chapters: [72, 54, 64].map((w) => `<div class="chapter sk-card"><span class="sk sk-circle"></span>
+      <span class="sk-lines">${skLine(w)}${skLine(w - 22)}</span></div>`).join(''),
+    teacher: `<div class="card t-card sk-card sk-stats">${[0, 1, 2].map(() => `<span class="sk-stat"><span class="sk sk-num"></span>${skLine(70)}</span>`).join('')}</div>` +
+      [0, 1].map(() => `<div class="card t-card sk-card"><span class="sk sk-line sk-title"></span>${[82, 68, 76].map(skLine).join('')}</div>`).join(''),
+    rows: [78, 60].map(skLine).join('')
+  }[kind];
+  return `<div class="sk-wrap" role="status"><span class="visually-hidden">${escapeHtml(label)}</span><div aria-hidden="true">${inner}</div></div>`;
+}
+
 async function loadChapters() {
   const box = $('#chapter-list');
-  box.innerHTML = '<p class="state">챕터를 불러오는 중…</p>';
+  box.innerHTML = skeleton('chapters', '챕터를 불러오는 중…');
   try {
     const { chapters: list, server } = await getChapters(loadCode());
     chapters = list;
@@ -1513,7 +1527,7 @@ async function openTeacher(refresh = false) {
     btn.textContent = '정리하는 중… (1분쯤 걸릴 수 있어요)';
   } else {
     $('#teacher-period').textContent = '';
-    $('#teacher-body').innerHTML = '<p class="state">요약을 불러오는 중…</p>';
+    $('#teacher-body').innerHTML = skeleton('teacher', '요약을 불러오는 중…');
     show('teacher');
   }
   try {
@@ -1634,7 +1648,7 @@ function openStudent(id) {
     </div>
     ${notes.length ? `<div class="card t-card"><h3>어려웠던 점</h3>
       <ul class="fb-list">${notes.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul></div>` : ''}
-    <div class="card t-card"><h3>공유된 대화</h3><div id="tstudent-talks"><p class="state">불러오는 중…</p></div></div>`;
+    <div class="card t-card"><h3>공유된 대화</h3><div id="tstudent-talks">${skeleton('rows', '공유된 대화를 불러오는 중…')}</div></div>`;
   show('tstudent');
   loadStudentTalks(id, st.name);
 }

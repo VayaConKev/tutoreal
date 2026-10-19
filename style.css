@@ -417,6 +417,20 @@ textarea {
 .review-actions button { margin-top: 0; }
 .hint { color: var(--muted); font-size: 13px; text-align: center; margin: 10px 0 0; }
 .state { color: var(--muted); text-align: center; padding: 24px 0; margin: 0; }
+/* 불러오는 동안의 자리 표시 (59단계): 카드 모양의 회색 틀 + 왼쪽에서 오른쪽으로 지나가는 빛 */
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.sk-card { cursor: default; }
+.sk { display: block; border-radius: 6px; background: linear-gradient(90deg, var(--line) 0%, var(--accent-soft) 50%, var(--line) 100%); background-size: 200% 100%; animation: sk-shine 1.4s ease-in-out infinite; }
+@keyframes sk-shine { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
+.sk-circle { width: 40px; height: 40px; border-radius: 50%; flex: none; }
+.sk-lines { flex: 1; display: grid; gap: 8px; }
+.sk-line { height: 12px; margin: 8px 0; }
+.sk-lines .sk-line { margin: 0; }
+.sk-title { width: 40%; height: 16px; margin: 4px 0 12px; }
+.sk-stats { display: flex; justify-content: space-around; padding: 18px 12px; }
+.sk-stat { display: grid; justify-items: center; gap: 6px; width: 28%; }
+.sk-num { width: 44px; height: 28px; }
 footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 28px; }
 .account-box { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line); }   /* 내 캐릭터 맨 아래: 코드 바꾸기 + 버전 (53단계) */
 .account-box .hint { text-align: center; margin: 8px 0 0; }
