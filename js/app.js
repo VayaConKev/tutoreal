@@ -964,10 +964,14 @@ function avatarHtml(entry) {
 function renderMe() {
   $('#greet-avatar').innerHTML = studentAvatar(me.name, me.avatar);
   $('#greet-name').textContent = me.name ? `${me.name} 님,` : '';
+  // 내 캐릭터 화면 위쪽: 지금 캐릭터와 이름 (58단계)
+  $('#me-preview').innerHTML = `${studentAvatar(me.name, me.avatar, 'lg')}
+    <div><p class="me-preview-label">지금 캐릭터</p><p class="me-preview-name">${escapeHtml(me.name || '')}</p></div>`;
 }
 
 /* 내 캐릭터 고르기: 누르면 "이 캐릭터로 바꿀까요?" → 예 → 저장 → "바꿨어요!" → 확인 → 챕터 목록 */
 function openAvatarPicker() {
+  renderMe();
   const ids = Object.keys(avatars.students).sort();
   const grid = $('#avatar-grid');
   if (!ids.length) {
