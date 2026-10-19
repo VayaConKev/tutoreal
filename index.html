@@ -167,18 +167,22 @@
 
     <section id="view-record" hidden>
       <button class="link" id="record-back">‹ 내 기록</button>
-      <div class="card record-head" id="record-head"></div>
-      <!-- 대화 하나 공유·저장 (41단계): 휴대폰의 공유 창으로 메모·카카오톡·메일 등에 읽기용 글을 보낸다 -->
-      <div class="record-actions">
-        <button class="secondary" id="record-share">공유·저장 (메모, 카카오톡, 메일…)</button>
-        <p class="hint" id="record-share-msg" role="status"></p>
+      <div class="card record-card">
+        <div class="record-head" id="record-head"></div>
+        <!-- 대화 하나 공유·저장 (41단계, 61단계에 오른쪽 위 아이콘으로): 휴대폰의 공유 창으로 메모·카카오톡·메일 등에 읽기용 글을 보낸다 -->
+        <button type="button" class="icon-btn record-share" id="record-share" aria-label="공유·저장 (메모, 카카오톡, 메일…)" title="공유·저장">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1h-1"/></svg>
+          <span>공유</span>
+        </button>
       </div>
-      <div class="card">
-        <h3>피드백</h3>
-        <div id="record-feedback"></div>
+      <p class="hint" id="record-share-msg" role="status"></p>
+      <!-- 코칭 리포트 / 대화 전체 (61단계): 한 번에 하나만 보여 스크롤을 줄인다 -->
+      <div class="seg-tabs" role="tablist" aria-label="기록 보기">
+        <button type="button" class="seg-tab on" data-rtab="report" role="tab" aria-selected="true">📊 코칭 리포트</button>
+        <button type="button" class="seg-tab" data-rtab="lines" role="tab" aria-selected="false" id="record-tab-lines">💬 대화 전체</button>
       </div>
-      <div class="card">
-        <h3>대화 전체</h3>
+      <div id="record-report"><div id="record-feedback"></div></div>
+      <div class="card" id="record-lines-box" hidden>
         <div class="transcript" id="record-lines"></div>
       </div>
     </section>

@@ -217,16 +217,47 @@ textarea {
   width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 12px; resize: vertical;
   background: var(--bg); color: var(--text); font: inherit; font-size: 16px;
 }
-.fb-summary { font-size: 17px; font-weight: 700; margin: 4px 0 16px; }
+.fb-summary { font-size: 17px; font-weight: 700; margin: 0; }
+/* 피드백 블록 (61단계): 총평·잘한 점 / 체크리스트 / 더 좋은 표현 / 핵심 단어·다음 연습 */
+.fb-block { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; }
+.fb-block > .fb-title:first-child { margin-top: 0; }
+.fb-good { background: var(--teal-soft); border-color: transparent; }
+.fb-good .fb-title { color: var(--teal-ink); }
+.fb-fixes { border: 1.5px solid var(--accent); }
+.fb-fixes .fb-title:first-child { color: var(--accent); font-size: 15px; }
+.fb-label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 2px; }
+.fb-fix { border: 0; padding: 0 0 12px; margin: 0 0 12px; border-bottom: 1px dashed var(--line); }
+.fb-fix:last-child { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
+.fb-said { background: var(--bg); border-radius: 10px; padding: 8px 10px; color: var(--muted); margin: 0 0 6px; }
+.fb-better { background: var(--accent-soft); border-radius: 10px; padding: 8px 10px; color: var(--text); margin: 0 0 6px; }
+.fb-better .fb-label { color: var(--accent); }
+.fb-better-row, .fb-next-row { display: flex; align-items: flex-start; gap: 8px; }
+.fb-better-row > span:first-child, .fb-next-row > span:first-child { flex: 1; min-width: 0; }
+.fb-better-row > span:first-child { font-weight: 700; }
+/* 발음 듣기 버튼 (61단계) */
+.say-btn { flex: none; width: 32px; height: 32px; margin: -4px -4px -4px 0; border: 0; border-radius: 50%; background: transparent; color: var(--teal-ink); display: grid; place-items: center; cursor: pointer; }
+.say-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.say-btn.speaking { background: var(--teal); color: var(--on-accent); }
+/* 체크리스트 접기 (61단계) */
+.fb-more { margin-top: 8px; }
+.fb-more summary { cursor: pointer; color: var(--accent); font-size: 14px; font-weight: 600; padding: 6px 0; list-style: none; }
+.fb-more summary::-webkit-details-marker { display: none; }
+.fb-more summary::after { content: " ▾"; }
+.fb-more[open] summary::after { content: " ▴"; }
+.fb-more .fb-check { margin-top: 6px; }
+.all-done { color: var(--teal-ink); font-weight: 700; margin-left: 4px; }
+/* 카드 안(4/4 피드백, 선생님 화면)에서는 테두리를 겹치지 않게 가볍게 */
+.card .fb-block { border-color: transparent; background: var(--bg); padding: 12px 14px; }
+.card .fb-good { background: var(--teal-soft); }
+.card .fb-fixes { border-color: var(--accent); background: var(--card); }
+.card .fb-block:last-child { margin-bottom: 0; }
 .fb-title { font-size: 14px; color: var(--muted); font-weight: 600; margin: 18px 0 8px; }
 .fb-list { margin: 0; padding-left: 20px; }
 .fb-list li { margin-bottom: 4px; }
-.fb-fix { border-left: 3px solid var(--accent); padding: 2px 0 2px 12px; margin-bottom: 12px; }
-.fb-said { color: var(--muted); margin: 0; }
-.fb-better { font-weight: 700; margin: 2px 0; }
 .fb-why { color: var(--muted); font-size: 14px; margin: 0; }
 .chip.unused { background: transparent; color: var(--muted); border: 1px dashed var(--line); }
-.fb-next { margin: 0 0 8px; }
+.fb-next { margin: 0 0 10px; }
+.fb-next-row { margin: 0; }
 /* 안내 체크리스트 (33단계): 챕터 화면의 미리 보기 목록과 피드백의 결과 */
 #detail-checklist-box { margin-top: 16px; }
 .checklist { margin: 0 0 16px; padding-left: 22px; }
@@ -342,19 +373,26 @@ textarea {
 .tag { flex: none; font-size: 12px; border-radius: 6px; padding: 2px 8px; background: var(--accent-soft); color: var(--accent); }
 .tag.private { background: transparent; color: var(--muted); border: 1px solid var(--line); }
 .record-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+/* 내 기록 상세 (61단계): 환자 카드 오른쪽 위 공유 아이콘, 코칭 리포트 / 대화 전체 탭 */
+.record-card { position: relative; }
+.record-card .record-head { margin-bottom: 0; padding-right: 64px; }
+.icon-btn.record-share { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 8px; border: 0; border-radius: 12px; background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+.icon-btn.record-share svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.seg-tabs { display: flex; gap: 4px; padding: 4px; margin: 4px 0 12px; border-radius: 12px; background: var(--accent-soft); }
+.seg-tab { flex: 1; border: 0; border-radius: 9px; padding: 9px 6px; background: transparent; color: var(--muted); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.seg-tab.on { background: var(--card); color: var(--accent); box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12); }
+#record-report[hidden], #record-lines-box[hidden] { display: none; }
 .record-head h3 { margin: 0; }
 #view-record .card + .card { margin-top: 12px; }
-.record-actions { margin: -4px 0 12px; }
 /* 내 기록 백업 (42단계) */
 .backup-row { display: flex; gap: 8px; margin: 0 0 6px; }
 .backup-row button { flex: 1; margin-top: 0; }
 .file-pick { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .backup-msg { margin: 0 0 10px; }
 .backup-msg:empty { display: none; }
-.record-actions button { margin-top: 0; width: 100%; }
-.record-actions .hint { text-align: center; margin: 6px 0 0; }
-.record-actions .hint:empty { display: none; }
-#record-lines { margin-top: 8px; }
+#record-lines { margin-top: 0; }
+#record-share-msg { text-align: center; margin: 8px 0 0; }
+#record-share-msg:empty { display: none; }
 
 /* 문장 연습 */
 .drill-open { margin: 0 0 8px; }

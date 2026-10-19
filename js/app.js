@@ -594,14 +594,23 @@ function checklistHtml(list, gentle) {
   const required = list.filter((c) => !c.optional);
   // 선택 항목은 글 옆의 '선택' 표시로 충분. 너그러운 피드백 챕터(47단계)는 안 한 항목을 빨간 ✗ 대신 회색으로 부드럽게
   const STATE = { done: ['✓', '했어요'], miss: ['✗', '빠졌어요'], soft: ['–', '다음엔 이것도'], opt: ['–', ''] };
-  return `<p class="fb-title">안내 체크리스트 ${required.filter((c) => c.done).length} / ${required.length}</p>
-    <ul class="fb-check">${list.map((c) => {
-      const state = c.done ? 'done' : c.optional ? 'opt' : gentle ? 'soft' : 'miss';
-      return `<li class="${state}"><span class="mark" aria-hidden="true">${STATE[state][0]}</span>
-        <span class="txt">${escapeHtml(c.item)}${checklistTags(c)}
-          ${c.en ? `<span class="ck-en" lang="en">${escapeHtml(c.en)}</span>` : ''}</span>
-        <span class="chk-state">${STATE[state][1]}</span></li>`;
-    }).join('')}</ul>`;
+  const item = (c) => {
+    const state = c.done ? 'done' : c.optional ? 'opt' : gentle ? 'soft' : 'miss';
+    return `<li class="${state}"><span class="mark" aria-hidden="true">${STATE[state][0]}</span>
+      <span class="txt">${escapeHtml(c.item)}${checklistTags(c)}
+        ${c.en ? `<span class="ck-en" lang="en">${escapeHtml(c.en)}</span>` : ''}</span>
+      <span class="chk-state">${STATE[state][1]}</span></li>`;
+  };
+  // 접기 (61단계): 안 한 필수 항목만 펼쳐 두고, 한 항목·선택 항목은 접어 둔다. 모두 했으면 전부 접힌 채로
+  const open = list.filter((c) => !c.done && !c.optional);
+  const rest = list.filter((c) => c.done || c.optional);
+  const doneN = required.filter((c) => c.done).length;
+  const restLabel = rest.every((c) => c.done) ? `완료한 항목 보기 (${rest.length}개)` : `완료·선택 항목 보기 (${rest.length}개)`;
+  return `<div class="fb-block fb-checklist">
+    <p class="fb-title">안내 체크리스트 ${doneN} / ${required.length}${open.length ? '' : ' <span class="all-done">모두 했어요 ✓</span>'}</p>
+    ${open.length ? `<ul class="fb-check">${open.map(item).join('')}</ul>` : ''}
+    ${rest.length ? `<details class="fb-more"><summary>${restLabel}</summary><ul class="fb-check">${rest.map(item).join('')}</ul></details>` : ''}
+  </div>`;
 }
 
 /** 기다리는 동안 보여 줄 복습 문장: 체크리스트(성별 표시가 없는 항목)가 있으면 그것, 없으면 문장 연습. [{ ko, target, py }] */
@@ -655,24 +664,38 @@ function startWaitScreen(box, data) {
   return () => { clearInterval(tick); clearInterval(rotate); };
 }
 
+/** 발음 듣기 버튼 (61단계): 누르면 휴대폰 음성으로 읽는다 (아래 문서 전체 클릭 처리). 과정은 그린 순간의 것으로 */
+const sayBtn = (text, label = '발음 듣기') =>
+  `<button type="button" class="say-btn" data-say="${escapeHtml(text)}" data-course="${courseNow()}" aria-label="${escapeHtml(label)}">${SPEAKER_ICON}</button>`;
+
+/**
+ * 피드백 (61단계에 블록으로 나눔): ① 총평·잘한 점(연한 청록) ② 안내 체크리스트(접기) ③ 더 좋은 표현(내가 한 말 → 추천 문장, 발음 듣기)
+ * ④ 핵심 단어·다음에 연습할 문장(발음 듣기). 내용은 전과 같고 모양과 순서만 바뀌었다. 4/4, 내 기록, 선생님 화면이 같이 쓴다.
+ */
 function feedbackHtml(fb) {
   const used = fb.keywords.filter((k) => k.used).length;
   return `
-    <p class="fb-summary">${escapeHtml(fb.summary)}</p>
+    <div class="fb-block fb-good">
+      <p class="fb-summary">${escapeHtml(fb.summary)}</p>
+      ${fb.strengths.length ? `<p class="fb-title">잘한 점</p>
+        <ul class="fb-list">${fb.strengths.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>` : ''}
+    </div>
     ${checklistHtml(fb.checklist, fb.gentle)}
-    ${fb.strengths.length ? `<p class="fb-title">잘한 점</p>
-      <ul class="fb-list">${fb.strengths.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>` : ''}
-    ${fb.fixes.length ? `<p class="fb-title">${fb.gentle ? '이렇게도 말할 수 있어요' : '더 좋은 표현'}</p>
+    ${fb.fixes.length ? `<div class="fb-block fb-fixes">
+      <p class="fb-title">${fb.gentle ? '이렇게도 말할 수 있어요' : '더 좋은 표현'}</p>
       ${fb.fixes.map((f) => `<div class="fb-fix">
-        <p class="fb-said">${escapeHtml(f.said)}</p>
-        <p class="fb-better">→ ${escapeHtml(f.better)}</p>
+        <p class="fb-said"><span class="fb-label">내가 한 말</span>${escapeHtml(f.said)}</p>
+        <p class="fb-better"><span class="fb-label">이렇게 말해 보세요</span><span class="fb-better-row"><span>${escapeHtml(f.better)}</span>${sayBtn(f.better)}</span></p>
         ${f.better_py ? `<p class="fb-py">${escapeHtml(f.better_py)}</p>` : ''}
-        <p class="fb-why">${escapeHtml(f.why)}</p></div>`).join('')}` : ''}
-    ${fb.keywords.length ? `<p class="fb-title">핵심 단어 ${used} / ${fb.keywords.length}</p>
-      <div class="chips">${fb.keywords.map((k) =>
-        `<span class="chip${k.used ? '' : ' unused'}">${k.used ? '✓ ' : ''}${escapeHtml(k.keyword)}</span>`).join('')}</div>` : ''}
-    ${fb.next_practice.length ? `<p class="fb-title">다음에 연습할 문장</p>
-      ${fb.next_practice.map((n) => `<p class="fb-next">${escapeHtml(n.en)}${n.py ? `<span class="py">${escapeHtml(n.py)}</span>` : ''}<span class="ko">${escapeHtml(n.ko)}</span></p>`).join('')}` : ''}`;
+        <p class="fb-why">${escapeHtml(f.why)}</p></div>`).join('')}
+    </div>` : ''}
+    ${fb.keywords.length || fb.next_practice.length ? `<div class="fb-block">
+      ${fb.keywords.length ? `<p class="fb-title">핵심 단어 ${used} / ${fb.keywords.length}</p>
+        <div class="chips">${fb.keywords.map((k) =>
+          `<span class="chip${k.used ? '' : ' unused'}">${k.used ? '✓ ' : ''}${escapeHtml(k.keyword)}</span>`).join('')}</div>` : ''}
+      ${fb.next_practice.length ? `<p class="fb-title">다음에 연습할 문장</p>
+        ${fb.next_practice.map((n) => `<div class="fb-next"><p class="fb-next-row"><span>${escapeHtml(n.en)}</span>${sayBtn(n.en)}</p>${n.py ? `<span class="py">${escapeHtml(n.py)}</span>` : ''}<span class="ko">${escapeHtml(n.ko)}</span></div>`).join('')}` : ''}
+    </div>` : ''}`;
 }
 
 /** 대화 한 줄 (대화 후 2/4 고르기와 내 기록 보기가 같이 쓴다). 중국어 과정은 병음, 받아 둔 뜻이 있으면 뜻도. */
@@ -1269,12 +1292,26 @@ function openRecord(e) {
   recordOpen = e.sessionId;
   if (e.feedback) $('#record-feedback').innerHTML = feedbackHtml(e.feedback);
   else showRecordNoFeedback(e);
+  const turns = (e.lines || []).filter((l) => l.text && l.text.trim()).length;
+  $('#record-tab-lines').textContent = `💬 대화 전체 (${turns}마디)`;
+  setRecordTab('report');
   // 다시 보는 화면이므로 환자 말도 가리지 않고 모두 보여 준다.
   // 대화 후 2/4에서 고른 어려웠던 부분은 '어려웠어요'로 표시된다.
   $('#record-lines').innerHTML = (e.lines || []).map((l) => `
     <div class="line ${l.who === 'me' ? 'me' : 'ai'}${l.hard ? ' picked' : ''}">${lineInner(l)}</div>`).join('');
   viewCourse = '';
   show('record');
+}
+
+/** 내 기록 상세의 탭 (61단계): report = 코칭 리포트(피드백), lines = 대화 전체. 기록을 열 때마다 코칭 리포트부터 */
+function setRecordTab(tab) {
+  document.querySelectorAll('.seg-tab').forEach((b) => {
+    const on = b.dataset.rtab === tab;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', String(on));
+  });
+  $('#record-report').hidden = tab !== 'report';
+  $('#record-lines-box').hidden = tab !== 'lines';
 }
 
 /* ── 문장 연습: 핵심 단어 자리가 빈칸인 문장을 소리 내어 말해 보고 정답을 확인한다 (AI를 쓰지 않음) ──
@@ -1493,13 +1530,13 @@ function nextDrill(hard) {
 
 /** 휴대폰에 들어 있는 영어 읽기 음성으로 문장을 읽어 준다 (무료, 인터넷 불필요). */
 /** 휴대폰 음성으로 읽어 준다. 읽기 시작한 말(끝났을 때 알림용)을 돌려준다. 음성 기능이 없으면 null. */
-function speak(text) {
+function speak(text, course = courseNow()) {
   if (!('speechSynthesis' in window)) return null;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   // 중국어 과정은 휴대폰의 중국어 음성으로 조금 더 천천히
-  u.lang = courseNow() === 'zh' ? 'zh-CN' : 'en-US';
-  u.rate = courseNow() === 'zh' ? 0.8 : 0.9;
+  u.lang = course === 'zh' ? 'zh-CN' : 'en-US';
+  u.rate = course === 'zh' ? 0.8 : 0.9;
   speechSynthesis.speak(u);
   return u;
 }
@@ -1775,6 +1812,18 @@ $('#tsession-back').addEventListener('click', () => show('tstudent'));
 
 $('#record-back').addEventListener('click', openHistory);
 $('#record-share').addEventListener('click', shareRecord);
+// 피드백 안의 발음 듣기 버튼 (61단계): 4/4, 내 기록, 선생님 화면 어디서든
+document.addEventListener('click', (ev) => {
+  const b = ev.target.closest('.say-btn');
+  if (!b) return;
+  document.querySelectorAll('.say-btn.speaking').forEach((x) => x.classList.remove('speaking'));
+  const u = speak(b.dataset.say, b.dataset.course || undefined);
+  if (!u) return;
+  b.classList.add('speaking');
+  u.onend = u.onerror = () => b.classList.remove('speaking');
+});
+// 내 기록 상세의 탭 (61단계): 코칭 리포트 / 대화 전체
+document.querySelectorAll('.seg-tab').forEach((b) => b.addEventListener('click', () => setRecordTab(b.dataset.rtab)));
 $('#backup-export').addEventListener('click', exportBackup);
 $('#backup-nudge-go').addEventListener('click', exportBackup);
 $('#backup-import').addEventListener('click', () => { $('#backup-file').value = ''; $('#backup-file').click(); });
