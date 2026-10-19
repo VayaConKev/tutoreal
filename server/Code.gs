@@ -76,12 +76,14 @@
  *                 소지품 번호는 대화마다 무작위. settings의 slip_legend(결과 글자 풀이)를 슬립 아래에 보여 준다. setup()이 칸과 설정을 추가한다.
  * v0.46 (52단계): 슬립 결과를 적은 그대로 — 여러 글자 약어(IM, GU Scar, B1yr), 한글(치질), 위대장 세트 '위 결과 / 대장 결과'.
  *                 글자 풀이(slip_legend)는 그 챕터 시나리오의 슬립에 나오는 약어만 골라 보여 준다.
+ * v0.47 (60단계): 발음 코칭 실패를 피드백처럼 — AI가 붐벼서(429·500·503) 실패하면 PRON_BUSY (앱이 '붐벼서'라고 안내),
+ *                 실패할 때마다 quality 탭에 진단 한 줄 (kind pron: 이유, 모델, 문장 번호, 걸린 시간, 응답 코드, 시도 횟수).
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.46';
+const SERVER_VERSION = 'v0.47';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -2355,7 +2357,13 @@ function pronounce_(code, drillId, level, audio) {
     at: new Date(), student_id: sid, chapter_id: String(drill.chapter_id), drill_id: drillId, level: level,
     overall: overall || 'failed', cost_usd: Math.round((ai.cost || 0) * 10000) / 10000
   });
-  if (!ai.ok) return { ok: false, error: ai.error === 'AI_FAILED' || ai.error === 'AI_BUSY' ? 'PRON_FAILED' : ai.error };
+  if (!ai.ok) {
+    // 진단 기록 (v0.47): 왜 실패했는지 quality 탭에 (학생 이름·소리는 남기지 않는다)
+    diag_('', 'pron', '실패 · ' + ai.error + ' · ' + (pronModel || String(getSettings_().text_model || '')) + ' · ' + drillId +
+      (ai.meta ? ' · ' + metaNote_(ai.meta) : ''));
+    // AI가 붐볐으면 PRON_BUSY (앱: '붐벼서 확인하지 못했어요'), 그 밖의 AI 오류는 전처럼 PRON_FAILED
+    return { ok: false, error: ai.error === 'AI_BUSY' ? 'PRON_BUSY' : ai.error === 'AI_FAILED' ? 'PRON_FAILED' : ai.error };
+  }
 
   return {
     ok: true,
