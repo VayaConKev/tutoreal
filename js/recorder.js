@@ -34,7 +34,10 @@ export class Recorder {
     await this.ctx.resume().catch(() => {});
     await this.ctx.audioWorklet.addModule(new URL('./mic-worklet.js', import.meta.url));
     this.node = new AudioWorkletNode(this.ctx, 'mic-processor', { processorOptions: { targetRate: RATE } });
-    this.node.port.onmessage = (e) => { if (e.data.type === 'pcm') this.chunks.push(new Int16Array(e.data.buffer)); };
+    this.node.port.onmessage = (e) => {
+      if (e.data.type === 'pcm') this.chunks.push(new Int16Array(e.data.buffer));
+      else if (e.data.type === 'level' && this.onLevel) this.onLevel(e.data.rms);   // 소리 크기 (55단계)
+    };
     this.ctx.createMediaStreamSource(this.stream).connect(this.node).connect(this.ctx.destination);
   }
 

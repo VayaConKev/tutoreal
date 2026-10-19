@@ -189,6 +189,12 @@ input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px
 .line.ai.covered .py, .line.ai.covered .ko, .line.ai.covered .ko-btn { display: none; }
 
 .talk-actions { position: sticky; bottom: 0; padding: 10px 0 12px; background: var(--bg); }
+.talk-meter { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 0 0 10px; color: var(--muted); font-size: 14px; }
+.talk-meter[hidden] { display: none; }
+/* 내 목소리 막대 (55단계): 높이는 앱이 마이크 소리 크기에 맞춰 바꾼다 */
+.voice-meter { display: inline-flex; align-items: center; gap: 4px; height: 30px; flex: none; }
+.voice-meter i { width: 5px; height: 30px; border-radius: 3px; background: var(--teal); transform: scaleY(.18); transition: transform .06s linear; }
+@media (prefers-reduced-motion: reduce) { .voice-meter i { transition: none; } }
 
 .step-count { color: var(--muted); font-size: 14px; text-align: center; margin: 0 0 10px; }
 .faces { display: flex; gap: 8px; margin: 12px 0 20px; }
@@ -349,7 +355,7 @@ textarea {
 .drill-hint { color: var(--teal-ink); font-size: 16px; font-weight: 700; margin: 8px 0 0; letter-spacing: 0.05em; }
 .drill-pron { color: var(--muted); font-size: 14px; margin: 10px 0 0; }
 .drill-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
-.recording { color: var(--danger); font-weight: 700; margin: 16px 0 0; }
+.recording { color: var(--danger); font-weight: 700; margin: 16px 0 0; display: flex; align-items: center; gap: 10px; }   /* 막대 + 안내 (55단계) */
 .coach { border-radius: 12px; padding: 12px 14px; margin: 0 0 14px; background: var(--accent-soft); }
 .coach.retry { background: transparent; border: 1px solid var(--line); }
 .coach-title { font-weight: 800; font-size: 17px; margin: 0 0 4px; color: var(--accent); }

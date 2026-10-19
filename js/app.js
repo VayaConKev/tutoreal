@@ -261,6 +261,25 @@ function showSlip(slip, patient) {
   $('#talk-go').hidden = false;
 }
 
+/* ── 내 목소리 막대 (55단계): 마이크 소리 크기(0.05초마다)를 막대 7개의 높이로 보여 준다 ──
+   크기는 RMS(0~1). 말소리는 대개 0.02~0.2라 제곱근으로 펴고, 작은 잡음은 0으로. 올라갈 때는 바로, 내려갈 때는 천천히. */
+const METER_HTML = '<span class="voice-meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>';
+const METER_WEIGHT = [0.4, 0.65, 0.85, 1, 0.85, 0.65, 0.4];
+function makeMeter(find) {
+  let shown = 0;
+  return (rms) => {
+    const el = find();
+    if (!el) return;
+    const lvl = Math.max(0, Math.min(1, (Math.sqrt(rms) - 0.05) * 2.8));
+    shown = Math.max(lvl, shown * 0.8);
+    const t = performance.now() / 120;
+    el.querySelectorAll('i').forEach((bar, i) => {
+      const h = 0.18 + 0.82 * shown * METER_WEIGHT[i] * (0.85 + 0.15 * Math.sin(t + i * 1.7));
+      bar.style.transform = `scaleY(${h.toFixed(3)})`;
+    });
+  };
+}
+
 function setTalkStatus(text) {
   $('#talk-status').textContent = text;
 }
@@ -383,10 +402,11 @@ async function beginTalk() {
   // 오디오는 버튼을 누른 이 순간에 켜야 한다 (iOS). 그래서 다른 일보다 먼저 만든다.
   live = new LiveSession({
     onStatus: (s) => {
-      if (s === 'ready') { t.readyAt = Date.now(); $('#talk-calling').hidden = true; setTalkStatus('연결됐어요. 먼저 말을 걸어 보세요.'); startClock(t); }
+      if (s === 'ready') { t.readyAt = Date.now(); $('#talk-calling').hidden = true; $('#talk-meter').hidden = false; setTalkStatus('연결됐어요. 먼저 말을 걸어 보세요.'); startClock(t); }
       if (s === 'goaway') setTalkStatus('곧 연결이 끝나요.');
     },
     onEnd: (reason, info) => { t.aiSec = session.recv; endedTalk(reason, info, t); reportEnd(t); },
+    onLevel: makeMeter(() => (t.readyAt ? $('#talk-meter .voice-meter') : null)),
     onText: addText,
     onTurnEnd: endTurn
   });
@@ -403,6 +423,7 @@ async function beginTalk() {
   $('#talk-slip').hidden = true;
   $('#talk-slip-legend').hidden = true;
   $('#talk-go').hidden = true;
+  $('#talk-meter').hidden = true;
   $('#talk-time').textContent = '0:00';
   $('#talk-info').hidden = true;
   $('#transcript').innerHTML = '';
@@ -457,6 +478,7 @@ function endedTalk(reason, info, t) {
   live = null;
   $('#talk-go').hidden = true;
   $('#talk-calling').hidden = true;
+  $('#talk-meter').hidden = true;
   // 예상하지 못한 이유로 끝난 경우(연결 끊김 등)에만 연결 정보(보낸·받은 소리 등)를 보여 준다.
   $('#talk-info').textContent = info;
   $('#talk-info').hidden = !reason || !!t.endReason || !t.readyAt;
@@ -1314,7 +1336,7 @@ function renderDrill() {
     ${sentence ? `<p class="sentence-label">${drill.revealed ? '정답' : `${langName()} 문장`}</p><p class="sentence">${sentence}</p>` : ''}
     ${blankPy ? `<p class="drill-py">${blankPy}</p>` : ''}
     ${drill.revealed ? (d.pron ? (zh ? `<p class="drill-py">${escapeHtml(d.pron)}</p>` : `<p class="drill-pron">발음: ${escapeHtml(d.pron)}</p>`) : '')
-      : drill.phase === 'recording' ? '<p class="recording">● 듣고 있어요. 문장을 말한 뒤 "다 말했어요"를 눌러 주세요.</p>'
+      : drill.phase === 'recording' ? `<p class="recording">${METER_HTML}<span>듣고 있어요. 문장을 말한 뒤 "다 말했어요"를 눌러 주세요.</span></p>`
       : drill.phase === 'checking' ? '<p class="drill-say">발음을 확인하는 중…</p>'
       : `<p class="drill-say">${drill.level === 'blank' ? '소리 내어 문장 전체를 말해 보세요.' : `${langName()} 문장 전체를 소리 내어 말해 보세요.`}</p>
          ${drill.hintShown ? `<p class="drill-hint">${escapeHtml(hint)}</p>` : ''}`}
@@ -1350,6 +1372,7 @@ async function startCoach() {
   if (window.speechSynthesis) speechSynthesis.cancel();
   drill.coachError = '';
   const rec = new Recorder();
+  rec.onLevel = makeMeter(() => $('#drill-card .recording .voice-meter'));   // 내 목소리 막대 (55단계)
   drill.rec = rec;
   drill.phase = 'recording';
   renderDrill();

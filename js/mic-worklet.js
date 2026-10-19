@@ -17,6 +17,10 @@ class MicProcessor extends AudioWorkletProcessor {
     this.chunks = 0;
     this.peak = 0;
     this.reportAt = 0;
+    // 소리 크기 (55단계): 0.05초마다 그동안의 평균 크기(RMS, 0~1)를 알려 화면의 막대가 목소리를 따라 움직이게 한다
+    this.sq = 0;
+    this.sqN = 0;
+    this.levelSize = Math.round(sampleRate / 20);
   }
 
   process(inputs) {
@@ -30,6 +34,12 @@ class MicProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < input.length; i++) {
       this.sum += input[i];
       if (Math.abs(input[i]) > this.peak) this.peak = Math.abs(input[i]);
+      this.sq += input[i] * input[i];
+      if (++this.sqN >= this.levelSize) {
+        this.port.postMessage({ type: 'level', rms: Math.sqrt(this.sq / this.sqN) });
+        this.sq = 0;
+        this.sqN = 0;
+      }
       this.count++;
       this.pos += 1;
       if (this.pos >= this.ratio) {

@@ -23,8 +23,10 @@ export class LiveSession {
   // ctx는 AI 목소리 재생용. 마이크용 micCtx는 마이크를 켠 뒤에 따로 만든다 (iOS는 마이크보다 먼저 만든
   // 오디오 장치에 마이크 소리를 넘겨주지 않는 경우가 있다).
   // onText(who, text): 'me'(학생) / 'ai'(환자) 말이 글자로 조금씩 도착할 때. onTurnEnd(): 환자 차례가 끝났을 때.
-  constructor({ onStatus, onEnd, onText, onTurnEnd }) {
+  // onLevel(rms): 마이크 소리 크기 0~1, 0.05초마다 (55단계, 화면의 목소리 막대)
+  constructor({ onStatus, onEnd, onText, onTurnEnd, onLevel }) {
     this.onStatus = onStatus;
+    this.onLevel = onLevel || (() => {});
     this.onEnd = onEnd;
     this.onText = onText;
     this.onTurnEnd = onTurnEnd;
@@ -58,9 +60,10 @@ export class LiveSession {
     await this.micCtx.audioWorklet.addModule(new URL('./mic-worklet.js', import.meta.url));
     if (this.ended) return this.closeMic();
     this.mic = new AudioWorkletNode(this.micCtx, 'mic-processor', { processorOptions: { targetRate: IN_RATE } });
-    // 메시지 종류는 이름표(type)로 구분한다: pcm = 마이크 소리 덩어리, stats = 진단 숫자
+    // 메시지 종류는 이름표(type)로 구분한다: pcm = 마이크 소리 덩어리, stats = 진단 숫자, level = 지금 소리 크기
     this.mic.port.onmessage = (e) => {
       if (e.data.type === 'pcm') this.sendAudio(e.data.buffer);
+      else if (e.data.type === 'level') this.onLevel(e.data.rms);
       else if (e.data.type === 'stats') this.micStats = e.data;
     };
     // 변환기는 소리를 내보내지 않으므로(무음) 스피커에 이어도 내 목소리가 다시 들리지 않는다. 이어야 작동한다.
