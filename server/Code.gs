@@ -78,12 +78,15 @@
  *                 글자 풀이(slip_legend)는 그 챕터 시나리오의 슬립에 나오는 약어만 골라 보여 준다.
  * v0.47 (60단계): 발음 코칭 실패를 피드백처럼 — AI가 붐벼서(429·500·503) 실패하면 PRON_BUSY (앱이 '붐벼서'라고 안내),
  *                 실패할 때마다 quality 탭에 진단 한 줄 (kind pron: 이유, 모델, 문장 번호, 걸린 시간, 응답 코드, 시도 횟수).
+ * v0.48 (63단계): 피드백 글 규칙 — 해요체로 통일, 총평은 지시어(그렇게·이 부분…) 없이 이번에 한 일을 구체적으로 짚으며 시작,
+ *                 (영어) 맥락 없는 한국어는 받아쓰기가 영어 발음을 잘못 알아들은 것으로 보고 '발음이 명확하게 인식되지 않은 구간'으로 안내.
+ *                 너그러운 피드백(gentle)의 총평도 고정 문장 대신 같은 규칙으로. 시트의 지시문은 그대로 (코드가 끝에 붙인다).
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.47';
+const SERVER_VERSION = 'v0.48';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -929,21 +932,43 @@ function isGentle_(chapter) {
  * 총평은 세 가지 문장 중 하나로 시작한다 (Kevin이 정한 두 문장 + 뜻이 통하지 않았을 때).
  */
 function withGentle_(text, zh) {
-  const other = zh ? '상대' : '환자';
+  const other = zh ? '상대' : '수검자';
   return text + '\n' + [
     'Feedback style for this lesson: GENTLE. The goal is to explain things simply so that a foreign ' + (zh ? 'partner' : 'patient') + ' can understand.',
     'Judge mainly whether the meaning got across, not grammar. These rules come before the rules above.',
-    '- summary: start with exactly one of these Korean sentences, based on the whole talk:',
-    '  (a) the explanations were clear: "그렇게 설명해도 의미는 충분히 통해요!"',
-    '  (b) some words were awkward or had small mistakes, but the ' + (zh ? 'partner' : 'patient') + ' could still understand: "음... 조금 어색하긴 하지만 이해는 할 수 있을 것 같아요!"',
-    '  (c) an important part would be hard to understand: "이 부분은 ' + other + '가 알아듣기 어려웠을 것 같아요." and then name that part in a few words.',
-    '  After (a) or (b), end with "아래와 같은 표현들도 유용하니 참고해 주세요." After (c), end with "아래처럼 말해 보면 어떨까요?"',
-    '  Do not list what the learner did not say in the summary (the checklist shows it).',
+    '- summary (1-2 Korean sentences): first say concretely what the learner explained (which result, in what simple words), then one of these three judgments:',
+    '  (a) the explanations were clear: say the meaning got across well, for example "위염 결과를 쉬운 말로 풀어 설명해서 의미가 충분히 통해요!"',
+    '  (b) some words were awkward or had small mistakes, but the ' + (zh ? 'partner' : 'patient') + ' could still understand, for example "용종을 작은 혹으로 풀어 설명했어요. 조금 어색한 표현도 있지만 이해하기에는 충분해요!"',
+    '  (c) an important part would be hard to understand: name that part, for example "식도염 결과를 안내했어요. 다만 \'esophagus\'를 풀어 주지 않아 ' + other + '가 알아듣기 어려웠을 것 같아요."',
+    '  End with "아래 추천 표현도 참고해 보세요." Do not list what the learner did not say in the summary (the checklist shows it).',
     '- strengths: praise clear, simple explanations and easy words.',
-    '- fixes: these are shown as "other useful ways to say it", not as mistakes. Choose lines where a simpler or more natural sentence would help.',
+    '- fixes: these are shown as recommended expressions, not as mistakes. Choose lines where a simpler or more natural sentence would help.',
     '  Skip small grammar or word-choice errors when the meaning was clear. "why": one short, kind Korean sentence about why the new sentence is easy to understand',
     '  (for example: 더 쉬운 단어예요, 문장이 짧아서 알아듣기 쉬워요). Do not say the learner was wrong.'
   ].join('\n');
+}
+
+/**
+ * 피드백 글 규칙 (63단계): 모든 피드백 지시문 끝에 붙인다 (시트의 지시문은 그대로).
+ * 어투는 해요체로, 총평은 지시어 없이 이번에 한 일을 짚으며 시작. 영어 과정은 받아쓰기 오류를 한국어로 말한 것으로 오해하지 않게.
+ */
+const STT_NOTE = '발음이 명확하게 인식되지 않은 구간이 있어요. 아래 추천 표현을 참고해 조금 더 또렷하게 발음해 보세요.';
+function withWritingRules_(text, zh) {
+  const rules = [
+    'Writing rules for every Korean sentence in the feedback (these come last and win over any rule above):',
+    '- Use only the polite 해요체 endings, for example "…했어요", "…해요", "…해 보세요". Never use 하십시오체 endings such as "…습니다", "…하셨습니다", "…하십시오". Keep the same 해요체 in summary, strengths, fixes and next_practice.',
+    '- summary: the first sentence must say concretely what the learner did in this talk (for example 호명, 본인 확인, 자세 안내, 검사 결과 설명) and encourage them.',
+    '  Never start the summary with a pointing word that has nothing to point to, such as 그렇게, 이렇게, 이 부분, 그 부분, 이것, 그것.'
+  ];
+  if (!zh) rules.push(
+    '- Speech recognition: the learner\'s lines come from automatic speech recognition. Korean words that make no sense in this conversation',
+    '  (for example "스틸을 코스프레하고 스틸 카운트를") are almost always English speech that was misheard, not Korean that the learner spoke.',
+    '  For such lines, never tell the learner to speak English instead of Korean. Add a fix: "said" = the line as written, "better" = the English sentence the learner most likely meant,',
+    '  "why" = "' + STT_NOTE + '"',
+    '  Only when the Korean clearly makes sense here (for example "잠시만요", "어떻게 말하지") did the learner really switch to Korean; then suggest an English way to say it.',
+    '  This replaces the earlier rule about Korean sentences.'
+  );
+  return text + '\n' + rules.join('\n');
 }
 
 /** settings 탭을 {key: value} 로 읽는다. */
@@ -1419,7 +1444,7 @@ function makeFeedback_(chapter, scenario, lines, student) {
   const checklist = checklistFor_(checklistOf_(chapter), scenario);
   const gentle = isGentle_(chapter);
   const base = withChecklist_(withLearner_(system, student), checklist, gentle);
-  const systemFull = gentle ? withGentle_(base, zh) : base;
+  const systemFull = withWritingRules_(gentle ? withGentle_(base, zh) : base, zh);
   const who = zh ? ['Learner: ', 'Partner: '] : ['Nurse: ', 'Patient: '];
   const transcript = 'Transcript:\n' + lines.map(function (l) { return (l.who === 'me' ? who[0] : who[1]) + l.text; }).join('\n');
 

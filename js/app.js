@@ -593,13 +593,14 @@ function checklistHtml(list, gentle) {
   if (!list || !list.length) return '';
   const required = list.filter((c) => !c.optional);
   // 선택 항목은 글 옆의 '선택' 표시로 충분. 너그러운 피드백 챕터(47단계)는 안 한 항목을 빨간 ✗ 대신 회색으로 부드럽게
-  const STATE = { done: ['✓', '했어요'], miss: ['✗', '빠졌어요'], soft: ['–', '다음엔 이것도'], opt: ['–', ''] };
+  // 한 항목은 왼쪽 ✓만 (63단계: 오른쪽 '했어요'는 ✓와 뜻이 겹쳐서 뺐다)
+  const STATE = { done: ['✓', ''], miss: ['✗', '빠졌어요'], soft: ['–', '다음엔 이것도'], opt: ['–', ''] };
   const item = (c) => {
     const state = c.done ? 'done' : c.optional ? 'opt' : gentle ? 'soft' : 'miss';
     return `<li class="${state}"><span class="mark" aria-hidden="true">${STATE[state][0]}</span>
       <span class="txt">${escapeHtml(c.item)}${checklistTags(c)}
         ${c.en ? `<span class="ck-en" lang="en">${escapeHtml(c.en)}</span>` : ''}</span>
-      <span class="chk-state">${STATE[state][1]}</span></li>`;
+      ${STATE[state][1] ? `<span class="chk-state">${STATE[state][1]}</span>` : ''}</li>`;
   };
   // 접기 (61단계): 안 한 필수 항목만 펼쳐 두고, 한 항목·선택 항목은 접어 둔다. 모두 했으면 전부 접힌 채로
   const open = list.filter((c) => !c.done && !c.optional);
@@ -668,7 +669,10 @@ function startWaitScreen(box, data) {
 const sayBtn = (text, label = '발음 듣기') =>
   `<button type="button" class="say-btn" data-say="${escapeHtml(text)}" data-course="${courseNow()}" aria-label="${escapeHtml(label)}">${SPEAKER_ICON}</button>`;
 
-/** 더 좋은 표현 한 장: 내가 한 말 → 이렇게 말해 보세요 (발음 듣기) → 이유 */
+// 고칠 점·다른 표현 묶음의 제목 (63단계: '더 좋은 표현'과 너그러운 챕터의 '이렇게도 말할 수 있어요'를 하나로)
+const FIX_TITLE = '추천 표현 및 교정';
+
+/** 추천 표현 한 장: 내가 한 말 → 이렇게 말해 보세요 (발음 듣기) → 이유 */
 const fixCard = (f) => `<div class="fb-fix">
   <p class="fb-said"><span class="fb-label">내가 한 말</span>${escapeHtml(f.said)}</p>
   <p class="fb-better"><span class="fb-label">이렇게 말해 보세요</span><span class="fb-better-row"><span>${escapeHtml(f.better)}</span>${sayBtn(f.better)}</span></p>
@@ -680,7 +684,7 @@ const fixCard = (f) => `<div class="fb-fix">
  * 아래에 ‹ 점 › 표시. 넘기면 점이 따라오고(아래 문서 전체 스크롤 처리), 화살표를 누르면 한 장씩 넘어간다.
  */
 function fixCarousel(fixes) {
-  return `<div class="fb-carousel" tabindex="0" aria-label="더 좋은 표현 ${fixes.length}개, 옆으로 넘겨 보세요">
+  return `<div class="fb-carousel" tabindex="0" aria-label="${FIX_TITLE} ${fixes.length}개, 옆으로 넘겨 보세요">
       ${fixes.map((f, i) => `<div class="fb-slide" aria-label="${i + 1} / ${fixes.length}">${fixCard(f)}</div>`).join('')}
     </div>
     <div class="fb-dots">
@@ -722,7 +726,7 @@ function feedbackHtml(fb) {
     </div>
     ${checklistHtml(fb.checklist, fb.gentle)}
     ${fb.fixes.length ? `<div class="fb-block fb-fixes">
-      <p class="fb-title">${fb.gentle ? '이렇게도 말할 수 있어요' : '더 좋은 표현'}${fb.fixes.length > 1 ? ` <span class="fb-count">${fb.fixes.length}개</span>` : ''}</p>
+      <p class="fb-title">${FIX_TITLE}${fb.fixes.length > 1 ? ` <span class="fb-count">${fb.fixes.length}개</span>` : ''}</p>
       ${fb.fixes.length > 1 ? fixCarousel(fb.fixes) : fixCard(fb.fixes[0])}
     </div>` : ''}
     ${fb.keywords.length || fb.next_practice.length ? `<div class="fb-block">
@@ -989,7 +993,8 @@ $('#review-prev').addEventListener('click', () => goStep(review.step - 1));
 
 /* ── 내 기록 보기: 이 휴대폰에 저장된 지난 대화 (최근 100개) ── */
 
-const CONFIDENCE = { 1: '😣 어려웠어요', 2: '🙂 보통이에요', 3: '😄 자신 있어요' };
+// 자기 평가는 숫자(1~3)로 저장하고 글은 보여 줄 때만 붙인다 → 문구를 바꿔도 예전 기록이 그대로 맞는다 (63단계: 보통이에요 → 무난했어요)
+const CONFIDENCE = { 1: '😣 어려웠어요', 2: '🙂 무난했어요', 3: '😄 자신 있어요' };
 
 function loadHistory() {
   try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
@@ -1009,7 +1014,7 @@ const me = { name: '', avatar: '', course: 'en' };
 // 지금 연 챕터의 과정. 선생님은 영어·중국어 챕터를 모두 쓰므로 학생의 과정이 아니라 챕터를 따른다 (30단계).
 let viewCourse = '';   // 내 기록을 다시 볼 때 그 기록의 과정
 const courseNow = () => viewCourse || (currentChapter && currentChapter.course) || me.course;
-const partnerWord = () => (courseNow() === 'en' ? '환자' : '상대');
+const partnerWord = () => (courseNow() === 'en' ? '수검자' : '상대');   // 대화 말풍선의 상대 이름 (63단계: 환자 → 수검자)
 const partnerTitle = () => (courseNow() === 'en' ? '수검자' : '상대');
 
 async function loadAvatars() {
@@ -1275,7 +1280,7 @@ function recordText(e) {
     }
     if (fb.strengths.length) out.push('', '잘한 점', ...fb.strengths.map((x) => `- ${x}`));
     if (fb.fixes.length) {
-      out.push('', fb.gentle ? '이렇게도 말할 수 있어요' : '더 좋은 표현');
+      out.push('', FIX_TITLE);
       fb.fixes.forEach((f) => out.push(`- 내가 한 말: ${f.said}`, `  → ${f.better}${f.better_py ? ` (${f.better_py})` : ''}`, `  ${f.why}`));
     }
     if (fb.keywords.length) {
