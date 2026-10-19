@@ -947,6 +947,43 @@ const closeModal = () => { $('#modal').hidden = true; };
 const avatarModal = (id, title, text, buttons) => showModal(studentAvatar(me.name, id, 'xl'), title, text, buttons);
 const closeAvatarModal = closeModal;
 
+/* ── 마이크 안내 (54단계): 브라우저가 마이크 허용을 묻기 전에, 왜 필요한지 먼저 알려 준다 ──
+   허용 상태는 앱을 열 때 미리 알아 둔다. 버튼을 누른 그 순간에 마이크·소리를 켜야 해서(아이폰) 누른 뒤에 기다릴 수 없다.
+   상태를 알 수 없는 브라우저(일부 아이폰)는 이 휴대폰에서 한 번만 보여 준다. */
+const MIC_INTRO_KEY = 'tutoreal.micIntro';
+let micPermission = 'unknown';   // granted / denied / prompt / unknown
+if (navigator.permissions && navigator.permissions.query) {
+  navigator.permissions.query({ name: 'microphone' }).then((st) => {
+    micPermission = st.state;
+    st.onchange = () => { micPermission = st.state; };
+  }).catch(() => {});
+}
+const MIC_ICON = '<span class="mic-intro" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg></span>';
+
+/** 마이크를 쓰는 동작(대화 시작, 말하고 확인받기) 앞에 붙인다. 필요하면 안내 창을 먼저 보여 주고, [계속]을 누르면 바로 시작한다. */
+function withMicIntro(start) {
+  if (micPermission === 'granted') return start();
+  if (micPermission === 'denied') {
+    return showModal(MIC_ICON, '마이크가 꺼져 있어요',
+      '말하기 연습을 하려면 마이크가 필요해요. 아이폰은 설정 → Safari → 마이크에서, 안드로이드는 주소창 왼쪽 아이콘 → 권한에서 마이크를 허용해 주세요.', [
+        { label: '닫기', cls: 'secondary', onClick: closeModal },
+        { label: '다시 해 보기', cls: 'primary', onClick: () => { closeModal(); start(); } }
+      ]);
+  }
+  let seen = false;
+  try { seen = localStorage.getItem(MIC_INTRO_KEY) === '1'; } catch { /* 저장 못 하면 매번 보여 줌 */ }
+  if (micPermission === 'unknown' && seen) return start();
+  showModal(MIC_ICON, '마이크를 사용할게요',
+    '말하기 연습을 하려면 마이크가 필요해요. 다음에 뜨는 창에서 \'허용\'을 눌러 주세요. 녹음한 목소리는 저장하지 않아요.', [
+      { label: '나중에', cls: 'secondary', onClick: closeModal },
+      { label: '계속', cls: 'primary', onClick: () => {
+        try { localStorage.setItem(MIC_INTRO_KEY, '1'); } catch { /* 괜찮음 */ }
+        closeModal();
+        start();
+      } }
+    ]);
+}
+
 /** 내 캐릭터 화면의 '코드 바꾸기' (53단계 전에는 아래쪽 탭 바): 실수로 누르기 쉬워서 한 번 묻는다 */
 function confirmLogout() {
   showModal('', '코드를 바꿀까요?', '이 휴대폰에서 로그아웃되고, 접속 코드를 다시 입력해야 해요. 내 기록은 그대로 남아요.', [
@@ -1234,7 +1271,7 @@ function renderDrill() {
       <button class="primary" id="drill-to-talk">대화 시작하기</button>`;
     $('#drill-again').addEventListener('click', startDrill);
     if ($('#drill-level2')) $('#drill-level2').addEventListener('click', () => { drill.level = 'korean'; startDrill(); });
-    $('#drill-to-talk').addEventListener('click', () => { show('detail'); beginTalk(); });
+    $('#drill-to-talk').addEventListener('click', () => { show('detail'); withMicIntro(beginTalk); });
     return;
   }
   const d = drill.queue[drill.pos];
@@ -1293,7 +1330,7 @@ function renderDrill() {
     actions.innerHTML = `<button class="primary" id="rec-start">🎤 말하고 확인받기</button>
       <div class="row">${drill.hintShown ? '' : `<button class="secondary" id="drill-hint">${zh ? '힌트 (병음)' : '힌트 (첫 글자)'}</button>`}
       <button class="secondary" id="drill-reveal">정답 보기</button></div>`;
-    $('#rec-start').addEventListener('click', startCoach);
+    $('#rec-start').addEventListener('click', () => withMicIntro(startCoach));
     if ($('#drill-hint')) $('#drill-hint').addEventListener('click', () => { drill.hintShown = true; renderDrill(); });
     $('#drill-reveal').addEventListener('click', () => { drill.revealed = true; drill.coachError = ''; renderDrill(); speak(plainSentence(d.sentence)); });
   } else {
@@ -1302,7 +1339,7 @@ function renderDrill() {
       <div class="row"><button class="secondary" id="drill-hard">어려웠어요</button>
       <button class="primary" id="drill-easy">쉬웠어요</button></div>`;
     $('#drill-listen').addEventListener('click', () => speak(plainSentence(d.sentence)));
-    $('#rec-start').addEventListener('click', startCoach);
+    $('#rec-start').addEventListener('click', () => withMicIntro(startCoach));
     $('#drill-hard').addEventListener('click', () => nextDrill(true));
     $('#drill-easy').addEventListener('click', () => nextDrill(false));
   }
@@ -1655,7 +1692,7 @@ $('#backup-export').addEventListener('click', exportBackup);
 $('#backup-import').addEventListener('click', () => { $('#backup-file').value = ''; $('#backup-file').click(); });
 $('#backup-file').addEventListener('change', (ev) => { const f = ev.target.files && ev.target.files[0]; if (f) importBackup(f); });
 $('#back').addEventListener('click', () => show('list'));
-$('#talk-start').addEventListener('click', beginTalk);
+$('#talk-start').addEventListener('click', () => withMicIntro(beginTalk));
 $('#talk-end').addEventListener('click', () => { if (live) { talk.endReason = 'user'; live.stop(''); } });
 $('#talk-back').addEventListener('click', () => show('detail'));
 $('#talk-next').addEventListener('click', openReview);

@@ -287,6 +287,8 @@ textarea {
 /* 확인 창 (캐릭터 바꾸기) */
 .modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 24px 16px; background: rgba(10, 14, 20, 0.55); }
 .modal[hidden] { display: none; }   /* display: grid가 hidden을 덮어쓰지 않게 */
+.mic-intro { display: grid; place-items: center; width: 64px; height: 64px; margin: 0 auto; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }   /* 마이크 안내 (54단계) */
+.mic-intro svg { width: 32px; height: 32px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .modal-card {
   width: min(340px, 100%); background: var(--card); border: 1px solid var(--line); border-radius: 18px;
   padding: 24px 20px 18px; text-align: center; display: grid; justify-items: center; gap: 10px;
