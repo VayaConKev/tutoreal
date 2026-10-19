@@ -240,6 +240,16 @@ textarea {
 .say-btn.speaking { background: var(--teal); color: var(--on-accent); }
 /* 체크리스트 접기 (61단계) */
 .fb-more { margin-top: 8px; }
+/* 더 좋은 표현 카드 넘기기 (62단계): 한 장씩 멈추고, 다음 장이 오른쪽에 살짝 보인다. 스크롤바는 숨김 */
+.fb-count { font-size: 12px; font-weight: 600; color: var(--muted); margin-left: 4px; }
+.fb-carousel { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.fb-carousel::-webkit-scrollbar { display: none; }
+.fb-slide { flex: 0 0 86%; min-width: 0; scroll-snap-align: start; }
+.fb-slide .fb-fix { height: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 0; box-sizing: border-box; }
+.fb-dots { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 10px; }
+.fb-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: background .2s, width .2s; }
+.fb-dot.on { width: 18px; border-radius: 4px; background: var(--accent); }
+.fb-arrow { border: 0; background: none; color: var(--muted); font: inherit; font-size: 20px; line-height: 1; padding: 0 8px; cursor: pointer; }
 .fb-more summary { cursor: pointer; color: var(--accent); font-size: 14px; font-weight: 600; padding: 6px 0; list-style: none; }
 .fb-more summary::-webkit-details-marker { display: none; }
 .fb-more summary::after { content: " ▾"; }
@@ -378,10 +388,24 @@ textarea {
 .record-card .record-head { margin-bottom: 0; padding-right: 64px; }
 .icon-btn.record-share { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 8px; border: 0; border-radius: 12px; background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
 .icon-btn.record-share svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.seg-tabs { display: flex; gap: 4px; padding: 4px; margin: 4px 0 12px; border-radius: 12px; background: var(--accent-soft); }
-.seg-tab { flex: 1; border: 0; border-radius: 9px; padding: 9px 6px; background: transparent; color: var(--muted); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
-.seg-tab.on { background: var(--card); color: var(--accent); box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12); }
-#record-report[hidden], #record-lines-box[hidden] { display: none; }
+.seg-tabs { position: relative; display: flex; gap: 0; padding: 4px; margin: 4px 0 12px; border-radius: 12px; background: var(--accent-soft); }
+/* 지금 탭 표시 (62단계): 흰 알약이 넘기는 손가락을 따라 좌우로 움직인다. 아래 선은 주 색 */
+.seg-ind { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 9px; background: var(--card);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12); border-bottom: 3px solid var(--accent); }
+.seg-tab { position: relative; flex: 1; border: 0; border-radius: 9px; padding: 9px 6px; background: transparent; color: var(--muted); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: color .25s; }
+.seg-tab.on { color: var(--accent); }
+/* 옆으로 넘기는 두 쪽 (62단계): 세로 스크롤은 브라우저에, 가로는 앱이 */
+.rec-pager { position: relative; overflow: hidden; touch-action: pan-y; }
+.rec-track { display: flex; align-items: flex-start; will-change: transform; }
+.rec-panel { flex: 0 0 100%; min-width: 0; }
+.swipe-hint { position: absolute; z-index: 2; top: 8px; left: 50%; transform: translateX(-50%); width: max-content; max-width: 92%;
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: rgba(15, 23, 42, 0.82); color: #fff; font-size: 13px; pointer-events: none;
+  animation: hint-fade 2.2s ease forwards; }
+.swipe-hint[hidden] { display: none; }
+.swipe-hand { display: inline-block; animation: hint-swipe 1s ease-in-out infinite alternate; }
+@keyframes hint-swipe { from { transform: translateX(-8px); } to { transform: translateX(8px); } }
+@keyframes hint-fade { 0% { opacity: 0; } 12%, 80% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .swipe-hand { animation: none; } .rec-track, .seg-ind { transition: none !important; } }
 .record-head h3 { margin: 0; }
 #view-record .card + .card { margin-top: 12px; }
 /* 내 기록 백업 (42단계) */

@@ -177,13 +177,18 @@
       </div>
       <p class="hint" id="record-share-msg" role="status"></p>
       <!-- 코칭 리포트 / 대화 전체 (61단계): 한 번에 하나만 보여 스크롤을 줄인다 -->
-      <div class="seg-tabs" role="tablist" aria-label="기록 보기">
+      <div class="seg-tabs" id="record-tabs" role="tablist" aria-label="기록 보기">
+        <span class="seg-ind" id="seg-ind" aria-hidden="true"></span>
         <button type="button" class="seg-tab on" data-rtab="report" role="tab" aria-selected="true">📊 코칭 리포트</button>
         <button type="button" class="seg-tab" data-rtab="lines" role="tab" aria-selected="false" id="record-tab-lines">💬 대화 전체</button>
       </div>
-      <div id="record-report"><div id="record-feedback"></div></div>
-      <div class="card" id="record-lines-box" hidden>
-        <div class="transcript" id="record-lines"></div>
+      <!-- 옆으로 넘기는 두 쪽 (62단계): 코칭 리포트 / 대화 전체. 화면 양 끝 20px에서 시작한 터치는 무시(브라우저 '뒤로 가기') -->
+      <div class="rec-pager" id="record-pager">
+        <div class="swipe-hint" id="swipe-hint" hidden aria-hidden="true"><span class="swipe-hand">👆</span>옆으로 넘겨서 대화 전체를 볼 수 있어요</div>
+        <div class="rec-track" id="record-track">
+          <div class="rec-panel" id="record-report"><div id="record-feedback"></div></div>
+          <div class="rec-panel" id="record-lines-box"><div class="card"><div class="transcript" id="record-lines"></div></div></div>
+        </div>
       </div>
     </section>
 

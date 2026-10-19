@@ -668,6 +668,46 @@ function startWaitScreen(box, data) {
 const sayBtn = (text, label = '발음 듣기') =>
   `<button type="button" class="say-btn" data-say="${escapeHtml(text)}" data-course="${courseNow()}" aria-label="${escapeHtml(label)}">${SPEAKER_ICON}</button>`;
 
+/** 더 좋은 표현 한 장: 내가 한 말 → 이렇게 말해 보세요 (발음 듣기) → 이유 */
+const fixCard = (f) => `<div class="fb-fix">
+  <p class="fb-said"><span class="fb-label">내가 한 말</span>${escapeHtml(f.said)}</p>
+  <p class="fb-better"><span class="fb-label">이렇게 말해 보세요</span><span class="fb-better-row"><span>${escapeHtml(f.better)}</span>${sayBtn(f.better)}</span></p>
+  ${f.better_py ? `<p class="fb-py">${escapeHtml(f.better_py)}</p>` : ''}
+  <p class="fb-why">${escapeHtml(f.why)}</p></div>`;
+
+/**
+ * 더 좋은 표현이 여러 개면 옆으로 넘기는 카드 (62단계): 다음 카드가 오른쪽에 살짝 보이고,
+ * 아래에 ‹ 점 › 표시. 넘기면 점이 따라오고(아래 문서 전체 스크롤 처리), 화살표를 누르면 한 장씩 넘어간다.
+ */
+function fixCarousel(fixes) {
+  return `<div class="fb-carousel" tabindex="0" aria-label="더 좋은 표현 ${fixes.length}개, 옆으로 넘겨 보세요">
+      ${fixes.map((f, i) => `<div class="fb-slide" aria-label="${i + 1} / ${fixes.length}">${fixCard(f)}</div>`).join('')}
+    </div>
+    <div class="fb-dots">
+      <button type="button" class="fb-arrow" data-step="-1" aria-label="이전 표현">‹</button>
+      ${fixes.map((_, i) => `<span class="fb-dot${i ? '' : ' on'}"></span>`).join('')}
+      <button type="button" class="fb-arrow" data-step="1" aria-label="다음 표현">›</button>
+    </div>`;
+}
+const carouselIndex = (c) => {
+  const slide = c.querySelector('.fb-slide');
+  return slide ? Math.round(c.scrollLeft / (slide.offsetWidth + 10)) : 0;
+};
+// 카드를 넘기면 점 표시를 따라 바꾼다 (스크롤은 위로 전달되지 않아 문서 전체에서 '잡는' 방식으로 듣는다)
+document.addEventListener('scroll', (ev) => {
+  const c = ev.target;
+  if (!(c instanceof Element) || !c.classList.contains('fb-carousel')) return;
+  const i = carouselIndex(c);
+  c.nextElementSibling.querySelectorAll('.fb-dot').forEach((d, k) => d.classList.toggle('on', k === i));
+}, true);
+document.addEventListener('click', (ev) => {
+  const a = ev.target.closest('.fb-arrow');
+  if (!a) return;
+  const c = a.parentElement.previousElementSibling;
+  const slide = c.querySelector('.fb-slide');
+  if (slide) c.scrollBy({ left: Number(a.dataset.step) * (slide.offsetWidth + 10), behavior: 'smooth' });
+});
+
 /**
  * 피드백 (61단계에 블록으로 나눔): ① 총평·잘한 점(연한 청록) ② 안내 체크리스트(접기) ③ 더 좋은 표현(내가 한 말 → 추천 문장, 발음 듣기)
  * ④ 핵심 단어·다음에 연습할 문장(발음 듣기). 내용은 전과 같고 모양과 순서만 바뀌었다. 4/4, 내 기록, 선생님 화면이 같이 쓴다.
@@ -682,12 +722,8 @@ function feedbackHtml(fb) {
     </div>
     ${checklistHtml(fb.checklist, fb.gentle)}
     ${fb.fixes.length ? `<div class="fb-block fb-fixes">
-      <p class="fb-title">${fb.gentle ? '이렇게도 말할 수 있어요' : '더 좋은 표현'}</p>
-      ${fb.fixes.map((f) => `<div class="fb-fix">
-        <p class="fb-said"><span class="fb-label">내가 한 말</span>${escapeHtml(f.said)}</p>
-        <p class="fb-better"><span class="fb-label">이렇게 말해 보세요</span><span class="fb-better-row"><span>${escapeHtml(f.better)}</span>${sayBtn(f.better)}</span></p>
-        ${f.better_py ? `<p class="fb-py">${escapeHtml(f.better_py)}</p>` : ''}
-        <p class="fb-why">${escapeHtml(f.why)}</p></div>`).join('')}
+      <p class="fb-title">${fb.gentle ? '이렇게도 말할 수 있어요' : '더 좋은 표현'}${fb.fixes.length > 1 ? ` <span class="fb-count">${fb.fixes.length}개</span>` : ''}</p>
+      ${fb.fixes.length > 1 ? fixCarousel(fb.fixes) : fixCard(fb.fixes[0])}
     </div>` : ''}
     ${fb.keywords.length || fb.next_practice.length ? `<div class="fb-block">
       ${fb.keywords.length ? `<p class="fb-title">핵심 단어 ${used} / ${fb.keywords.length}</p>
@@ -1294,24 +1330,107 @@ function openRecord(e) {
   else showRecordNoFeedback(e);
   const turns = (e.lines || []).filter((l) => l.text && l.text.trim()).length;
   $('#record-tab-lines').textContent = `💬 대화 전체 (${turns}마디)`;
-  setRecordTab('report');
+  setRecordTab('report', false);
   // 다시 보는 화면이므로 환자 말도 가리지 않고 모두 보여 준다.
   // 대화 후 2/4에서 고른 어려웠던 부분은 '어려웠어요'로 표시된다.
   $('#record-lines').innerHTML = (e.lines || []).map((l) => `
     <div class="line ${l.who === 'me' ? 'me' : 'ai'}${l.hard ? ' picked' : ''}">${lineInner(l)}</div>`).join('');
   viewCourse = '';
   show('record');
+  fitPagerHeight();
+  showSwipeHintOnce();
 }
 
-/** 내 기록 상세의 탭 (61단계): report = 코칭 리포트(피드백), lines = 대화 전체. 기록을 열 때마다 코칭 리포트부터 */
-function setRecordTab(tab) {
+/* ── 내 기록 상세: 코칭 리포트 / 대화 전체 두 쪽 (61단계 탭, 62단계에 옆으로 넘기기) ──
+   터치를 직접 처리한다: 화면 양 끝 20px에서 시작한 터치, 두 손가락, '더 좋은 표현' 카드 넘기기는 무시한다.
+   세로로 먼저 움직이면 화면 스크롤로 두고(touch-action: pan-y), 가로로 먼저 움직이면 쪽을 넘긴다.
+   두 쪽의 높이가 달라서, 보이는 쪽의 높이에 맞춘다 (안 보이는 쪽 때문에 빈 공간이 생기지 않게). */
+const EDGE_PX = 20;
+const pager = { index: 0, drag: null };
+const PANELS = ['report', 'lines'];
+
+function setPagerPos(pos, animate) {
+  $('#record-track').style.transition = animate ? 'transform .28s ease' : 'none';
+  $('#record-track').style.transform = `translateX(${-pos * 100}%)`;
+  $('#seg-ind').style.transition = animate ? 'transform .28s ease' : 'none';
+  $('#seg-ind').style.transform = `translateX(${Math.max(0, Math.min(1, pos)) * 100}%)`;
+}
+function fitPagerHeight() {
+  const panel = document.querySelectorAll('.rec-panel')[pager.index];
+  if (panel) $('#record-pager').style.height = `${panel.offsetHeight}px`;
+}
+function setRecordTab(tab, animate = true) {
+  pager.index = Math.max(0, PANELS.indexOf(tab));
   document.querySelectorAll('.seg-tab').forEach((b) => {
     const on = b.dataset.rtab === tab;
     b.classList.toggle('on', on);
     b.setAttribute('aria-selected', String(on));
   });
-  $('#record-report').hidden = tab !== 'report';
-  $('#record-lines-box').hidden = tab !== 'lines';
+  document.querySelectorAll('.rec-panel').forEach((p, i) => { p.inert = i !== pager.index; p.setAttribute('aria-hidden', String(i !== pager.index)); });
+  setPagerPos(pager.index, animate);
+  fitPagerHeight();
+  // 아래로 내려가 있었으면 탭이 보이도록 올린다 (다른 쪽의 맨 위부터 보게)
+  const tabs = $('#record-tabs');
+  if (animate && tabs.getBoundingClientRect().top < 0) tabs.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+// 내용이 늦게 채워지거나(피드백 받기) 접기를 펼치면 높이가 바뀐다
+if (window.ResizeObserver) {
+  const ro = new ResizeObserver(() => { if (!views.record.hidden) fitPagerHeight(); });
+  document.querySelectorAll('.rec-panel').forEach((p) => ro.observe(p));
+}
+(() => {
+  const el = $('#record-pager');
+  el.addEventListener('touchstart', (e) => {
+    pager.drag = null;
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    if (t.clientX < EDGE_PX || t.clientX > window.innerWidth - EDGE_PX) return;   // 브라우저 '뒤로/앞으로' 몫
+    if (e.target.closest('.fb-carousel')) return;                                   // 카드 넘기기 몫
+    pager.drag = { x0: t.clientX, y0: t.clientY, t0: Date.now(), dir: '', w: el.clientWidth || 1 };
+  }, { passive: true });
+  el.addEventListener('touchmove', (e) => {
+    const d = pager.drag;
+    if (!d || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - d.x0;
+    const dy = e.touches[0].clientY - d.y0;
+    if (!d.dir) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      d.dir = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y';
+      if (d.dir === 'x') hideSwipeHint();
+    }
+    if (d.dir !== 'x') return;
+    d.dx = dx;
+    let pos = pager.index - dx / d.w;
+    if (pos < 0) pos *= 0.3; else if (pos > PANELS.length - 1) pos = PANELS.length - 1 + (pos - PANELS.length + 1) * 0.3;   // 끝에서는 덜 움직임
+    setPagerPos(pos, false);
+  }, { passive: true });
+  const end = () => {
+    const d = pager.drag;
+    pager.drag = null;
+    if (!d || d.dir !== 'x') return;
+    const dx = d.dx || 0;
+    const fast = Math.abs(dx) / Math.max(1, Date.now() - d.t0) > 0.5;   // 빠르게 튕기면 짧아도 넘김
+    let i = pager.index;
+    if (dx < -d.w * 0.2 || (fast && dx < -30)) i += 1;
+    else if (dx > d.w * 0.2 || (fast && dx > 30)) i -= 1;
+    setRecordTab(PANELS[Math.max(0, Math.min(PANELS.length - 1, i))]);
+  };
+  el.addEventListener('touchend', end);
+  el.addEventListener('touchcancel', end);
+})();
+
+/** 처음 한 번만 (62단계): '옆으로 넘겨서 대화 전체를 볼 수 있어요' + 손가락이 좌우로 움직이는 안내. 2초 뒤 사라진다 */
+const SWIPE_HINT_KEY = 'tutoreal.swipeHint';
+let swipeHintTimer = 0;
+function showSwipeHintOnce() {
+  try { if (localStorage.getItem(SWIPE_HINT_KEY) === '1') return; localStorage.setItem(SWIPE_HINT_KEY, '1'); } catch { return; }
+  $('#swipe-hint').hidden = false;
+  clearTimeout(swipeHintTimer);
+  swipeHintTimer = setTimeout(hideSwipeHint, 2200);
+}
+function hideSwipeHint() {
+  clearTimeout(swipeHintTimer);
+  $('#swipe-hint').hidden = true;
 }
 
 /* ── 문장 연습: 핵심 단어 자리가 빈칸인 문장을 소리 내어 말해 보고 정답을 확인한다 (AI를 쓰지 않음) ──
