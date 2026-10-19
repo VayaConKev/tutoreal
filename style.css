@@ -288,12 +288,13 @@ textarea {
 #who-avatar .avatar.sm { width: 34px; height: 34px; font-size: 13px; margin-right: 8px; }
 .avatar.lg { width: 56px; height: 56px; font-size: 18px; }
 .talk-who { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
-.avatar-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.avatar-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }   /* minmax(0,…): 그림 원래 크기로 칸이 넓어지지 않게 (아이폰, v0.64) */
 .pick {
-  position: relative; aspect-ratio: 1; border-radius: 50%; padding: 0; cursor: pointer;
+  position: relative; width: 100%; min-width: 0; aspect-ratio: 1 / 1; border-radius: 50%; padding: 0; cursor: pointer;
   border: 2px solid var(--line); background: var(--card);
 }
-.pick img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 50%; }
+/* 그림은 칸 안을 꽉 채우는 동그라미 (칸 크기를 그림이 정하지 않도록 절대 위치) */
+.pick img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 50%; }
 .pick.selected { border: 3px solid var(--accent); }
 /* 고른 캐릭터: 오른쪽 위 체크 배지 (58단계). 동그라미 밖으로 조금 나오도록 그림만 둥글게 자른다 */
 .pick.selected::after {
