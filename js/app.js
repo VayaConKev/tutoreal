@@ -754,6 +754,29 @@ function storeHistory(list) {
    접속 코드는 넣지 않는다. 불러올 때는 모양이 맞는 기록만 받아들이고, 같은 대화는 겹치지 않게 합친다. ── */
 const BACKUP_TYPE = 'tutoreal-history';
 
+/* ── 백업 권하기 (57단계): 마지막 백업 시각을 이 휴대폰에 기억해 두고, 그 뒤로 쌓인 기록을 센다 ── */
+const BACKUP_AT_KEY = 'tutoreal.backupAt';
+const NUDGE_NEW = 10;    // 백업 뒤로 새 기록이 이만큼 쌓이면
+const NUDGE_DAYS = 14;   // 또는 마지막 백업이 이만큼 오래됐고 새 기록이 있으면
+function lastBackupAt() {
+  try { return Number(localStorage.getItem(BACKUP_AT_KEY)) || 0; } catch { return 0; }
+}
+function renderBackupNudge(list = loadHistory()) {
+  const last = lastBackupAt();
+  const fresh = list.filter((e) => Date.parse(e.at) > last).length;
+  const days = last ? Math.floor((Date.now() - last) / 86400000) : 0;
+  let text = '';
+  if (!last && fresh >= NUDGE_NEW) text = `기록이 ${fresh}개 쌓였어요. 아직 한 번도 백업하지 않았어요.`;
+  else if (last && fresh >= NUDGE_NEW) text = `마지막 백업 뒤로 기록이 ${fresh}개 늘었어요.`;
+  else if (last && fresh > 0 && days >= NUDGE_DAYS) text = `마지막 백업이 ${days}일 전이에요. 그 뒤로 기록이 ${fresh}개 늘었어요.`;
+  $('#backup-nudge').hidden = !text;
+  if (text) $('#backup-nudge-text').textContent = `${text} 휴대폰을 바꾸면 기록이 사라지니 지금 백업해 두세요.`;
+}
+function markBackedUp() {
+  try { localStorage.setItem(BACKUP_AT_KEY, String(Date.now())); } catch { /* 기억 못 하면 다음에 또 권함 */ }
+  renderBackupNudge();
+}
+
 async function exportBackup() {
   const msg = $('#backup-msg');
   msg.textContent = '';
@@ -767,6 +790,7 @@ async function exportBackup() {
     try {
       await navigator.share({ files: [file], title: 'Tutoreal 기록 백업' });
       msg.textContent = `기록 ${list.length}개를 백업했어요. 이 파일에는 내 대화가 들어 있으니 다른 사람에게 보내지 마세요.`;
+      markBackedUp();
       return;
     } catch (err) {
       if (err && err.name === 'AbortError') return;   // 공유 창을 닫음
@@ -783,6 +807,7 @@ async function exportBackup() {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
   msg.textContent = `기록 ${list.length}개를 '${name}' 파일로 내려받았어요.`;
+  markBackedUp();
 }
 
 /** 불러온 기록 하나를 검사해 필요한 칸만 남긴다. 모양이 맞지 않으면 null. */
@@ -1067,6 +1092,7 @@ function recordMeta(entry) {
 function openHistory() {
   $('#backup-msg').textContent = '';
   const list = loadHistory();
+  renderBackupNudge(list);
   const box = $('#history-list');
   if (!list.length) {
     box.innerHTML = '<p class="state">아직 기록이 없어요. 챕터를 골라 대화를 시작해 보세요.</p>';
@@ -1079,6 +1105,7 @@ function openHistory() {
           <span class="record-meta">${escapeHtml(recordMeta(e))}</span>
         </span>
         <span class="tag${e.shared ? '' : ' private'}">${e.shared ? '공유' : '나만'}</span>
+        <span class="chevron" aria-hidden="true">›</span>
       </button>`).join('');
     box.querySelectorAll('.record').forEach((btn) => {
       btn.addEventListener('click', () => openRecord(list[Number(btn.dataset.i)]));
@@ -1730,6 +1757,7 @@ $('#tsession-back').addEventListener('click', () => show('tstudent'));
 $('#record-back').addEventListener('click', openHistory);
 $('#record-share').addEventListener('click', shareRecord);
 $('#backup-export').addEventListener('click', exportBackup);
+$('#backup-nudge-go').addEventListener('click', exportBackup);
 $('#backup-import').addEventListener('click', () => { $('#backup-file').value = ''; $('#backup-file').click(); });
 $('#backup-file').addEventListener('change', (ev) => { const f = ev.target.files && ev.target.files[0]; if (f) importBackup(f); });
 $('#back').addEventListener('click', () => show('list'));

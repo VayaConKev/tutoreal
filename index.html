@@ -148,6 +148,11 @@
     <section id="view-history" hidden>
       <h2>내 기록</h2>
       <p class="hint history-note">이 휴대폰에만 저장돼요 (최근 100개).<br>휴대폰을 바꾸기 전에 꼭 백업해 두세요.</p>
+      <!-- 백업 권하기 (57단계): 백업 뒤로 기록이 10개 넘게 늘었거나, 2주 넘게 백업하지 않았을 때 -->
+      <div class="backup-nudge" id="backup-nudge" hidden role="status">
+        <p id="backup-nudge-text"></p>
+        <button class="primary" id="backup-nudge-go">지금 백업하기</button>
+      </div>
       <!-- 기록 백업 (42단계): 파일 하나로 내보내고, 다른 휴대폰에서 불러온다. 서버를 거치지 않는다 -->
       <div class="backup-row">
         <button class="secondary" id="backup-export">백업하기</button>

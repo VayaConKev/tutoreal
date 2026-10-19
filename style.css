@@ -317,7 +317,14 @@ textarea {
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 12px 14px; margin-bottom: 8px; color: inherit; font: inherit; cursor: pointer;
 }
+.record:active { transform: scale(0.99); background: var(--accent-soft); }   /* 누르는 느낌 (57단계) */
+.record .chevron { font-size: 22px; line-height: 1; margin-left: -4px; }
 .record-text { flex: 1; min-width: 0; }
+/* 백업 권하기 (57단계) */
+.backup-nudge { background: var(--teal-soft); border: 1px solid var(--teal); border-radius: var(--radius); padding: 12px 14px; margin: 0 0 12px; }
+.backup-nudge[hidden] { display: none; }
+.backup-nudge p { margin: 0 0 10px; color: var(--text); font-size: 14px; }
+.backup-nudge button { width: 100%; margin-top: 0; }
 .record-title { display: block; font-weight: 700; }
 .record-meta { display: block; color: var(--muted); font-size: 13px; }
 .tag { flex: none; font-size: 12px; border-radius: 6px; padding: 2px 8px; background: var(--accent-soft); color: var(--accent); }
