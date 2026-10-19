@@ -947,7 +947,7 @@ const closeModal = () => { $('#modal').hidden = true; };
 const avatarModal = (id, title, text, buttons) => showModal(studentAvatar(me.name, id, 'xl'), title, text, buttons);
 const closeAvatarModal = closeModal;
 
-/** 아래쪽 탭 바의 '코드 바꾸기': 실수로 누르기 쉬워서 한 번 묻는다 */
+/** 내 캐릭터 화면의 '코드 바꾸기' (53단계 전에는 아래쪽 탭 바): 실수로 누르기 쉬워서 한 번 묻는다 */
 function confirmLogout() {
   showModal('', '코드를 바꿀까요?', '이 휴대폰에서 로그아웃되고, 접속 코드를 다시 입력해야 해요. 내 기록은 그대로 남아요.', [
     { label: '아니요', cls: 'secondary', onClick: closeModal },
@@ -1626,8 +1626,9 @@ $('#login-form').addEventListener('submit', (e) => {
 // 아래쪽 탭 바
 const TAB_ACTION = {
   list: () => show('list'), history: openHistory, avatar: openAvatarPicker,
-  teacher: () => openTeacher(false), logout: confirmLogout
+  teacher: () => openTeacher(false)
 };
+$('#avatar-logout').addEventListener('click', confirmLogout);   // 53단계: 탭 바에서 내 캐릭터 화면으로 옮김
 document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => TAB_ACTION[b.dataset.tab]()));
 $('#greet-avatar').addEventListener('click', openAvatarPicker);
 $('#drill-open').addEventListener('click', startDrill);

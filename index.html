@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Tutoreal</title>
   <script>
     // 고른 화면 모드(라이트/다크)를 그리기 전에 먼저 적용한다 — 잠깐 다른 색이 번쩍이지 않게
@@ -125,6 +125,12 @@
       <h2>내 캐릭터</h2>
       <p class="hint history-note">마음에 드는 캐릭터를 골라 주세요.</p>
       <div class="avatar-grid" id="avatar-grid"></div>
+      <!-- 53단계: 아래쪽 탭 바에 있던 '코드 바꾸기'와 모든 화면 아래에 있던 버전 표시를 여기로 -->
+      <div class="account-box">
+        <button class="secondary" id="avatar-logout">코드 바꾸기</button>
+        <p class="hint">이 휴대폰에서 로그아웃하고 다른 접속 코드로 들어가요. 내 기록은 그대로 남아요.</p>
+        <footer id="version"></footer>
+      </div>
     </section>
 
     <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">
@@ -230,13 +236,13 @@
       </div>
     </section>
 
-    <footer id="version"></footer>
   </div>
 
   <!-- 아래쪽 탭 바: 대화·돌아보기·문장 연습 중에는 숨긴다 -->
   <nav class="tabbar" id="tabbar" hidden aria-label="메뉴">
     <button class="tab" data-tab="list">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5zM13 4h5.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H13z"/></svg>
+      <!-- 펼쳐진 책 (53단계, 전에는 창문처럼 보이던 두 칸) -->
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.8C10.3 5.4 7.8 4.8 4.7 5c-.4 0-.7.4-.7.8v11.4c0 .5.4.8.8.8 2.9-.1 5.3.5 7.2 2 1.9-1.5 4.3-2.1 7.2-2 .4 0 .8-.3.8-.8V5.8c0-.4-.3-.8-.7-.8-3.1-.2-5.6.4-7.3 1.8zM12 6.8V20"/></svg>
       <span>챕터</span></button>
     <button class="tab" data-tab="history">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></svg>
@@ -247,9 +253,6 @@
     <button class="tab" data-tab="teacher" id="tab-teacher" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V11M12 19V5M19 19v-6"/></svg>
       <span>선생님</span></button>
-    <button class="tab" data-tab="logout">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8.5" cy="12" r="3.5"/><path d="M12 12h8M17 12v3M20 12v2"/></svg>
-      <span>코드 바꾸기</span></button>
   </nav>
   <script>
     // 새 버전을 바로 받게 하는 서비스 워커 (sw.js). 다른 파일이 예전 것이어도 여기서 먼저 등록되도록 이 파일에 둔다.
