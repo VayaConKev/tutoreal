@@ -116,6 +116,10 @@ h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin: 0 0 10px; }
 .card .goal { color: var(--muted); margin: 0 0 16px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
 .chip { background: var(--teal-soft); color: var(--teal-ink); border-radius: 999px; padding: 4px 10px; font-size: 14px; }
+/* 핵심 단어 발음 듣기 (56단계): 칩 앞의 작은 스피커, 읽는 동안 진하게 */
+.chip-say { display: inline-flex; align-items: center; gap: 4px; border: 0; font: inherit; font-size: 14px; cursor: pointer; }
+.chip-say .say-icon { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.chip-say.speaking { background: var(--teal); color: var(--on-accent); }
 
 button.primary, button.secondary {
   width: 100%; border: 0; border-radius: 12px; padding: 14px; font: inherit; font-weight: 700; cursor: pointer;
@@ -196,7 +200,11 @@ input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px
 .voice-meter i { width: 5px; height: 30px; border-radius: 3px; background: var(--teal); transform: scaleY(.18); transition: transform .06s linear; }
 @media (prefers-reduced-motion: reduce) { .voice-meter i { transition: none; } }
 
-.step-count { color: var(--muted); font-size: 14px; text-align: center; margin: 0 0 10px; }
+.step-count { color: var(--muted); font-size: 14px; text-align: center; margin: 0 0 6px; }
+/* 문장 연습 진행 막대 (56단계) */
+.drill-progress { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; margin: 0 0 12px; }
+.drill-progress i { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--teal); transition: width .3s ease; }
+@media (prefers-reduced-motion: reduce) { .drill-progress i { transition: none; } }
 .faces { display: flex; gap: 8px; margin: 12px 0 20px; }
 .face {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px;

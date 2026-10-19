@@ -198,7 +198,15 @@ function openChapter(id) {
   // 미리 보기 챕터 (43단계): 선생님·테스터에게만 보이고 학생에게는 아직 열리지 않았다
   $('#detail-title').innerHTML = escapeHtml(c.title) + (c.preview ? ' <span class="opt-tag preview-tag">미리 보기 · 학생에게는 안 보여요</span>' : '');
   $('#detail-goal').innerHTML = goalHtml(c.goal);
-  $('#detail-keywords').innerHTML = c.keywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join('');
+  // 핵심 단어: 누르면 휴대폰 음성으로 읽어 준다 (56단계)
+  $('#detail-keywords').innerHTML = c.keywords.map((k) => `<button type="button" class="chip chip-say" data-say="${escapeHtml(k)}" aria-label="${escapeHtml(k)} 발음 듣기">${SPEAKER_ICON}${escapeHtml(k)}</button>`).join('');
+  $('#detail-keywords').querySelectorAll('.chip-say').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('.chip-say.speaking').forEach((x) => x.classList.remove('speaking'));
+    const u = speak(b.dataset.say);
+    if (!u) return;
+    b.classList.add('speaking');
+    u.onend = u.onerror = () => b.classList.remove('speaking');
+  }));
   // 안내 체크리스트 (시트의 checklist 칸이 있는 챕터만): 대화 전에 미리 보고 공부한다 (33단계)
   // 한국어 아래에 따라 읽을 영어(en, 시트에서 '한국어 | English'). 지금은 모두 Beginner라 항상 보인다.
   const list = c.checklist || [];
@@ -1286,6 +1294,7 @@ function renderDrill() {
   const actions = $('#drill-actions');
   if (drill.pos >= drill.queue.length) {
     $('#drill-count').textContent = '';
+    setDrillProgress(1);
     card.innerHTML = `<h3>다 했어요!</h3>
       <p class="goal">${drill.total}문장 중 어려웠던 문장 ${drill.hard}개. 어려웠던 문장은 다음 연습 때 먼저 나와요.</p>`;
     actions.innerHTML = `<button class="secondary" id="drill-again">한 번 더 연습</button>
@@ -1300,6 +1309,7 @@ function renderDrill() {
   const parts = parseSentence(d.sentence);
   const firstRound = drill.queue.filter((x) => !x.again).length;
   $('#drill-count').textContent = d.again ? '한 번 더' : `${Math.min(drill.pos + 1, firstRound)} / ${firstRound}`;
+  setDrillProgress(d.again ? 1 : Math.min(drill.pos + 1, firstRound) / firstRound);
 
   let sentence;
   if (drill.revealed) {
@@ -1436,14 +1446,22 @@ function nextDrill(hard) {
 }
 
 /** 휴대폰에 들어 있는 영어 읽기 음성으로 문장을 읽어 준다 (무료, 인터넷 불필요). */
+/** 휴대폰 음성으로 읽어 준다. 읽기 시작한 말(끝났을 때 알림용)을 돌려준다. 음성 기능이 없으면 null. */
 function speak(text) {
-  if (!('speechSynthesis' in window)) return;
+  if (!('speechSynthesis' in window)) return null;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   // 중국어 과정은 휴대폰의 중국어 음성으로 조금 더 천천히
   u.lang = courseNow() === 'zh' ? 'zh-CN' : 'en-US';
   u.rate = courseNow() === 'zh' ? 0.8 : 0.9;
   speechSynthesis.speak(u);
+  return u;
+}
+const SPEAKER_ICON = '<svg class="say-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>';
+
+/** 문장 연습 진행 막대 (56단계): 0~1. '1 / 5' 아래에 보인다. */
+function setDrillProgress(ratio) {
+  $('#drill-progress i').style.width = `${Math.round(Math.max(0, Math.min(1, ratio)) * 100)}%`;
 }
 
 /* ── 선생님 화면: 시트 summary 탭과 같은 계산 결과 (선생님 코드만) ── */
