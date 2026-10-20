@@ -54,6 +54,7 @@
 
 ## 콘텐츠 만들기
 
+- 서버를 바꾸면 가짜 시트 시험으로 먼저 확인한다: `node tests/run-all.js` (`tests/README.md`).
 - 챕터·시나리오·문장 연습의 형식과 규칙은 `docs/content-guide.md`. 일반 Claude 대화창이나 새 Claude Code 대화에 이 파일을 붙여 넣고 요청하면 시트에 바로 붙일 줄을 만들 수 있다.
 
 ## 데이터 원칙

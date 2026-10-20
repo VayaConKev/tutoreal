@@ -1652,16 +1652,44 @@ function nextDrill(hard) {
   renderDrill();
 }
 
-/** 휴대폰에 들어 있는 영어 읽기 음성으로 문장을 읽어 준다 (무료, 인터넷 불필요). */
-/** 휴대폰 음성으로 읽어 준다. 읽기 시작한 말(끝났을 때 알림용)을 돌려준다. 음성 기능이 없으면 null. */
+/* 휴대폰 읽기 음성 목록 (64단계). 아이폰은 언어(lang)만 정하면 소리 없이 끝나는 일이 있어 음성을 직접 고른다.
+   목록은 늦게 채워지기도 해서 바뀔 때마다 다시 읽는다. */
+let ttsVoices = [];
+function loadVoices() {
+  try { ttsVoices = speechSynthesis.getVoices() || []; } catch (e) { ttsVoices = []; }
+}
+if ('speechSynthesis' in window) {
+  loadVoices();
+  if (speechSynthesis.addEventListener) speechSynthesis.addEventListener('voiceschanged', loadVoices);
+}
+/** lang(예: zh-CN)에 맞는 음성. 같은 언어·지역 → 같은 언어(zh-TW 등) 순서로 찾고, 없으면 null. */
+function pickVoice(lang) {
+  if (!ttsVoices.length) loadVoices();
+  const norm = (l) => String(l || '').replace('_', '-').toLowerCase();
+  const want = lang.toLowerCase();
+  const base = want.split('-')[0];
+  return ttsVoices.find((v) => norm(v.lang) === want && v.localService)
+    || ttsVoices.find((v) => norm(v.lang) === want)
+    || ttsVoices.find((v) => norm(v.lang).startsWith(base + '-'))
+    || null;
+}
+
+/** 휴대폰 음성으로 읽어 준다 (무료, 인터넷 불필요). 읽기 시작한 말(끝났을 때 알림용)을 돌려준다. 음성 기능이 없으면 null. */
 function speak(text, course = courseNow()) {
   if (!('speechSynthesis' in window)) return null;
-  speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   // 중국어 과정은 휴대폰의 중국어 음성으로 조금 더 천천히
   u.lang = course === 'zh' ? 'zh-CN' : 'en-US';
   u.rate = course === 'zh' ? 0.8 : 0.9;
-  speechSynthesis.speak(u);
+  const voice = pickVoice(u.lang);
+  if (voice) { u.voice = voice; u.lang = voice.lang; }
+  // 아이폰: cancel() 바로 뒤의 speak()는 소리 없이 넘어가는 일이 있다. 읽는 중일 때만 멈추고 잠깐 뒤에 읽는다.
+  if (speechSynthesis.speaking || speechSynthesis.pending) {
+    speechSynthesis.cancel();
+    setTimeout(() => speechSynthesis.speak(u), 120);
+  } else {
+    speechSynthesis.speak(u);
+  }
   return u;
 }
 const SPEAKER_ICON = '<svg class="say-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>';
