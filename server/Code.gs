@@ -86,7 +86,7 @@
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.53';
+const SERVER_VERSION = 'v0.54';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -116,7 +116,9 @@ const SCHEMA = {
   // 오늘의 단어 (67단계): 5글자 영어 단어를 order 순서대로 하루에 하나. meaning은 3번 틀리면 보는 한국어 힌트,
   // sentence는 다 푼 뒤 보여 줄 수업 문장 (선택). 한 칸에 한 줄에 하나씩 여러 문장을 적으면 학생마다 그중 하나가 보인다 (68단계).
   // 지금은 영어 과정(course 빈칸·en)만. 5글자가 아닌 줄은 건너뛴다.
-  words:          ['order', 'word', 'meaning', 'sentence', 'course', 'active']
+  // hint (73단계): 3번째 시도부터 볼 수 있는 쉬운 영어 설명 (정답 단어는 쓰지 않는다). 비우면 앱이 글자 하나를 알려 준다.
+  //   meaning(한국어 뜻)은 힌트로 쓰지 않고 다 푼 뒤에만 보인다. 이미 쓰던 시트에는 setup이 맨 오른쪽에 칸을 더한다.
+  words:          ['order', 'word', 'meaning', 'sentence', 'course', 'active', 'hint']
 };
 
 const PATIENT_PROMPT_V1 = [
@@ -374,29 +376,29 @@ const SEED = {
   ],
   // 오늘의 단어 예시 (67단계): 수업 단어와 일상 단어를 섞었다. Kevin이 시트에서 고치고 아래에 더 붙인다.
   words: [
-    [1, 'knees', '무릎', 'Please bend your knees.', 'en', true],
-    [2, 'smile', '웃다, 미소', '', 'en', true],
-    [3, 'sting', '따끔하다', 'The medicine may sting a little.', 'en', true],
-    [4, 'mouth', '입', 'The esophagus is the tube from your mouth to your stomach.\nPlease open your mouth wide.', 'en', true],
-    [5, 'lunch', '점심', '', 'en', true],
-    [6, 'relax', '힘을 빼다', "It's okay. Relax your shoulders.", 'en', true],
-    [7, 'polyp', '용종', 'A polyp is a small bump on the inside of your stomach.', 'en', true],
-    [8, 'nurse', '간호사', '', 'en', true],
-    [9, 'shirt', '윗옷', 'Please lift your shirt a little.', 'en', true],
-    [10, 'teeth', '이 (치아)', 'It protects your teeth.', 'en', true],
-    [11, 'lemon', '레몬', '', 'en', true],
-    [12, 'awake', '깨어 있는', 'You will be awake during the test.', 'en', true],
-    [13, 'sleep', '자다, 잠', 'You will fall asleep soon.', 'en', true],
-    [14, 'water', '물', '', 'en', true],
-    [15, 'ulcer', '궤양', '', 'en', true],
-    [16, 'chest', '가슴', '', 'en', true],
-    [17, 'blood', '피', '', 'en', true],
-    [18, 'colon', '대장', '', 'en', true],
-    [19, 'dizzy', '어지러운', '', 'en', true],
-    [20, 'happy', '행복한', '', 'en', true],
+    [1, 'knees', '무릎', 'Please bend your knees.', 'en', true, 'Part of your leg. You bend it to sit down.'],
+    [2, 'smile', '웃다, 미소', '', 'en', true, 'You do this with your mouth when you are happy.'],
+    [3, 'sting', '따끔하다', 'The medicine may sting a little.', 'en', true, 'A short, sharp pain, like from a bee or a needle.'],
+    [4, 'mouth', '입', 'The esophagus is the tube from your mouth to your stomach.\nPlease open your mouth wide.', 'en', true, 'You eat and talk with it.'],
+    [5, 'lunch', '점심', '', 'en', true, 'The meal you eat in the middle of the day.'],
+    [6, 'relax', '힘을 빼다', "It's okay. Relax your shoulders.", 'en', true, 'To rest and let your body go soft, not tight.'],
+    [7, 'polyp', '용종', 'A polyp is a small bump on the inside of your stomach.', 'en', true, 'A small bump that can grow on the inside of the stomach.'],
+    [8, 'nurse', '간호사', '', 'en', true, 'A person who takes care of patients in a hospital.'],
+    [9, 'shirt', '윗옷', 'Please lift your shirt a little.', 'en', true, 'You wear it on the top part of your body.'],
+    [10, 'teeth', '이 (치아)', 'It protects your teeth.', 'en', true, 'They are white and in your mouth. You bite with them.'],
+    [11, 'lemon', '레몬', '', 'en', true, 'A yellow fruit. It tastes sour.'],
+    [12, 'awake', '깨어 있는', 'You will be awake during the test.', 'en', true, 'Not sleeping. Your eyes are open.'],
+    [13, 'sleep', '자다, 잠', 'You will fall asleep soon.', 'en', true, 'You do this in bed at night.'],
+    [14, 'water', '물', '', 'en', true, 'You drink it. It has no color.'],
+    [15, 'ulcer', '궤양', '', 'en', true, 'A sore on the inside of the stomach. It can hurt.'],
+    [16, 'chest', '가슴', '', 'en', true, 'The front of your body, between your neck and your belly.'],
+    [17, 'blood', '피', '', 'en', true, 'It is red and moves all around your body.'],
+    [18, 'colon', '대장', '', 'en', true, 'A long part of your gut near the end. A camera test checks it.'],
+    [19, 'dizzy', '어지러운', '', 'en', true, 'When the room seems to spin around you.'],
+    [20, 'happy', '행복한', '', 'en', true, 'How you feel on a good day. The opposite of sad.'],
     // 생활 습관 안내 (68단계, Kevin): 결과 설명·조직검사(Bx)·CLO 검사 뒤 '맵고 짠 음식은 피하세요'를 자주 말한다
-    [21, 'salty', '짠', 'Please avoid spicy and salty food.\nTry not to eat too much salty food.', 'en', true],
-    [22, 'spicy', '매운', 'Please avoid spicy and salty food.\nTry not to eat too much spicy food.', 'en', true]
+    [21, 'salty', '짠', 'Please avoid spicy and salty food.\nTry not to eat too much salty food.', 'en', true, 'Chips and soy sauce taste like this.'],
+    [22, 'spicy', '매운', 'Please avoid spicy and salty food.\nTry not to eat too much spicy food.', 'en', true, 'Kimchi and hot peppers taste like this.']
   ]
 };
 
@@ -1206,7 +1208,7 @@ function dailyWordList_() {
     .filter(function (r) { return isTrue_(r.active) && courseOf_(r) === 'en'; })
     .map(function (r) {
       return { order: Number(r.order) || 0, word: String(r.word || '').trim().toLowerCase(),
-               meaning: String(r.meaning || '').trim(),
+               meaning: String(r.meaning || '').trim(), hint: String(r.hint || '').trim(),
                // 한 칸에 여러 문장 (한 줄에 하나, 68단계)
                sentences: String(r.sentence || '').split(/\r?\n/).map(function (x) { return x.trim(); }).filter(Boolean) };
     })
@@ -1214,7 +1216,7 @@ function dailyWordList_() {
     .sort(function (a, b) { return a.order - b.order; });
 }
 
-/** 오늘의 단어 { no, date, word, meaning, sentence, sentences, preview, test_account }.
+/** 오늘의 단어 { no, date, word, meaning, hint, sentence, sentences, preview, test_account }. hint: 쉬운 영어 힌트 (73단계, 없으면 빈칸).
  *  sentences: 수업 문장 여러 개 (앱이 하나를 고름), sentence: 첫 문장 (v0.72 앱용).
  *  test_account: 선생님·테스터 계정이면 true — 앱이 끝 화면에 '다시 하기'(시험용)를 보여 준다 (71단계).
  *  영어 과정을 쓰는 사람(선생님 포함)만.
@@ -1232,7 +1234,7 @@ function dailyWord_(student) {
   const words = dailyWordList_();
   if (!words.length) return null;
   const w = words[days % words.length];
-  return { no: days + 1, date: today, word: w.word, meaning: w.meaning,
+  return { no: days + 1, date: today, word: w.word, meaning: w.meaning, hint: w.hint,
            sentence: w.sentences[0] || '', sentences: w.sentences, preview: preview, test_account: canPreview_(student) };
 }
 

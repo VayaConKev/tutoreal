@@ -1997,17 +1997,19 @@ window.addEventListener('pagehide', () => { if (live) { talk.endReason = 'left';
 
 /* ── 오늘의 단어 (67단계) ──
    Wordle처럼 5글자 영어 단어를 6번 안에 맞힌다. 하루 한 단어, 모든 학생이 같은 단어 (서버가 한국 시간 기준으로 정함).
-   아무 글자 조합이나 입력할 수 있다 (단어 사전 확인 없음, 초급 학생 배려). 3번 틀리면 한국어 뜻 힌트를 볼 수 있다.
+   아무 글자 조합이나 입력할 수 있다 (단어 사전 확인 없음, 초급 학생 배려).
+   힌트 (73단계): 3번째 시도부터 쉬운 영어 설명을 볼 수 있다 (그 전에는 잠김). 설명이 없는 단어는 글자 하나를 알려 준다.
+   한국어 뜻은 너무 쉬워서 힌트로 쓰지 않고, 다 푼 뒤에만 보인다.
    푼 기록과 연속 기록은 이 휴대폰에만 저장한다. AI를 쓰지 않아 비용이 없다. */
 const WORD_LEN = 5;
 const WORD_TRIES = 6;
-const WORD_HINT_AFTER = 3;
+const WORD_HINT_AFTER = 2;   // 2번 틀린 뒤, 곧 3번째 시도부터 힌트가 열린다
 const WORD_KEY = 'tutoreal.word';         // 오늘 푼 상태 { no, guesses, hint, done, won, pick(보여 줄 수업 문장 번호), replay(시험용 다시 하기) }
 const WORD_STATS_KEY = 'tutoreal.wordstats';   // { played, won, streak, best, lastWonNo }
 const WORD_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
 const WORD_MARK = { correct: '🟩', present: '🟨', absent: '⬜' };
 const WORD_SAY = { correct: '자리까지 맞음', present: '다른 자리에 있음', absent: '없음' };
-let dailyWord = null;   // 서버가 준 오늘의 단어 { no, date, word, meaning, sentence, sentences, preview, test_account } (없으면 null)
+let dailyWord = null;   // 서버가 준 오늘의 단어 { no, date, word, meaning, hint, sentence, sentences, preview, test_account } (없으면 null)
 let wordTyping = '';
 // 발음 듣기 버튼: 단어 게임은 늘 영어 음성으로 (선생님이 중국어 챕터를 보던 중이어도)
 const wordSayBtn = (text, label) =>
@@ -2116,8 +2118,14 @@ function renderWord(pending = false) {
       ${i === 2 ? '<button class="word-key wide" data-key="back" aria-label="지우기">⌫</button>' : ''}
     </div>`).join('');
   const wrong = shown.filter((g) => g !== answer).length;
-  $('#word-hint').hidden = done || pending || st.hint || wrong < WORD_HINT_AFTER || !dailyWord.meaning;
-  if (st.hint && !done && dailyWord.meaning) $('#word-msg').textContent = `💡 뜻: ${dailyWord.meaning}`;
+  // 힌트 버튼: 다 풀거나 이미 본 뒤에는 숨기고, 3번째 시도 전에는 잠근 채 보여 준다
+  const hintBtn = $('#word-hint');
+  const locked = wrong < WORD_HINT_AFTER;
+  hintBtn.hidden = done || pending || st.hint;
+  hintBtn.disabled = locked;
+  hintBtn.classList.toggle('locked', locked);
+  hintBtn.textContent = locked ? `🔒 힌트 · ${WORD_HINT_AFTER + 1}번째 시도부터 열려요` : '💡 힌트 보기';
+  if (st.hint && !done) $('#word-msg').textContent = wordHintText(st);
   renderWordEnd({ ...st, done });
 }
 
@@ -2181,7 +2189,8 @@ function renderWordEnd(st) {
       ${dailyWord.meaning ? `<span class="word-answer-ko">${escapeHtml(dailyWord.meaning)}</span>` : ''}
       ${wordSayBtn(w, `${w} 발음 듣기`)}
     </div>
-    ${sentence ? `<p class="word-sentence">${sentence} ${wordSayBtn(picked, '문장 듣기')}</p>` : ''}
+    ${sentence ? `<p class="word-sentence">${sentence}</p>
+      <button type="button" class="say-btn word-say-pill" data-say="${escapeHtml(picked)}" data-course="en" aria-label="문장 듣기">${SPEAKER_ICON}<span>문장 듣기</span></button>` : ''}
     <p class="word-stats">${streak > 0 ? `🔥 ${streak}일 연속` : '연속 기록 없음'} · 맞힌 날 ${stats.won} / ${stats.played} · 최고 ${stats.best}일 연속</p>
     <button class="primary" id="word-share">결과 공유하기</button>
     <p class="hint" id="word-share-msg" role="status"></p>
@@ -2194,7 +2203,7 @@ function renderWordEnd(st) {
 function wordKey(key) {
   const st = wordState();
   if (st.done || wordFlipping) return;
-  $('#word-msg').textContent = st.hint && dailyWord.meaning ? `💡 뜻: ${dailyWord.meaning}` : '';
+  $('#word-msg').textContent = st.hint ? wordHintText(st) : '';
   if (key === 'back') { wordTyping = wordTyping.slice(0, -1); return renderWord(); }
   if (key === 'enter') return submitWord(st);
   if (/^[a-z]$/.test(key) && wordTyping.length < WORD_LEN) { wordTyping += key; renderWord(); }
@@ -2280,8 +2289,20 @@ document.addEventListener('keydown', (ev) => {
   const k = ev.key === 'Enter' ? 'enter' : ev.key === 'Backspace' ? 'back' : ev.key.toLowerCase();
   if (k === 'enter' || k === 'back' || /^[a-z]$/.test(k)) { ev.preventDefault(); wordKey(k); }
 });
+/** 힌트 글: 쉬운 영어 설명. 없으면 아직 초록으로 맞히지 못한 자리의 글자 하나 (고른 자리는 저장해서 바뀌지 않게) */
+function wordHintText(st) {
+  if (dailyWord.hint) return `💡 ${dailyWord.hint}`;
+  const w = dailyWord.word;
+  if (!(st.hintPos >= 0)) {
+    const open = [...w].map((_, i) => i).filter((i) => !st.guesses.some((g) => g[i] === w[i]));
+    st.hintPos = open.length ? open[0] : 0;
+    saveJson(WORD_KEY, st);
+  }
+  return `💡 ${st.hintPos + 1}번째 글자는 ${w[st.hintPos].toUpperCase()}예요.`;
+}
 $('#word-hint').addEventListener('click', () => {
   const st = wordState();
+  if (st.guesses.filter((g) => g !== dailyWord.word).length < WORD_HINT_AFTER) return;   // 잠긴 동안은 열리지 않게
   st.hint = true;
   saveJson(WORD_KEY, st);
   renderWord();

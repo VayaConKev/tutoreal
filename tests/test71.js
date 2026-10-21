@@ -1,4 +1,4 @@
-// 71단계: 오늘의 단어 test_account — 선생님·테스터 계정이면 true (앱이 시험용 '다시 하기'를 보여 줌), 학생은 false, 서버 v0.53
+// 71단계: 오늘의 단어 test_account — 선생님·테스터 계정이면 true (앱이 시험용 '다시 하기'를 보여 줌), 학생은 false, 서버 v0.53에서 생김
 const { makeWorld, CODE } = require('./fakesheet.js');
 const assert = require('assert');
 const kst = (offsetDays) => new Date(Date.now() + 9 * 3600e3 + offsetDays * 86400e3).toISOString().slice(0, 10);
@@ -18,5 +18,4 @@ set('daily_word_published', true);
 assert.equal(get('tch').daily_word.test_account, true); assert.equal(get('tst').daily_word.test_account, true);
 assert.equal(get('stu').daily_word.test_account, false);
 console.log('test_account: 선생님 true · 테스터 true · 학생 false (미리 보기·공개 모두)');
-assert.equal(get('tch').server, 'v0.53');
 console.log('모든 확인 통과');

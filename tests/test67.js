@@ -10,7 +10,7 @@ Object.assign(w.tabs, JSON.parse(JSON.stringify(old.tabs)));
 delete w.tabs.words;
 const msg = w.run('setup');
 console.log('setup:', String(msg).split('\n').filter((l) => /words|daily_word/.test(l)).join(' / '));
-assert(w.tabs.words && w.tabs.words[0].join() === 'order,word,meaning,sentence,course,active');
+assert(w.tabs.words && w.tabs.words[0].join().startsWith('order,word,meaning,sentence,course,active'));   // 73단계에서 hint 칸이 뒤에 붙음
 assert(w.tabs.words.length - 1 >= 20, '예시 단어 20개 이상');
 const N = w.tabs.words.length - 1;   // 예시 단어 수 (69단계에서 22개)
 const s = w.tabs.settings; const set = (k, v) => { const r = s.find((x) => x[0] === k); if (r) r[1] = v; else s.push([k, v, '']); };

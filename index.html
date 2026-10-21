@@ -226,9 +226,10 @@
         <h3>오늘의 단어</h3>
         <p class="goal">5글자 영어 단어를 6번 안에 맞혀 보세요.</p>
         <p class="word-legend"><span class="wl correct"></span>자리까지 맞음 <span class="wl present"></span>다른 자리에 있음 <span class="wl absent"></span>없음</p>
-        <div class="word-grid" id="word-grid"></div>
+        <!-- 힌트와 안내 글은 칸 위에 (73단계): 아래에 두면 화면 아래 키보드에 가려졌다 -->
+        <button class="secondary word-hint-btn" id="word-hint" hidden>💡 힌트 보기</button>
         <p class="word-msg" id="word-msg" role="status" aria-live="polite"></p>
-        <button class="secondary word-hint-btn" id="word-hint" hidden>💡 뜻 힌트 보기</button>
+        <div class="word-grid" id="word-grid"></div>
         <div class="word-end" id="word-end" hidden></div>
       </div>
       <div class="word-keys" id="word-keys"></div>

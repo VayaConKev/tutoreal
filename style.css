@@ -582,8 +582,10 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 .word-row.shake { animation: word-shake 0.35s; }
 @keyframes word-shake { 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
 @media (prefers-reduced-motion: reduce) { .word-row.shake { animation: none; } }
-.word-msg { min-height: 1.6em; text-align: center; margin: 10px 0 4px; font-weight: 600; }
-.word-hint-btn { display: block; margin: 0 auto; }
+.word-msg { min-height: 1.5em; text-align: center; margin: 6px 0 8px; font-weight: 600; font-size: 15px; line-height: 1.4; }
+.word-msg:empty { min-height: 0; margin: 0 0 10px; }   /* 글이 없을 때는 자리를 비워 6줄이 키보드 위에 다 보이게 */
+button.word-hint-btn { display: block; width: auto; margin: 0 auto; padding: 6px 16px; border-radius: 999px; font-size: 14px; }   /* button.secondary보다 뒤에서 이기게 */
+.word-hint-btn.locked { opacity: 0.6; cursor: default; }   /* 3번째 시도 전: 잠김 */
 /* display: block·flex가 hidden을 덮어쓰지 않게 (72단계: 다 푼 뒤에도 힌트 버튼·키보드·권하기가 보이던 문제) */
 .word-hint-btn[hidden], .word-keys[hidden], .word-nudge[hidden], .word-end[hidden] { display: none; }
 /* 키보드는 화면 아래에 붙여 둔다 (작은 휴대폰에서도 칸과 키보드가 함께 보이게) */
@@ -606,7 +608,9 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 .word-answer-text { font-size: 28px; font-weight: 800; letter-spacing: 0.08em; color: var(--teal-ink); }
 .word-answer-ko { font-size: 18px; color: var(--muted); }
 .word-sentence { margin: 10px 0 0; }
-.word-sentence .say-btn { display: inline-grid; vertical-align: middle; margin: -6px 0 -4px 2px; }   /* 문장 바로 뒤에 붙게 (다음 줄로 떨어지지 않게) */
+/* 문장 듣기 (73단계): 문장 아래 가운데, 글자와 함께 (작은 스피커만 있을 때는 눈에 잘 띄지 않았다) */
+.word-say-pill { display: inline-flex; width: auto; height: auto; gap: 6px; align-items: center; margin: 8px auto 0; padding: 6px 14px;
+  border-radius: 999px; background: var(--teal-soft); font: inherit; font-size: 14px; font-weight: 600; }
 .word-stats { color: var(--muted); font-size: 14px; margin: 12px 0; }
 .word-nudge { display: flex; flex-direction: column; gap: 8px; align-items: stretch; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); text-align: center; }
 .word-reset { display: block; margin: 6px auto 0; font-size: 13px; color: var(--muted); }
