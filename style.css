@@ -602,6 +602,11 @@ button.word-hint-btn { display: block; width: auto; margin: 0 auto; padding: 6px
 .word-key.correct, .word-key.present, .word-key.absent { color: #fff; }
 .word-key.correct { background: var(--w-correct); } .word-key.present { background: var(--w-present); } .word-key.absent { background: var(--w-absent); }
 .word-key:active { filter: brightness(0.92); }
+/* 같은 글자를 빨리 두 번 눌러도 화면이 확대되지 않게 (75단계, 아이폰 사파리의 '두 번 눌러 확대').
+   manipulation은 두 번 눌러 확대만 끄고, 두 손가락으로 벌리는 확대는 그대로 둔다 (글자 크게 보기가 필요한 사람을 위해).
+   빨리 누를 때 글자가 선택되거나 회색 깜빡임이 생기지 않게 */
+#view-word, .word-key, .word-hint-btn { touch-action: manipulation; }
+.word-key { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
 .word-end { text-align: center; margin-top: 14px; }
 .word-result { font-size: 18px; font-weight: 700; margin: 0 0 10px; }
 .word-answer { display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap; }
