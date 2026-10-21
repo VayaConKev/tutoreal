@@ -13,7 +13,7 @@
   --cat: #121417; --cat-eye: #f3e6cc; --cat-ear: #f3e6cc; --cat-chin: #f3e6cc; --cat-pupil: #121417;
   --cat-whisker: #ffffff; --cat-tick: #e9edf1;
   --slip-paper: #fffdf6; --slip-line: #2b3138; --slip-pen: #d23c2c;   /* 검사 결과 슬립 (종이, 칸 선, 빨간 펜 동그라미) */
-  --w-correct: #4f9d5c; --w-present: #c49a1c; --w-absent: #8a96a3; --w-key: #dfe6ec;   /* 오늘의 단어 칸 (초록·노랑·회색) */
+  --w-correct: #4f9d5c; --w-present: #c49a1c; --w-absent: #8a96a3; --w-key: #dfe6ec; --w-board: #2f3a46;   /* 오늘의 단어 칸 (초록·노랑·회색), 뒤집히는 판 */
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -23,7 +23,7 @@
     --teal: #50b3b2; --teal-ink: #6dcac8; --teal-soft: #12302f;
     --nav-bg: #0f1c26; --danger: #ef7b7b; color-scheme: dark; --nav-glass: rgba(15, 28, 38, 0.88); --nav-shadow: 0 -4px 16px rgba(0, 0, 0, 0.35);
     --cat: #f2f4f6; --cat-eye: #9fd4f2; --cat-ear: #f4b4c4; --cat-chin: #e2cfa8; --cat-whisker: #8d979f; --cat-tick: #2a3138; --slip-paper: #1b2732; --slip-line: #93a7b6; --slip-pen: #ff7a6b;
-    --w-correct: #4a8f55; --w-present: #b08a1e; --w-absent: #3e4d5a; --w-key: #2a3a47;
+    --w-correct: #4a8f55; --w-present: #b08a1e; --w-absent: #3e4d5a; --w-key: #2a3a47; --w-board: #0e1720;
   }
 }
 :root[data-theme="dark"] {
@@ -32,7 +32,7 @@
   --teal: #50b3b2; --teal-ink: #6dcac8; --teal-soft: #12302f;
   --nav-bg: #0f1c26; --danger: #ef7b7b; color-scheme: dark; --nav-glass: rgba(15, 28, 38, 0.88); --nav-shadow: 0 -4px 16px rgba(0, 0, 0, 0.35);
   --cat: #f2f4f6; --cat-eye: #9fd4f2; --cat-ear: #f4b4c4; --cat-chin: #e2cfa8; --cat-whisker: #8d979f; --cat-tick: #2a3138; --slip-paper: #1b2732; --slip-line: #93a7b6; --slip-pen: #ff7a6b;
-    --w-correct: #4a8f55; --w-present: #b08a1e; --w-absent: #3e4d5a; --w-key: #2a3a47;
+    --w-correct: #4a8f55; --w-present: #b08a1e; --w-absent: #3e4d5a; --w-key: #2a3a47; --w-board: #0e1720;
 }
 * { box-sizing: border-box; }
 body {
@@ -559,6 +559,26 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 .word-tile.filled { border-color: var(--muted); }
 .word-tile.correct, .word-tile.present, .word-tile.absent { color: #fff; border-color: transparent; }
 .word-tile.correct { background: var(--w-correct); } .word-tile.present { background: var(--w-present); } .word-tile.absent { background: var(--w-absent); }
+.word-tile { position: relative; }
+/* 칸 뒤집기 (70단계): 출발 안내판(split-flap)처럼 위쪽 반(sf-flap-top)이 아래로 접히고, 다음 글자의 아래쪽 반(sf-flap-bottom)이 펼쳐진다.
+   반쪽마다 글자 전체(200% 높이)를 넣고 위·아래만 잘라 보여 준다. 가운데 가는 선이 판이 접히는 자리 */
+.word-tile.flipping { border-width: 0; background: none; perspective: 260px; }
+.sf { position: absolute; left: 0; right: 0; height: 50%; overflow: hidden; backface-visibility: hidden; }
+.sf i { position: absolute; left: 0; right: 0; height: 200%; display: grid; place-items: center; font-style: normal; }
+.sf-top, .sf-flap-top { top: 0; border-radius: 6px 6px 0 0; transform-origin: 50% 100%; }
+.sf-top i, .sf-flap-top i { top: 0; }
+.sf-bottom, .sf-flap-bottom { bottom: 0; border-radius: 0 0 6px 6px; transform-origin: 50% 0; }
+.sf-bottom i, .sf-flap-bottom i { bottom: 0; }
+.sf-flap-top { z-index: 2; animation: sf-fold var(--flap, 65ms) ease-in forwards; }
+.sf-flap-bottom { z-index: 2; transform: rotateX(90deg); animation: sf-unfold var(--flap, 65ms) ease-out var(--flap, 65ms) forwards; }
+@keyframes sf-fold { to { transform: rotateX(-90deg); } }
+@keyframes sf-unfold { to { transform: rotateX(0deg); } }
+.sf.filled { background: var(--card); color: var(--text); box-shadow: inset 0 0 0 2px var(--muted); }
+.sf.board { background: var(--w-board); color: #fff; }
+.sf.correct { background: var(--w-correct); color: #fff; } .sf.present { background: var(--w-present); color: #fff; } .sf.absent { background: var(--w-absent); color: #fff; }
+.word-tile.flipping::after, .word-tile.correct::after, .word-tile.present::after, .word-tile.absent::after {
+  content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(0, 0, 0, 0.22); z-index: 3; pointer-events: none;
+}
 .word-row.shake { animation: word-shake 0.35s; }
 @keyframes word-shake { 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
 @media (prefers-reduced-motion: reduce) { .word-row.shake { animation: none; } }

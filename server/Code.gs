@@ -86,7 +86,7 @@
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.51';
+const SERVER_VERSION = 'v0.52';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -393,7 +393,10 @@ const SEED = {
     [17, 'blood', '피', '', 'en', true],
     [18, 'colon', '대장', '', 'en', true],
     [19, 'dizzy', '어지러운', '', 'en', true],
-    [20, 'happy', '행복한', '', 'en', true]
+    [20, 'happy', '행복한', '', 'en', true],
+    // 생활 습관 안내 (68단계, Kevin): 결과 설명·조직검사(Bx)·CLO 검사 뒤 '맵고 짠 음식은 피하세요'를 자주 말한다
+    [21, 'salty', '짠', 'Please avoid spicy and salty food.\nTry not to eat too much salty food.', 'en', true],
+    [22, 'spicy', '매운', 'Please avoid spicy and salty food.\nTry not to eat too much spicy food.', 'en', true]
   ]
 };
 

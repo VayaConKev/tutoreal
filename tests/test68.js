@@ -1,4 +1,4 @@
-// 68단계: 오늘의 단어의 수업 문장을 한 칸에 여러 개 (한 줄에 하나) — 앱이 그중 하나를 무작위로 보여 준다, 서버 v0.51
+// 68단계: 오늘의 단어의 수업 문장을 한 칸에 여러 개 (한 줄에 하나) — 앱이 그중 하나를 무작위로 보여 준다, 서버 v0.51에서 생김
 const { makeWorld, CODE } = require('./fakesheet.js');
 const assert = require('assert');
 const kst = (offsetDays) => new Date(Date.now() + 9 * 3600e3 + offsetDays * 86400e3).toISOString().slice(0, 10);
@@ -23,5 +23,4 @@ assert.deepEqual(d.sentences, ['First sentence.', 'Second one.']);
 set('daily_word_start', kst(-1)); d = word().daily_word;
 assert.equal(d.word, 'smile'); assert.deepEqual(d.sentences, []); assert.equal(d.sentence, '');
 console.log('줄바꿈·빈 줄 정리 / 문장 없는 단어: 빈 목록');
-assert.equal(r.server, 'v0.51');
 console.log('모든 확인 통과');

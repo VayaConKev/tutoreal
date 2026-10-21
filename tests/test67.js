@@ -11,7 +11,8 @@ delete w.tabs.words;
 const msg = w.run('setup');
 console.log('setup:', String(msg).split('\n').filter((l) => /words|daily_word/.test(l)).join(' / '));
 assert(w.tabs.words && w.tabs.words[0].join() === 'order,word,meaning,sentence,course,active');
-assert.equal(w.tabs.words.length - 1, 20, '예시 단어 20개');
+assert(w.tabs.words.length - 1 >= 20, '예시 단어 20개 이상');
+const N = w.tabs.words.length - 1;   // 예시 단어 수 (69단계에서 22개)
 const s = w.tabs.settings; const set = (k, v) => { const r = s.find((x) => x[0] === k); if (r) r[1] = v; else s.push([k, v, '']); };
 assert(s.find((r) => r[0] === 'daily_word_start'), 'daily_word_start 설정 줄');
 assert.equal(s.find((r) => r[0] === 'daily_word_published')[1], 'preview', '처음에는 학생에게 숨김');
@@ -33,10 +34,10 @@ set('daily_word_published', true);
 let d = today('stu');
 console.log('오늘이 #1:', JSON.stringify(d));
 assert.equal(d.no, 1); assert.equal(d.preview, false); assert.equal(d.word, 'knees'); assert.equal(d.meaning, '무릎'); assert.equal(d.date, kst(0));
-// 시작한 지 2일째(#3) / 목록 끝을 넘으면 처음부터 (#21 → 1번째 단어)
+// 시작한 지 2일째(#3) / 목록 끝을 넘으면 처음부터 (#N+1 → 1번째 단어)
 set('daily_word_start', kst(-2)); d = today('stu'); assert.equal(d.no, 3); assert.equal(d.word, 'sting');
-set('daily_word_start', kst(-20)); d = today('stu'); assert.equal(d.no, 21); assert.equal(d.word, 'knees');
-console.log('#3:', 'sting', '/ #21: 처음으로 돌아가 knees');
+set('daily_word_start', kst(-N)); d = today('stu'); assert.equal(d.no, N + 1); assert.equal(d.word, 'knees');
+console.log('#3:', 'sting', `/ #${N + 1}: 처음으로 돌아가 knees`);
 // 선생님도 받고, 중국어 과정 학생은 받지 않는다
 set('daily_word_start', kst(0));
 assert.equal(today('tch').word, 'knees'); assert.equal(today('zhs'), null);

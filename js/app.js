@@ -2080,40 +2080,82 @@ function openWord() {
   show('word');
 }
 
-function renderWord() {
+/** pending: 방금 낸 줄을 아직 색 없이 그린다 (뒤집히는 동안. 키보드 색·힌트·끝 화면도 그 줄을 빼고) */
+function renderWord(pending = false) {
   const st = wordState();
   const answer = dailyWord.word;
+  const shown = pending ? st.guesses.slice(0, -1) : st.guesses;
+  const pend = pending ? st.guesses[st.guesses.length - 1] : '';
+  const done = st.done && !pending;
   const rows = [];
   for (let r = 0; r < WORD_TRIES; r++) {
-    const g = st.guesses[r];
-    const typing = !g && r === st.guesses.length && !st.done ? wordTyping : '';
+    const g = shown[r];
+    const pendRow = !!pend && r === shown.length;
+    const typing = !g && !pend && r === shown.length && !done ? wordTyping : '';
     const marks = g ? scoreGuess(g, answer) : null;
     const cells = [];
     for (let i = 0; i < WORD_LEN; i++) {
-      const ch = g ? g[i] : typing[i] || '';
+      const ch = g ? g[i] : pendRow ? pend[i] : typing[i] || '';
       const cls = marks ? marks[i] : ch ? 'filled' : '';
       const label = ch ? `${ch.toUpperCase()}${marks ? ' ' + WORD_SAY[marks[i]] : ''}` : '빈칸';
       cells.push(`<span class="word-tile ${cls}" role="img" aria-label="${label}">${escapeHtml(ch.toUpperCase())}</span>`);
     }
-    rows.push(`<div class="word-row${typing && r === st.guesses.length ? ' now' : ''}">${cells.join('')}</div>`);
+    rows.push(`<div class="word-row${typing && r === shown.length ? ' now' : ''}">${cells.join('')}</div>`);
   }
   $('#word-grid').innerHTML = rows.join('');
   // 키보드: 글자마다 지금까지 가장 좋은 결과 색 (초록 > 노랑 > 회색)
   const best = {};
   const rank = { absent: 1, present: 2, correct: 3 };
-  st.guesses.forEach((g) => scoreGuess(g, answer).forEach((m, i) => {
+  shown.forEach((g) => scoreGuess(g, answer).forEach((m, i) => {
     if (!best[g[i]] || rank[m] > rank[best[g[i]]]) best[g[i]] = m;
   }));
-  $('#word-keys').hidden = st.done;
+  $('#word-keys').hidden = done;
   $('#word-keys').innerHTML = WORD_ROWS.map((row, i) => `<div class="word-key-row">
       ${i === 2 ? '<button class="word-key wide" data-key="enter" aria-label="확인">확인</button>' : ''}
       ${[...row].map((k) => `<button class="word-key ${best[k] || ''}" data-key="${k}" aria-label="${k.toUpperCase()}${best[k] ? ' ' + WORD_SAY[best[k]] : ''}">${k.toUpperCase()}</button>`).join('')}
       ${i === 2 ? '<button class="word-key wide" data-key="back" aria-label="지우기">⌫</button>' : ''}
     </div>`).join('');
-  const wrong = st.guesses.filter((g) => g !== answer).length;
-  $('#word-hint').hidden = st.done || st.hint || wrong < WORD_HINT_AFTER || !dailyWord.meaning;
-  if (st.hint && !st.done && dailyWord.meaning) $('#word-msg').textContent = `💡 뜻: ${dailyWord.meaning}`;
-  renderWordEnd(st);
+  const wrong = shown.filter((g) => g !== answer).length;
+  $('#word-hint').hidden = done || pending || st.hint || wrong < WORD_HINT_AFTER || !dailyWord.meaning;
+  if (st.hint && !done && dailyWord.meaning) $('#word-msg').textContent = `💡 뜻: ${dailyWord.meaning}`;
+  renderWordEnd({ ...st, done });
+}
+
+/* 칸 뒤집기 (70단계): 공항·기차역 출발 안내판(split-flap)처럼 위쪽 반이 아래로 접히며 다음 글자가 나온다.
+   칸마다 조금씩 늦게 시작해, 무작위 글자를 몇 번 넘긴 뒤 진짜 글자와 결과 색으로 멈춘다.
+   '동작 줄이기'를 켠 휴대폰에서는 뒤집지 않고 바로 색을 보여 준다. 뒤집는 동안에는 입력을 받지 않는다. */
+const FLAP_MS = 65;      // 반쪽이 한 번 접히는 시간 (한 장 넘기는 데 두 배)
+const FLAP_SPINS = 3;    // 진짜 글자 전에 넘기는 무작위 글자 수
+const FLAP_GAP = 220;    // 칸마다 시작 간격
+let wordFlipping = false;
+const reduceMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+/** 한 장 넘기기: from 글자 위로 to 글자가 접혀 내려온다. 각 쪽은 { ch, cls } (cls: filled / board / correct·present·absent) */
+function flapOnce(tile, from, to, ms) {
+  const half = (part, x) => `<span class="sf ${part} ${x.cls}"><i>${escapeHtml(x.ch.toUpperCase())}</i></span>`;
+  tile.className = 'word-tile flipping';
+  tile.style.setProperty('--flap', `${ms}ms`);
+  tile.innerHTML = half('sf-top', to) + half('sf-bottom', from) + half('sf-flap-top', from) + half('sf-flap-bottom', to);
+  return new Promise((resolve) => setTimeout(resolve, ms * 2));
+}
+async function flipTile(tile, ch, mark) {
+  let prev = { ch, cls: 'filled' };
+  for (let k = 0; k < FLAP_SPINS; k++) {
+    const next = { ch: String.fromCharCode(97 + Math.floor(Math.random() * 26)), cls: 'board' };
+    await flapOnce(tile, prev, next, FLAP_MS);
+    prev = next;
+  }
+  await flapOnce(tile, prev, { ch, cls: mark }, Math.round(FLAP_MS * 1.6));   // 마지막 장은 조금 천천히
+  tile.className = `word-tile ${mark}`;
+  tile.style.removeProperty('--flap');
+  tile.textContent = ch.toUpperCase();
+  tile.setAttribute('aria-label', `${ch.toUpperCase()} ${WORD_SAY[mark]}`);
+}
+function flipRow(rowIdx, guess) {
+  const marks = scoreGuess(guess, dailyWord.word);
+  const tiles = [...document.querySelectorAll('#word-grid .word-row')[rowIdx].children];
+  return Promise.all(tiles.map((t, i) =>
+    new Promise((res) => setTimeout(res, i * FLAP_GAP)).then(() => flipTile(t, guess[i], marks[i]))));
 }
 
 function renderWordEnd(st) {
@@ -2149,7 +2191,7 @@ function renderWordEnd(st) {
 
 function wordKey(key) {
   const st = wordState();
-  if (st.done) return;
+  if (st.done || wordFlipping) return;
   $('#word-msg').textContent = st.hint && dailyWord.meaning ? `💡 뜻: ${dailyWord.meaning}` : '';
   if (key === 'back') { wordTyping = wordTyping.slice(0, -1); return renderWord(); }
   if (key === 'enter') return submitWord(st);
@@ -2180,11 +2222,18 @@ function submitWord(st) {
       stats.streak = 0;
     }
     saveJson(WORD_STATS_KEY, stats);
-    if (won) speak(dailyWord.word, 'en');
   }
   saveJson(WORD_KEY, st);
-  renderWord();
-  renderWordCard();
+  const after = () => {
+    wordFlipping = false;
+    renderWord();
+    renderWordCard();
+    if (won) speak(dailyWord.word, 'en');
+  };
+  if (reduceMotion()) return after();
+  wordFlipping = true;
+  renderWord(true);
+  flipRow(st.guesses.length - 1, st.guesses[st.guesses.length - 1]).then(after, after);
 }
 
 /** 결과 공유 글: 정답 글자 없이 색만 (아직 안 푼 동료에게 스포일러가 되지 않게) */
