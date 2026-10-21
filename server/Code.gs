@@ -86,7 +86,7 @@
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.50';
+const SERVER_VERSION = 'v0.51';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -114,7 +114,8 @@ const SCHEMA = {
   // 발음 코칭 기록: 소리와 들린 글자는 저장하지 않는다. 하루 횟수 한도와 월 예산 계산에 쓴다.
   pron_checks:    ['at', 'student_id', 'chapter_id', 'drill_id', 'level', 'overall', 'cost_usd'],
   // 오늘의 단어 (67단계): 5글자 영어 단어를 order 순서대로 하루에 하나. meaning은 3번 틀리면 보는 한국어 힌트,
-  // sentence는 다 푼 뒤 보여 줄 수업 문장 (선택). 지금은 영어 과정(course 빈칸·en)만. 5글자가 아닌 줄은 건너뛴다.
+  // sentence는 다 푼 뒤 보여 줄 수업 문장 (선택). 한 칸에 한 줄에 하나씩 여러 문장을 적으면 학생마다 그중 하나가 보인다 (68단계).
+  // 지금은 영어 과정(course 빈칸·en)만. 5글자가 아닌 줄은 건너뛴다.
   words:          ['order', 'word', 'meaning', 'sentence', 'course', 'active']
 };
 
@@ -376,7 +377,7 @@ const SEED = {
     [1, 'knees', '무릎', 'Please bend your knees.', 'en', true],
     [2, 'smile', '웃다, 미소', '', 'en', true],
     [3, 'sting', '따끔하다', 'The medicine may sting a little.', 'en', true],
-    [4, 'mouth', '입', 'The esophagus is the tube from your mouth to your stomach.', 'en', true],
+    [4, 'mouth', '입', 'The esophagus is the tube from your mouth to your stomach.\nPlease open your mouth wide.', 'en', true],
     [5, 'lunch', '점심', '', 'en', true],
     [6, 'relax', '힘을 빼다', "It's okay. Relax your shoulders.", 'en', true],
     [7, 'polyp', '용종', 'A polyp is a small bump on the inside of your stomach.', 'en', true],
@@ -1202,13 +1203,15 @@ function dailyWordList_() {
     .filter(function (r) { return isTrue_(r.active) && courseOf_(r) === 'en'; })
     .map(function (r) {
       return { order: Number(r.order) || 0, word: String(r.word || '').trim().toLowerCase(),
-               meaning: String(r.meaning || '').trim(), sentence: String(r.sentence || '').trim() };
+               meaning: String(r.meaning || '').trim(),
+               // 한 칸에 여러 문장 (한 줄에 하나, 68단계)
+               sentences: String(r.sentence || '').split(/\r?\n/).map(function (x) { return x.trim(); }).filter(Boolean) };
     })
     .filter(function (r) { return /^[a-z]{5}$/.test(r.word); })
     .sort(function (a, b) { return a.order - b.order; });
 }
 
-/** 오늘의 단어 { no, date, word, meaning, sentence, preview }. 영어 과정을 쓰는 사람(선생님 포함)만.
+/** 오늘의 단어 { no, date, word, meaning, sentence, sentences, preview }. sentences: 수업 문장 여러 개 (앱이 하나를 고름), sentence: 첫 문장 (v0.72 앱용). 영어 과정을 쓰는 사람(선생님 포함)만.
  *  settings daily_word_published가 preview면 선생님·테스터만, TRUE면 모두, 그 밖(FALSE·빈칸)이면 아무에게도. 아직 #1 날짜 전이어도 null. */
 function dailyWord_(student) {
   if (!canUseCourse_(student, 'en')) return null;
@@ -1223,7 +1226,8 @@ function dailyWord_(student) {
   const words = dailyWordList_();
   if (!words.length) return null;
   const w = words[days % words.length];
-  return { no: days + 1, date: today, word: w.word, meaning: w.meaning, sentence: w.sentence, preview: preview };
+  return { no: days + 1, date: today, word: w.word, meaning: w.meaning,
+           sentence: w.sentences[0] || '', sentences: w.sentences, preview: preview };
 }
 
 /** 생년월일이 날짜로 바뀌어 있어도 2003-05-11 형태의 글자로 돌려준다. */

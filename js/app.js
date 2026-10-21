@@ -2002,12 +2002,12 @@ window.addEventListener('pagehide', () => { if (live) { talk.endReason = 'left';
 const WORD_LEN = 5;
 const WORD_TRIES = 6;
 const WORD_HINT_AFTER = 3;
-const WORD_KEY = 'tutoreal.word';         // 오늘 푼 상태 { no, guesses, hint, done, won }
+const WORD_KEY = 'tutoreal.word';         // 오늘 푼 상태 { no, guesses, hint, done, won, pick(보여 줄 수업 문장 번호) }
 const WORD_STATS_KEY = 'tutoreal.wordstats';   // { played, won, streak, best, lastWonNo }
 const WORD_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
 const WORD_MARK = { correct: '🟩', present: '🟨', absent: '⬜' };
 const WORD_SAY = { correct: '자리까지 맞음', present: '다른 자리에 있음', absent: '없음' };
-let dailyWord = null;   // 서버가 준 오늘의 단어 { no, date, word, meaning, sentence, preview } (없으면 null)
+let dailyWord = null;   // 서버가 준 오늘의 단어 { no, date, word, meaning, sentence, sentences, preview } (없으면 null)
 let wordTyping = '';
 // 발음 듣기 버튼: 단어 게임은 늘 영어 음성으로 (선생님이 중국어 챕터를 보던 중이어도)
 const wordSayBtn = (text, label) =>
@@ -2123,8 +2123,15 @@ function renderWordEnd(st) {
   const w = dailyWord.word;
   const stats = wordStats();
   const streak = currentStreak(stats);
-  const sentence = dailyWord.sentence
-    ? escapeHtml(dailyWord.sentence).replace(new RegExp(`\\b(${w})\\b`, 'i'), '<strong>$1</strong>') : '';
+  // 수업 문장이 여러 개면 그중 하나를 무작위로 (68단계). 고른 문장은 저장해서, 같은 날 다시 열어도 같은 문장
+  const list = dailyWord.sentences && dailyWord.sentences.length ? dailyWord.sentences : [dailyWord.sentence].filter(Boolean);
+  if (list.length && !(st.pick >= 0 && st.pick < list.length)) {
+    st.pick = Math.floor(Math.random() * list.length);
+    saveJson(WORD_KEY, st);
+  }
+  const picked = list.length ? list[st.pick] : '';
+  const sentence = picked
+    ? escapeHtml(picked).replace(new RegExp(`\\b(${w})\\b`, 'i'), '<strong>$1</strong>') : '';
   end.innerHTML = `
     <p class="word-result">${st.won ? `🎉 ${st.guesses.length}번 만에 맞혔어요!` : '아쉬워요! 내일 또 도전해요.'}</p>
     <div class="word-answer">
@@ -2132,7 +2139,7 @@ function renderWordEnd(st) {
       ${dailyWord.meaning ? `<span class="word-answer-ko">${escapeHtml(dailyWord.meaning)}</span>` : ''}
       ${wordSayBtn(w, `${w} 발음 듣기`)}
     </div>
-    ${sentence ? `<p class="word-sentence">${sentence} ${wordSayBtn(dailyWord.sentence, '문장 듣기')}</p>` : ''}
+    ${sentence ? `<p class="word-sentence">${sentence} ${wordSayBtn(picked, '문장 듣기')}</p>` : ''}
     <p class="word-stats">${streak > 0 ? `🔥 ${streak}일 연속` : '연속 기록 없음'} · 맞힌 날 ${stats.won} / ${stats.played} · 최고 ${stats.best}일 연속</p>
     <button class="primary" id="word-share">결과 공유하기</button>
     <p class="hint" id="word-share-msg" role="status"></p>

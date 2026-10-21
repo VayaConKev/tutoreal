@@ -1,4 +1,4 @@
-// 67단계: 오늘의 단어 — words 탭·예시 단어, settings daily_word_published(처음엔 preview)·daily_word_start, chapters 응답의 daily_word, 서버 v0.50
+// 67단계: 오늘의 단어 — words 탭·예시 단어, settings daily_word_published(처음엔 preview)·daily_word_start, chapters 응답의 daily_word, 서버 v0.50에서 생김
 const { makeWorld, CODE, baseline } = require('./fakesheet.js');
 const assert = require('assert');
 const kst = (offsetDays) => new Date(Date.now() + 9 * 3600e3 + offsetDays * 86400e3).toISOString().slice(0, 10);
@@ -56,5 +56,4 @@ assert(/건너뛰는 단어 — stomach/.test(msg2));
 set('daily_word_start', new Date(kst(-1) + 'T00:00:00+09:00'));
 assert.equal(today('stu').no, 2);
 console.log('날짜 값으로 바뀐 칸도 읽음');
-assert.equal(post({ action: 'chapters', code: 'stu' }).server, 'v0.50');
 console.log('모든 확인 통과');
