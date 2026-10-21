@@ -123,6 +123,7 @@ Tutoreal의 교과서 내용은 **모두 구글 시트(Tutoreal DB)에만** 있�
 칸 순서: `order` `word` `meaning` `sentence` `course` `active` `hint`
 
 - 챕터 목록 맨 위의 '오늘의 게임'. Wordle처럼 **영어 5글자** 단어를 6번 안에 맞힌다. 5글자가 아닌 줄은 건너뛰고, setup을 실행하면 건너뛰는 단어를 알려 준다.
+- 학생은 사전(`data/words5.txt`, 영어 5글자 8,636개)에 있는 단어만 입력할 수 있다. 정답 단어는 사전에 없어도 받는다. 다만 학생이 떠올릴 수 있도록 흔한 단어를 고른다.
 - 누구에게 보일지는 settings 탭 `daily_word_published`: `preview`(처음 값, 선생님·테스터만, '미리 보기' 표시) → 시험해 본 뒤 `TRUE`(모든 영어 과정 학생) / `FALSE`(아무에게도). 챕터의 published와 같다.
 - settings 탭 `daily_word_start`(예: `2026-10-22`)가 #1 날짜. 그날부터 `order` 순서대로 하루에 한 단어 (한국 시간 자정에 바뀜, 끝까지 가면 처음부터). 비우면 게임이 보이지 않는다.
 - `hint`: 3번째 시도부터 열 수 있는 힌트. **쉬운 영어 설명**으로, 정답 단어는 쓰지 않는다 (예: knees → `Part of your leg. You bend it to sit down.`). 비우면 글자 하나를 알려 준다.

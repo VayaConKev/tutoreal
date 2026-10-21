@@ -1997,7 +1997,7 @@ window.addEventListener('pagehide', () => { if (live) { talk.endReason = 'left';
 
 /* ── 오늘의 단어 (67단계) ──
    Wordle처럼 5글자 영어 단어를 6번 안에 맞힌다. 하루 한 단어, 모든 학생이 같은 단어 (서버가 한국 시간 기준으로 정함).
-   아무 글자 조합이나 입력할 수 있다 (단어 사전 확인 없음, 초급 학생 배려).
+   사전에 있는 영어 단어만 입력할 수 있다 (76단계: 'AEIOU' 같은 글자 탐색 꼼수를 막는다). 사전은 data/words5.txt.
    힌트 (73단계): 3번째 시도부터 쉬운 영어 설명을 볼 수 있다 (그 전에는 잠김). 설명이 없는 단어는 글자 하나를 알려 준다.
    한국어 뜻은 너무 쉬워서 힌트로 쓰지 않고, 다 푼 뒤에만 보인다.
    푼 기록과 연속 기록은 이 휴대폰에만 저장한다. AI를 쓰지 않아 비용이 없다. */
@@ -2011,6 +2011,19 @@ const WORD_MARK = { correct: '🟩', present: '🟨', absent: '⬜' };
 const WORD_SAY = { correct: '자리까지 맞음', present: '다른 자리에 있음', absent: '없음' };
 let dailyWord = null;   // 서버가 준 오늘의 단어 { no, date, word, meaning, hint, sentence, sentences, preview, test_account } (없으면 null)
 let wordTyping = '';
+// 입력할 수 있는 단어 (76단계): 게임 화면을 처음 열 때 한 번 불러온다. 못 불러오면 null → 사전 확인 없이 받는다 (게임은 계속되게)
+let wordDict = null;
+let wordDictLoading = null;
+function loadWordDict() {
+  if (!wordDictLoading) {
+    wordDictLoading = fetch('data/words5.txt')
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error('HTTP_' + r.status))))
+      .then((t) => { wordDict = new Set(t.split(/\s+/).filter(Boolean)); })
+      .catch((err) => { console.warn('단어 사전을 불러오지 못했어요', err); wordDictLoading = null; });
+  }
+  return wordDictLoading;
+}
+let wordChecking = false;   // 사전을 기다리는 중 (확인을 두 번 눌러도 한 번만)
 // 발음 듣기 버튼: 단어 게임은 늘 영어 음성으로 (선생님이 중국어 챕터를 보던 중이어도)
 const wordSayBtn = (text, label) =>
   `<button type="button" class="say-btn" data-say="${escapeHtml(text)}" data-course="en" aria-label="${escapeHtml(label)}">${SPEAKER_ICON}</button>`;
@@ -2079,6 +2092,7 @@ function renderWordCard() {
 
 function openWord() {
   if (!dailyWord) return;
+  loadWordDict();
   wordTyping = '';
   $('#word-no').textContent = `#${dailyWord.no} · ${dailyWord.date}`;
   $('#word-msg').textContent = '';
@@ -2206,20 +2220,28 @@ function renderWordEnd(st) {
 
 function wordKey(key) {
   const st = wordState();
-  if (st.done || wordFlipping) return;
+  if (st.done || wordFlipping || wordChecking) return;
   $('#word-msg').textContent = hintOpen(st) ? wordHintText(st) : '';
   if (key === 'back') { wordTyping = wordTyping.slice(0, -1); return renderWord(); }
   if (key === 'enter') return submitWord(st);
   if (/^[a-z]$/.test(key) && wordTyping.length < WORD_LEN) { wordTyping += key; renderWord(); }
 }
 
-function submitWord(st) {
-  if (wordTyping.length < WORD_LEN) {
-    $('#word-msg').textContent = `${WORD_LEN}글자를 모두 채워 주세요.`;
-    const row = document.querySelector('.word-row.now');
-    if (row) { row.classList.remove('shake'); void row.offsetWidth; row.classList.add('shake'); }
-    return;
+function shakeNowRow(msg) {
+  $('#word-msg').textContent = msg;
+  const row = document.querySelector('.word-row.now');
+  if (row) { row.classList.remove('shake'); void row.offsetWidth; row.classList.add('shake'); }
+}
+
+async function submitWord(st) {
+  if (wordTyping.length < WORD_LEN) return shakeNowRow(`${WORD_LEN}글자를 모두 채워 주세요.`);
+  // 사전에 없는 단어는 받지 않는다 (기회도 줄지 않음). 정답 단어는 사전에 없어도 받는다
+  if (!wordDict) {
+    wordChecking = true;
+    await loadWordDict();
+    wordChecking = false;
   }
+  if (wordDict && wordTyping !== dailyWord.word && !wordDict.has(wordTyping)) return shakeNowRow('사전에 없는 단어예요. 다른 단어를 넣어 보세요.');
   st.guesses.push(wordTyping);
   wordTyping = '';
   const won = st.guesses[st.guesses.length - 1] === dailyWord.word;
