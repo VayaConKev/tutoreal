@@ -26,7 +26,7 @@ const talk = (ch) => {
 const a = talk('ch02');
 console.log('슬립 있음:', JSON.stringify(a.r.slip), '/ 연결 시작 가능', Math.round(a.startSec), '초 / 토큰 만료', Math.round(a.expSec), '초 (대화 한도', a.lim, '초)');
 assert.deepEqual(a.r.slip.exams, ['G']); assert.equal(a.r.slip.sedation, '+'); assert.deepEqual(a.r.slip.results, ['S']);
-assert(a.r.slip.locker >= 1 && a.r.slip.locker <= 40 && a.r.slip.legend.includes('표재성') && a.r.slip.start_within_sec === 600);
+assert(a.r.slip.locker >= 1 && a.r.slip.locker <= 12 && a.r.slip.legend.includes('표재성') && a.r.slip.start_within_sec === 600);
 assert(Math.abs(a.startSec - 600) < 2 && Math.abs(a.expSec - (600 + a.lim + 60)) < 2);
 assert.equal(a.r.patient.exam, 'stomach endoscopy with sedation', '차트 정보는 그대로 (앱이 숨김)');
 const b = talk('ch01');

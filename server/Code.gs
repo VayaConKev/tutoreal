@@ -86,7 +86,7 @@
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.48';
+const SERVER_VERSION = 'v0.49';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -1107,10 +1107,10 @@ function createLiveToken_(chapterId, maxSec, student) {
     model: model,
     scenario_id: String(sc.scenario_id),
     patient: { name: patient.name, dob: patient.dob, exam: patient.exam },
-    // 검사 결과 슬립 (없으면 null). 소지품 번호는 대화마다 1~40 무작위. start_within_sec: 이 안에 '말하기 시작'을 눌러야 연결된다
+    // 검사 결과 슬립 (없으면 null). 소지품 번호는 대화마다 1~12 무작위 (병원 수납함이 12칸, 66단계). start_within_sec: 이 안에 '말하기 시작'을 눌러야 연결된다
     slip: slip ? {
       exams: slip.exams, sedation: slip.sedation, results: slip.results,
-      locker: 1 + Math.floor(Math.random() * 40),
+      locker: 1 + Math.floor(Math.random() * 12),
       legend: slipLegendFor_(settings.slip_legend, chapterId),
       start_within_sec: SLIP_START_WITHIN_SEC
     } : null

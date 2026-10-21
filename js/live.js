@@ -18,6 +18,18 @@ function fromBase64(b64) {
   return bytes;
 }
 
+/** 연결이 끊긴 이유를 화면에 보여 줄 글로 바꾼다.
+ *  구글 쪽에서 접근을 막은 경우(1008, 'denied access'·'permission'·'API key')는 영어 원문 대신 쉬운 안내 (65단계).
+ *  원문(코드·이유)은 문제를 찾을 수 있게 콘솔에 남긴다. 그 밖의 경우는 전처럼 코드와 이유를 그대로 보여 준다. */
+function closeText(e) {
+  const raw = `${e.code}${e.reason ? ': ' + e.reason : ''}`;
+  if (e.code === 1008 || /denied access|permission|api key/i.test(e.reason || '')) {
+    console.warn('Gemini Live 연결이 막혔어요', raw);
+    return 'AI 연결이 잠시 막혔어요. 선생님께 알려 주세요.';
+  }
+  return `연결이 끊겼어요 (${raw})`;
+}
+
 export class LiveSession {
   // 반드시 버튼을 누른 그 순간에 만든다. iOS는 사용자가 누른 순간에만 소리를 켤 수 있다.
   // ctx는 AI 목소리 재생용. 마이크용 micCtx는 마이크를 켠 뒤에 따로 만든다 (iOS는 마이크보다 먼저 만든
@@ -83,7 +95,7 @@ export class LiveSession {
     this.ws.onopen = () => this.ws.send(JSON.stringify({ setup: { model: `models/${model}` } }));
     this.ws.onmessage = (e) => this.handle(e.data);
     // '끝내기'로 닫은 경우는 stop()이 먼저 불려 여기서 아무 일도 하지 않는다. 그 밖에는 끊긴 이유를 보여 준다.
-    this.ws.onclose = (e) => this.stop(`연결이 끊겼어요 (${e.code}${e.reason ? ': ' + e.reason : ''})`);
+    this.ws.onclose = (e) => this.stop(closeText(e));
   }
 
   sendAudio(buffer) {
