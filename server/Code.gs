@@ -86,7 +86,7 @@
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.52';
+const SERVER_VERSION = 'v0.53';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -1214,7 +1214,10 @@ function dailyWordList_() {
     .sort(function (a, b) { return a.order - b.order; });
 }
 
-/** 오늘의 단어 { no, date, word, meaning, sentence, sentences, preview }. sentences: 수업 문장 여러 개 (앱이 하나를 고름), sentence: 첫 문장 (v0.72 앱용). 영어 과정을 쓰는 사람(선생님 포함)만.
+/** 오늘의 단어 { no, date, word, meaning, sentence, sentences, preview, test_account }.
+ *  sentences: 수업 문장 여러 개 (앱이 하나를 고름), sentence: 첫 문장 (v0.72 앱용).
+ *  test_account: 선생님·테스터 계정이면 true — 앱이 끝 화면에 '다시 하기'(시험용)를 보여 준다 (71단계).
+ *  영어 과정을 쓰는 사람(선생님 포함)만.
  *  settings daily_word_published가 preview면 선생님·테스터만, TRUE면 모두, 그 밖(FALSE·빈칸)이면 아무에게도. 아직 #1 날짜 전이어도 null. */
 function dailyWord_(student) {
   if (!canUseCourse_(student, 'en')) return null;
@@ -1230,7 +1233,7 @@ function dailyWord_(student) {
   if (!words.length) return null;
   const w = words[days % words.length];
   return { no: days + 1, date: today, word: w.word, meaning: w.meaning,
-           sentence: w.sentences[0] || '', sentences: w.sentences, preview: preview };
+           sentence: w.sentences[0] || '', sentences: w.sentences, preview: preview, test_account: canPreview_(student) };
 }
 
 /** 생년월일이 날짜로 바뀌어 있어도 2003-05-11 형태의 글자로 돌려준다. */

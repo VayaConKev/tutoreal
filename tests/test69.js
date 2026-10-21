@@ -1,4 +1,4 @@
-// 69단계: 오늘의 단어 예시에 salty·spicy 추가 (생활 습관 안내 '맵고 짠 음식은 피하세요'), 서버 v0.52
+// 69단계: 오늘의 단어 예시에 salty·spicy 추가 (생활 습관 안내 '맵고 짠 음식은 피하세요'), 서버 v0.52에서 바뀜
 const { makeWorld, CODE } = require('./fakesheet.js');
 const assert = require('assert');
 const kst = (offsetDays) => new Date(Date.now() + 9 * 3600e3 + offsetDays * 86400e3).toISOString().slice(0, 10);
@@ -16,5 +16,4 @@ set('daily_word_start', kst(-21));   // #22 = spicy
 const r = w.run('doPost', { postData: { contents: JSON.stringify({ action: 'chapters', code: 'tch' }) } }).body;
 console.log('#22:', r.daily_word.word, JSON.stringify(r.daily_word.sentences));
 assert.equal(r.daily_word.word, 'spicy'); assert.equal(r.daily_word.sentences.length, 2);
-assert.equal(r.server, 'v0.52');
 console.log('모든 확인 통과');

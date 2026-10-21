@@ -2002,12 +2002,12 @@ window.addEventListener('pagehide', () => { if (live) { talk.endReason = 'left';
 const WORD_LEN = 5;
 const WORD_TRIES = 6;
 const WORD_HINT_AFTER = 3;
-const WORD_KEY = 'tutoreal.word';         // 오늘 푼 상태 { no, guesses, hint, done, won, pick(보여 줄 수업 문장 번호) }
+const WORD_KEY = 'tutoreal.word';         // 오늘 푼 상태 { no, guesses, hint, done, won, pick(보여 줄 수업 문장 번호), replay(시험용 다시 하기) }
 const WORD_STATS_KEY = 'tutoreal.wordstats';   // { played, won, streak, best, lastWonNo }
 const WORD_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
 const WORD_MARK = { correct: '🟩', present: '🟨', absent: '⬜' };
 const WORD_SAY = { correct: '자리까지 맞음', present: '다른 자리에 있음', absent: '없음' };
-let dailyWord = null;   // 서버가 준 오늘의 단어 { no, date, word, meaning, sentence, sentences, preview } (없으면 null)
+let dailyWord = null;   // 서버가 준 오늘의 단어 { no, date, word, meaning, sentence, sentences, preview, test_account } (없으면 null)
 let wordTyping = '';
 // 발음 듣기 버튼: 단어 게임은 늘 영어 음성으로 (선생님이 중국어 챕터를 보던 중이어도)
 const wordSayBtn = (text, label) =>
@@ -2185,8 +2185,10 @@ function renderWordEnd(st) {
     <p class="word-stats">${streak > 0 ? `🔥 ${streak}일 연속` : '연속 기록 없음'} · 맞힌 날 ${stats.won} / ${stats.played} · 최고 ${stats.best}일 연속</p>
     <button class="primary" id="word-share">결과 공유하기</button>
     <p class="hint" id="word-share-msg" role="status"></p>
-    <p class="hint">다음 단어는 내일 0시(한국 시간)에 나와요.</p>`;
+    <p class="hint">다음 단어는 내일 0시(한국 시간)에 나와요.</p>
+    ${dailyWord.test_account ? `<button class="link word-reset" id="word-reset">↺ 다시 하기 · 시험용 (선생님·테스터에게만 보여요)</button>` : ''}`;
   $('#word-share').addEventListener('click', shareWord);
+  if (dailyWord.test_account) $('#word-reset').addEventListener('click', resetWordForTest);
 }
 
 function wordKey(key) {
@@ -2211,6 +2213,9 @@ function submitWord(st) {
   if (won || st.guesses.length >= WORD_TRIES) {
     st.done = true;
     st.won = won;
+  }
+  // 시험용 다시 하기(replay)로 푼 판은 연속 기록·맞힌 날에 세지 않는다
+  if (st.done && !st.replay) {
     const stats = wordStats();
     stats.played++;
     if (won) {
@@ -2234,6 +2239,16 @@ function submitWord(st) {
   wordFlipping = true;
   renderWord(true);
   flipRow(st.guesses.length - 1, st.guesses[st.guesses.length - 1]).then(after, after);
+}
+
+/** 시험용 다시 하기 (71단계, 선생님·테스터만): 오늘 판만 지우고 처음부터. 연속 기록·맞힌 날 기록은 그대로 둔다 */
+function resetWordForTest() {
+  saveJson(WORD_KEY, { no: dailyWord.no, guesses: [], hint: false, done: false, won: false, replay: true });
+  wordTyping = '';
+  $('#word-msg').textContent = '';
+  renderWord();
+  renderWordCard();
+  window.scrollTo(0, 0);
 }
 
 /** 결과 공유 글: 정답 글자 없이 색만 (아직 안 푼 동료에게 스포일러가 되지 않게) */

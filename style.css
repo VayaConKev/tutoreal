@@ -606,3 +606,4 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 .word-sentence { margin: 10px 0 0; }
 .word-stats { color: var(--muted); font-size: 14px; margin: 12px 0; }
 .word-nudge { display: flex; flex-direction: column; gap: 8px; align-items: stretch; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); text-align: center; }
+.word-reset { display: block; margin: 6px auto 0; font-size: 13px; color: var(--muted); }
