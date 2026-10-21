@@ -34,7 +34,8 @@ async function postServer(action, body = {}, timeoutMs = 15000, keepalive = fals
 // 챕터 목록은 접속 코드로만 받는다. 서버가 그 학생 과정(영어/중국어)의 챕터만 준다.
 export async function getChapters(code) {
   const data = await postServer('chapters', { code });
-  return { chapters: data.chapters || [], server: data.server };
+  // daily_word: 오늘의 단어 (67단계) { no, date, word, meaning, sentence, preview } 또는 null (학생에게 숨긴 동안은 선생님·테스터만)
+  return { chapters: data.chapters || [], server: data.server, dailyWord: data.daily_word || null };
 }
 
 export async function login(code) {

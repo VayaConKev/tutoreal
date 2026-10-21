@@ -13,6 +13,7 @@
   --cat: #121417; --cat-eye: #f3e6cc; --cat-ear: #f3e6cc; --cat-chin: #f3e6cc; --cat-pupil: #121417;
   --cat-whisker: #ffffff; --cat-tick: #e9edf1;
   --slip-paper: #fffdf6; --slip-line: #2b3138; --slip-pen: #d23c2c;   /* 검사 결과 슬립 (종이, 칸 선, 빨간 펜 동그라미) */
+  --w-correct: #4f9d5c; --w-present: #c49a1c; --w-absent: #8a96a3; --w-key: #dfe6ec;   /* 오늘의 단어 칸 (초록·노랑·회색) */
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -22,6 +23,7 @@
     --teal: #50b3b2; --teal-ink: #6dcac8; --teal-soft: #12302f;
     --nav-bg: #0f1c26; --danger: #ef7b7b; color-scheme: dark; --nav-glass: rgba(15, 28, 38, 0.88); --nav-shadow: 0 -4px 16px rgba(0, 0, 0, 0.35);
     --cat: #f2f4f6; --cat-eye: #9fd4f2; --cat-ear: #f4b4c4; --cat-chin: #e2cfa8; --cat-whisker: #8d979f; --cat-tick: #2a3138; --slip-paper: #1b2732; --slip-line: #93a7b6; --slip-pen: #ff7a6b;
+    --w-correct: #4a8f55; --w-present: #b08a1e; --w-absent: #3e4d5a; --w-key: #2a3a47;
   }
 }
 :root[data-theme="dark"] {
@@ -30,6 +32,7 @@
   --teal: #50b3b2; --teal-ink: #6dcac8; --teal-soft: #12302f;
   --nav-bg: #0f1c26; --danger: #ef7b7b; color-scheme: dark; --nav-glass: rgba(15, 28, 38, 0.88); --nav-shadow: 0 -4px 16px rgba(0, 0, 0, 0.35);
   --cat: #f2f4f6; --cat-eye: #9fd4f2; --cat-ear: #f4b4c4; --cat-chin: #e2cfa8; --cat-whisker: #8d979f; --cat-tick: #2a3138; --slip-paper: #1b2732; --slip-line: #93a7b6; --slip-pen: #ff7a6b;
+    --w-correct: #4a8f55; --w-present: #b08a1e; --w-absent: #3e4d5a; --w-key: #2a3a47;
 }
 * { box-sizing: border-box; }
 body {
@@ -525,3 +528,61 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 
 /* 미리 보기 챕터 표시 (43단계): 선생님·테스터에게만 보이는 챕터 */
 .preview-tag { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+/* 오늘의 단어 (67단계): 챕터 목록 맨 위 카드, 6×5 칸, 화면 키보드. 색 + 글자 설명(aria-label)으로 흑백·색약에서도 구분 */
+.word-card {
+  width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; margin: 0 0 18px;
+  background: var(--teal-soft); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 14px 16px; color: inherit; font: inherit; cursor: pointer;
+}
+.word-card:active { transform: scale(0.99); }
+.word-card-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.word-card .eyebrow { color: var(--teal-ink); font-size: 13px; }
+.word-card-title { font-weight: 700; font-size: 17px; }
+.word-card-sub { color: var(--muted); font-size: 14px; }
+.word-card.done { background: var(--card); padding: 10px 16px; font-size: 15px; }
+.word-card.done > span:first-child { flex: 1; color: var(--muted); }
+.word-streak { flex: none; font-weight: 700; font-size: 14px; }
+.word-game { padding: 16px; }
+.word-game h3 { margin: 2px 0 0; }
+.word-game .goal { margin: 2px 0 0; }
+.word-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; color: var(--muted); font-size: 13px; margin: 4px 0 12px; }
+.wl { display: inline-block; width: 14px; height: 14px; border-radius: 3px; margin-left: 4px; }
+.wl:first-child { margin-left: 0; }
+.wl.correct { background: var(--w-correct); } .wl.present { background: var(--w-present); } .wl.absent { background: var(--w-absent); }
+.word-grid { display: grid; gap: 6px; justify-content: center; margin: 0 auto; }
+.word-row { display: grid; grid-template-columns: repeat(5, 48px); gap: 6px; }
+.word-tile {
+  height: 48px; display: grid; place-items: center; border: 2px solid var(--line); border-radius: 6px;
+  font-size: 24px; font-weight: 800; text-transform: uppercase; color: var(--text); background: var(--card);
+}
+.word-tile.filled { border-color: var(--muted); }
+.word-tile.correct, .word-tile.present, .word-tile.absent { color: #fff; border-color: transparent; }
+.word-tile.correct { background: var(--w-correct); } .word-tile.present { background: var(--w-present); } .word-tile.absent { background: var(--w-absent); }
+.word-row.shake { animation: word-shake 0.35s; }
+@keyframes word-shake { 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
+@media (prefers-reduced-motion: reduce) { .word-row.shake { animation: none; } }
+.word-msg { min-height: 1.6em; text-align: center; margin: 10px 0 4px; font-weight: 600; }
+.word-hint-btn { display: block; margin: 0 auto; }
+/* 키보드는 화면 아래에 붙여 둔다 (작은 휴대폰에서도 칸과 키보드가 함께 보이게) */
+.word-keys {
+  position: sticky; bottom: 0; z-index: 2; display: flex; flex-direction: column; gap: 7px;
+  margin: 12px -4px 0; padding: 10px 4px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--bg);
+}
+.word-key-row { display: flex; justify-content: center; gap: 5px; }
+.word-key {
+  flex: 1; max-width: 44px; height: 52px; border: 0; border-radius: 6px; padding: 0; cursor: pointer;
+  background: var(--w-key); color: var(--text); font: inherit; font-size: 16px; font-weight: 700;
+}
+.word-key.wide { max-width: 66px; flex: 1.5; font-size: 14px; }
+.word-key.correct, .word-key.present, .word-key.absent { color: #fff; }
+.word-key.correct { background: var(--w-correct); } .word-key.present { background: var(--w-present); } .word-key.absent { background: var(--w-absent); }
+.word-key:active { filter: brightness(0.92); }
+.word-end { text-align: center; margin-top: 14px; }
+.word-result { font-size: 18px; font-weight: 700; margin: 0 0 10px; }
+.word-answer { display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap; }
+.word-answer-text { font-size: 28px; font-weight: 800; letter-spacing: 0.08em; color: var(--teal-ink); }
+.word-answer-ko { font-size: 18px; color: var(--muted); }
+.word-sentence { margin: 10px 0 0; }
+.word-stats { color: var(--muted); font-size: 14px; margin: 12px 0; }
+.word-nudge { display: flex; flex-direction: column; gap: 8px; align-items: stretch; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); text-align: center; }

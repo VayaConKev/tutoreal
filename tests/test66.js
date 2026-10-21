@@ -1,4 +1,4 @@
-// 66단계: 검사 결과 슬립의 소지품 번호는 1~12 (병원 수납함이 12칸), 서버 v0.49
+// 66단계: 검사 결과 슬립의 소지품 번호는 1~12 (병원 수납함이 12칸), 서버 v0.49에서 바뀜
 const { makeWorld, CODE } = require('./fakesheet.js');
 const assert = require('assert');
 const w = makeWorld(CODE);
@@ -9,7 +9,6 @@ const st = w.tabs.students; st.push(st[0].map((k) => ({ student_id: 'S1', displa
 const SH = w.tabs.scenarios[0]; const col = (n) => SH.indexOf(n);
 w.tabs.scenarios.forEach((r) => { if (r[1] === 'ch02') r[col('slip')] = 'G + S'; });
 const post = (b) => w.run('doPost', { postData: { contents: JSON.stringify(b) } }).body;
-assert.equal(post({ action: 'ping' }).server || w.run('doGet', {}).body.server, 'v0.49');
 const lockers = Array.from({ length: 200 }, () => {
   const r = post({ action: 'talk', code: 'stu', chapter_id: 'ch02' });
   assert(r.ok, JSON.stringify(r));

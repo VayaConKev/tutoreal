@@ -86,7 +86,7 @@
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.49';
+const SERVER_VERSION = 'v0.50';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -112,7 +112,10 @@ const SCHEMA = {
   // 문장 연습: sentence의 [대괄호] 부분이 빈칸. pron은 어려운 단어의 발음 안내 (21단계 발음 코칭에서 기준으로 쓴다)
   drills:         ['drill_id', 'chapter_id', 'order', 'situation', 'sentence', 'pron', 'active'],
   // 발음 코칭 기록: 소리와 들린 글자는 저장하지 않는다. 하루 횟수 한도와 월 예산 계산에 쓴다.
-  pron_checks:    ['at', 'student_id', 'chapter_id', 'drill_id', 'level', 'overall', 'cost_usd']
+  pron_checks:    ['at', 'student_id', 'chapter_id', 'drill_id', 'level', 'overall', 'cost_usd'],
+  // 오늘의 단어 (67단계): 5글자 영어 단어를 order 순서대로 하루에 하나. meaning은 3번 틀리면 보는 한국어 힌트,
+  // sentence는 다 푼 뒤 보여 줄 수업 문장 (선택). 지금은 영어 과정(course 빈칸·en)만. 5글자가 아닌 줄은 건너뛴다.
+  words:          ['order', 'word', 'meaning', 'sentence', 'course', 'active']
 };
 
 const PATIENT_PROMPT_V1 = [
@@ -364,7 +367,32 @@ const SEED = {
     ['last_class_date_zh', '', '중국어 과정의 최근 수업일 (요약 기간 시작). 비우면 last_class_date'],
     ['fallback_text_model', '', '피드백을 만들 때 text_model이 계속 붐비면(503 등) 한 번 더 시도할 다른 모델. 비우면 쓰지 않음. 예: gemini-3.6-flash (같은 요금)'],
     ['diag_log', true, '피드백 진단 기록을 quality 탭에 남김 (TRUE 켜짐 / FALSE 꺼짐, 비우면 켜짐). 대화 내용·이름은 남기지 않음'],
+    ['daily_word_published', 'preview', '오늘의 단어를 누구에게 보일지: preview(선생님·테스터만, students 탭 role이 teacher·tester), TRUE(모든 영어 과정 학생), FALSE(아무에게도). 챕터의 published와 같은 뜻'],
+    ['daily_word_start', '2026-10-22', '오늘의 단어 #1 날짜 (yyyy-mm-dd). 이 날부터 words 탭의 order 순서대로 하루에 한 단어 (한국 시간 자정에 바뀜, 끝까지 가면 처음부터). 비우면 오늘의 단어를 보여 주지 않음'],
     ['slip_legend', SLIP_LEGEND_DEFAULT, '검사 결과 슬립 아래에 보이는 결과 약어 풀이 (· 로 구분, \'약어 뜻\'). 챕터마다 그 챕터 슬립에 나오는 약어만 보인다. 비우면 보이지 않음 (실전처럼 글자만)']
+  ],
+  // 오늘의 단어 예시 (67단계): 수업 단어와 일상 단어를 섞었다. Kevin이 시트에서 고치고 아래에 더 붙인다.
+  words: [
+    [1, 'knees', '무릎', 'Please bend your knees.', 'en', true],
+    [2, 'smile', '웃다, 미소', '', 'en', true],
+    [3, 'sting', '따끔하다', 'The medicine may sting a little.', 'en', true],
+    [4, 'mouth', '입', 'The esophagus is the tube from your mouth to your stomach.', 'en', true],
+    [5, 'lunch', '점심', '', 'en', true],
+    [6, 'relax', '힘을 빼다', "It's okay. Relax your shoulders.", 'en', true],
+    [7, 'polyp', '용종', 'A polyp is a small bump on the inside of your stomach.', 'en', true],
+    [8, 'nurse', '간호사', '', 'en', true],
+    [9, 'shirt', '윗옷', 'Please lift your shirt a little.', 'en', true],
+    [10, 'teeth', '이 (치아)', 'It protects your teeth.', 'en', true],
+    [11, 'lemon', '레몬', '', 'en', true],
+    [12, 'awake', '깨어 있는', 'You will be awake during the test.', 'en', true],
+    [13, 'sleep', '자다, 잠', 'You will fall asleep soon.', 'en', true],
+    [14, 'water', '물', '', 'en', true],
+    [15, 'ulcer', '궤양', '', 'en', true],
+    [16, 'chest', '가슴', '', 'en', true],
+    [17, 'blood', '피', '', 'en', true],
+    [18, 'colon', '대장', '', 'en', true],
+    [19, 'dizzy', '어지러운', '', 'en', true],
+    [20, 'happy', '행복한', '', 'en', true]
   ]
 };
 
@@ -530,6 +558,13 @@ function setup() {
       });
     }
   });
+
+  // 오늘의 단어: 영어 5글자가 아니라서 건너뛰는 단어를 알려 준다 (67단계)
+  forgetTable_('words');
+  const skipped = readTable_('words').filter(function (r) {
+    return isTrue_(r.active) && courseOf_(r) === 'en' && !/^[a-z]{5}$/.test(String(r.word || '').trim().toLowerCase());
+  }).map(function (r) { return String(r.word); });
+  if (skipped.length) log.push('words 탭: 영어 5글자가 아니라서 건너뛰는 단어 — ' + skipped.join(', '));
 
   // 처음 생기는 빈 기본 탭(Sheet1 / 시트1) 정리
   ['Sheet1', '시트1'].forEach(function (n) {
@@ -794,7 +829,7 @@ function handlePost_(body) {
     if (body.action === 'chapters') {
       const auth = auth_(body.code);
       if (!auth.ok) return json_(auth);
-      return json_({ ok: true, server: SERVER_VERSION, chapters: listChapters_(auth.student) });
+      return json_({ ok: true, server: SERVER_VERSION, chapters: listChapters_(auth.student), daily_word: dailyWord_(auth.student) });
     }
     if (body.action === 'talk') {
       const result = startTalk_(body.code, String(body.chapter_id || ''));
@@ -1155,6 +1190,40 @@ function slipLegendFor_(legend, chapterId) {
     const pattern = new RegExp('\\s' + code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+') + '\\s');
     return pattern.test(texts);
   }).join(' · ');
+}
+
+/* 오늘의 단어 (67단계). 하루는 한국 시간 자정에 바뀌고 모든 학생이 같은 단어를 받는다.
+   settings의 daily_word_start가 #1 날짜. 그날부터 words 탭의 order 순서대로 하루에 하나 (끝까지 가면 처음부터). */
+const DAILY_WORD_TZ = 'Asia/Seoul';
+
+/** words 탭에서 쓸 단어 (켜져 있고, 영어 과정이고, 영어 5글자인 것만) — order 순서 */
+function dailyWordList_() {
+  return readTable_('words')
+    .filter(function (r) { return isTrue_(r.active) && courseOf_(r) === 'en'; })
+    .map(function (r) {
+      return { order: Number(r.order) || 0, word: String(r.word || '').trim().toLowerCase(),
+               meaning: String(r.meaning || '').trim(), sentence: String(r.sentence || '').trim() };
+    })
+    .filter(function (r) { return /^[a-z]{5}$/.test(r.word); })
+    .sort(function (a, b) { return a.order - b.order; });
+}
+
+/** 오늘의 단어 { no, date, word, meaning, sentence, preview }. 영어 과정을 쓰는 사람(선생님 포함)만.
+ *  settings daily_word_published가 preview면 선생님·테스터만, TRUE면 모두, 그 밖(FALSE·빈칸)이면 아무에게도. 아직 #1 날짜 전이어도 null. */
+function dailyWord_(student) {
+  if (!canUseCourse_(student, 'en')) return null;
+  const settings = getSettings_();
+  const preview = isPreview_({ published: settings.daily_word_published });
+  if (preview ? !canPreview_(student) : !isTrue_(settings.daily_word_published)) return null;
+  const start = formatDob_(settings.daily_word_start).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return null;
+  const today = Utilities.formatDate(new Date(), DAILY_WORD_TZ, 'yyyy-MM-dd');
+  const days = Math.round((Date.parse(today + 'T00:00:00Z') - Date.parse(start + 'T00:00:00Z')) / 86400000);
+  if (days < 0) return null;
+  const words = dailyWordList_();
+  if (!words.length) return null;
+  const w = words[days % words.length];
+  return { no: days + 1, date: today, word: w.word, meaning: w.meaning, sentence: w.sentence, preview: preview };
 }
 
 /** 생년월일이 날짜로 바뀌어 있어도 2003-05-11 형태의 글자로 돌려준다. */

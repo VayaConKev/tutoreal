@@ -42,6 +42,8 @@
           <p class="greet-sub">오늘도 한 문장씩 연습해 봐요.</p>
         </div>
       </div>
+      <!-- 오늘의 단어 (67단계): 챕터 목록 맨 위의 작은 카드. 다 풀면 한 줄로 줄어든다 -->
+      <div id="word-card-box"></div>
       <h2>챕터</h2>
       <!-- 난이도 (38단계). 지금은 모든 챕터가 Beginner. 나머지는 '준비 중' -->
       <div class="levels diff-tabs" role="group" aria-label="난이도">
@@ -216,6 +218,22 @@
       <div id="tsession-body"></div>
     </section>
 
+    <!-- 오늘의 단어 (67단계): 5글자 영어 단어를 6번 안에. 화면 키보드로 입력 (휴대폰 키보드를 띄우지 않는다) -->
+    <section id="view-word" hidden>
+      <button class="link" id="word-back">‹ 챕터 목록</button>
+      <div class="card word-game">
+        <p class="eyebrow" id="word-no"></p>
+        <h3>오늘의 단어</h3>
+        <p class="goal">5글자 영어 단어를 6번 안에 맞혀 보세요.</p>
+        <p class="word-legend"><span class="wl correct"></span>자리까지 맞음 <span class="wl present"></span>다른 자리에 있음 <span class="wl absent"></span>없음</p>
+        <div class="word-grid" id="word-grid"></div>
+        <p class="word-msg" id="word-msg" role="status" aria-live="polite"></p>
+        <button class="secondary word-hint-btn" id="word-hint" hidden>💡 뜻 힌트 보기</button>
+        <div class="word-end" id="word-end" hidden></div>
+      </div>
+      <div class="word-keys" id="word-keys"></div>
+    </section>
+
     <section id="view-review" hidden>
       <p class="step-count" id="review-step"></p>
       <div class="card" data-step="1">
@@ -248,6 +266,11 @@
         <h3>피드백</h3>
         <div id="feedback"></div>
         <p class="hint" id="finish-msg" role="alert"></p>
+        <!-- 대화를 마친 뒤 한 번 권하기 (67단계). 오늘 이미 풀었으면 보이지 않는다 -->
+        <div class="word-nudge" id="word-nudge" hidden>
+          <span>수고했어요! 🎮 오늘의 단어 한 판 어때요?</span>
+          <button class="secondary" id="word-nudge-btn">저장하고 한 판 하기</button>
+        </div>
       </div>
       <div class="review-actions">
         <button class="secondary" id="review-prev">이전</button>
