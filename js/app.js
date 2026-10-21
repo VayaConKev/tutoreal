@@ -2024,7 +2024,11 @@ function saveJson(key, value) {
 /** 오늘 단어의 푼 상태. 저장된 것이 다른 날 단어면 새로 시작한다. */
 function wordState() {
   const st = loadJson(WORD_KEY, null);
-  if (st && dailyWord && st.no === dailyWord.no) return st;
+  if (st && dailyWord && st.no === dailyWord.no) {
+    // 잠금 전에 연 힌트(예전 버전의 기록)는 없던 것으로: 3번째 시도부터 다시 눌러서 연다 (74단계)
+    if (st.hint && st.guesses.filter((g) => g !== dailyWord.word).length < WORD_HINT_AFTER) st.hint = false;
+    return st;
+  }
   return { no: dailyWord ? dailyWord.no : 0, guesses: [], hint: false, done: false, won: false };
 }
 function wordStats() {
@@ -2121,11 +2125,11 @@ function renderWord(pending = false) {
   // 힌트 버튼: 다 풀거나 이미 본 뒤에는 숨기고, 3번째 시도 전에는 잠근 채 보여 준다
   const hintBtn = $('#word-hint');
   const locked = wrong < WORD_HINT_AFTER;
-  hintBtn.hidden = done || pending || st.hint;
+  hintBtn.hidden = done || pending || hintOpen(st);
   hintBtn.disabled = locked;
   hintBtn.classList.toggle('locked', locked);
   hintBtn.textContent = locked ? `🔒 힌트 · ${WORD_HINT_AFTER + 1}번째 시도부터 열려요` : '💡 힌트 보기';
-  if (st.hint && !done) $('#word-msg').textContent = wordHintText(st);
+  if (hintOpen(st) && !done) $('#word-msg').textContent = wordHintText(st);
   renderWordEnd({ ...st, done });
 }
 
@@ -2203,7 +2207,7 @@ function renderWordEnd(st) {
 function wordKey(key) {
   const st = wordState();
   if (st.done || wordFlipping) return;
-  $('#word-msg').textContent = st.hint ? wordHintText(st) : '';
+  $('#word-msg').textContent = hintOpen(st) ? wordHintText(st) : '';
   if (key === 'back') { wordTyping = wordTyping.slice(0, -1); return renderWord(); }
   if (key === 'enter') return submitWord(st);
   if (/^[a-z]$/.test(key) && wordTyping.length < WORD_LEN) { wordTyping += key; renderWord(); }
@@ -2264,7 +2268,7 @@ function resetWordForTest() {
 function wordShareText() {
   const st = wordState();
   const grid = st.guesses.map((g) => scoreGuess(g, dailyWord.word).map((m) => WORD_MARK[m]).join('')).join('\n');
-  return `Tutoreal 오늘의 단어 #${dailyWord.no}  ${st.won ? st.guesses.length : 'X'}/${WORD_TRIES}${st.hint ? ' 💡' : ''}\n${grid}`;
+  return `Tutoreal 오늘의 단어 #${dailyWord.no}  ${st.won ? st.guesses.length : 'X'}/${WORD_TRIES}${hintOpen(st) ? ' 💡' : ''}\n${grid}`;
 }
 async function shareWord() {
   const text = wordShareText();
@@ -2289,6 +2293,12 @@ document.addEventListener('keydown', (ev) => {
   const k = ev.key === 'Enter' ? 'enter' : ev.key === 'Backspace' ? 'back' : ev.key.toLowerCase();
   if (k === 'enter' || k === 'back' || /^[a-z]$/.test(k)) { ev.preventDefault(); wordKey(k); }
 });
+/** 힌트를 연 상태인지 (74단계): 연 적이 있어도 아직 3번째 시도 전이면 열리지 않은 것으로 본다.
+ *  v0.76에서 잠금 없이 0번째에 연 기록이 휴대폰에 남아 있으면 처음부터 힌트가 보였다. */
+function hintOpen(st) {
+  return !!st.hint && st.guesses.filter((g) => g !== dailyWord.word).length >= WORD_HINT_AFTER;
+}
+
 /** 힌트 글: 쉬운 영어 설명. 없으면 아직 초록으로 맞히지 못한 자리의 글자 하나 (고른 자리는 저장해서 바뀌지 않게) */
 function wordHintText(st) {
   if (dailyWord.hint) return `💡 ${dailyWord.hint}`;
