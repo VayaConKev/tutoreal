@@ -8,12 +8,12 @@
   --teal: #50b3b2; --teal-ink: #1c7473; --teal-soft: #e2f3f2;
   --nav-bg: #e8f1f3; --danger: #c43d3d; --radius: 14px;
   /* 아래쪽 탭 바 (53단계): 반투명 + 흐림, 은은한 위쪽 그림자, 꺼진 탭은 차분한 회색 */
-  --nav-glass: rgba(255, 255, 255, 0.88); --nav-shadow: 0 -4px 16px rgba(15, 23, 42, 0.06); --tab-off: #94a3b8;
+  --nav-glass: rgba(255, 255, 255, 0.88); --nav-shadow: 0 -4px 16px rgba(15, 23, 42, 0.06); --tab-off: #5f6f82;   /* 83단계: #94a3b8은 흰 바탕에서 대비 2.6:1 → 5.1:1 */
   /* 피드백 기다림 고양이: 라이트는 검은 고양이(눈·귀·턱 아이보리), 다크는 흰 고양이(하늘색 눈, 분홍 귀, 베이지 턱) */
   --cat: #121417; --cat-eye: #f3e6cc; --cat-ear: #f3e6cc; --cat-chin: #f3e6cc; --cat-pupil: #121417;
   --cat-whisker: #ffffff; --cat-tick: #e9edf1;
   --slip-paper: #fffdf6; --slip-line: #2b3138; --slip-pen: #d23c2c;   /* 검사 결과 슬립 (종이, 칸 선, 빨간 펜 동그라미) */
-  --w-correct: #4f9d5c; --w-present: #c49a1c; --w-absent: #8a96a3; --w-key: #dfe6ec; --w-board: #2f3a46;   /* 오늘의 단어 칸 (초록·노랑·회색), 뒤집히는 판 */
+  --w-correct: #3d8549; --w-present: #c49a1c; --w-present-ink: #0f1f33; --w-absent: #697684; --w-key: #dfe6ec; --w-board: #2f3a46;   /* 오늘의 단어 칸 (초록·노랑·회색), 뒤집히는 판. 83단계: 초록·회색은 흰 글자 대비 4.5:1 이상으로 조금 진하게, 노랑은 그대로 두고 글자를 진한 남색으로 (흰 글자는 2.6:1) */
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -23,7 +23,7 @@
     --teal: #50b3b2; --teal-ink: #6dcac8; --teal-soft: #12302f;
     --nav-bg: #0f1c26; --danger: #ef7b7b; color-scheme: dark; --nav-glass: rgba(15, 28, 38, 0.88); --nav-shadow: 0 -4px 16px rgba(0, 0, 0, 0.35);
     --cat: #f2f4f6; --cat-eye: #9fd4f2; --cat-ear: #f4b4c4; --cat-chin: #e2cfa8; --cat-whisker: #8d979f; --cat-tick: #2a3138; --slip-paper: #1b2732; --slip-line: #93a7b6; --slip-pen: #ff7a6b;
-    --w-correct: #4a8f55; --w-present: #b08a1e; --w-absent: #3e4d5a; --w-key: #2a3a47; --w-board: #0e1720;
+    --w-correct: #3f8049; --w-present: #b08a1e; --w-present-ink: #0b141d; --w-absent: #3e4d5a; --w-key: #2a3a47; --w-board: #0e1720; --tab-off: #94a3b8;
   }
 }
 :root[data-theme="dark"] {
@@ -32,7 +32,7 @@
   --teal: #50b3b2; --teal-ink: #6dcac8; --teal-soft: #12302f;
   --nav-bg: #0f1c26; --danger: #ef7b7b; color-scheme: dark; --nav-glass: rgba(15, 28, 38, 0.88); --nav-shadow: 0 -4px 16px rgba(0, 0, 0, 0.35);
   --cat: #f2f4f6; --cat-eye: #9fd4f2; --cat-ear: #f4b4c4; --cat-chin: #e2cfa8; --cat-whisker: #8d979f; --cat-tick: #2a3138; --slip-paper: #1b2732; --slip-line: #93a7b6; --slip-pen: #ff7a6b;
-    --w-correct: #4a8f55; --w-present: #b08a1e; --w-absent: #3e4d5a; --w-key: #2a3a47; --w-board: #0e1720;
+    --w-correct: #3f8049; --w-present: #b08a1e; --w-present-ink: #0b141d; --w-absent: #3e4d5a; --w-key: #2a3a47; --w-board: #0e1720; --tab-off: #94a3b8;
 }
 * { box-sizing: border-box; }
 body {
@@ -607,7 +607,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 @keyframes sf-unfold { to { transform: rotateX(0deg); } }
 .sf.filled { background: var(--card); color: var(--text); box-shadow: inset 0 0 0 2px var(--muted); }
 .sf.board { background: var(--w-board); color: #fff; }
-.sf.correct { background: var(--w-correct); color: #fff; } .sf.present { background: var(--w-present); color: #fff; } .sf.absent { background: var(--w-absent); color: #fff; }
+.sf.correct { background: var(--w-correct); color: #fff; } .sf.present { background: var(--w-present); color: var(--w-present-ink); } .sf.absent { background: var(--w-absent); color: #fff; }
 .word-tile.flipping::after, .word-tile.correct::after, .word-tile.present::after, .word-tile.absent::after {
   content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(0, 0, 0, 0.22); z-index: 3; pointer-events: none;
 }
@@ -633,6 +633,7 @@ button.word-hint-btn { display: block; width: auto; margin: 0 auto; padding: 6px
 .word-key.wide { max-width: 66px; flex: 1.5; font-size: 14px; }
 .word-key.correct, .word-key.present, .word-key.absent { color: #fff; }
 .word-key.correct { background: var(--w-correct); } .word-key.present { background: var(--w-present); } .word-key.absent { background: var(--w-absent); }
+.word-tile.present, .word-key.present { color: var(--w-present-ink); }   /* 노란 칸·키는 진한 글자 (83단계) */
 .word-key:active { filter: brightness(0.92); }
 /* 같은 글자를 빨리 두 번 눌러도 화면이 확대되지 않게 (75단계, 아이폰 사파리의 '두 번 눌러 확대').
    manipulation은 두 번 눌러 확대만 끄고, 두 손가락으로 벌리는 확대는 그대로 둔다 (글자 크게 보기가 필요한 사람을 위해).
