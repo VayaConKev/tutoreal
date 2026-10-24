@@ -101,6 +101,10 @@ h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin: 0 0 10px; }
 .chapter-text { flex: 1; min-width: 0; }
 .chapter-title { display: block; font-weight: 700; font-size: 17px; }
 .chapter-goal { display: block; color: var(--muted); font-size: 14px; }
+/* 내 진행 상황 (79단계): 대화 횟수 · 문장 연습 · 마지막 날짜. 칸이 좁으면 항목 단위로 줄바꿈 */
+.chapter-progress { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 6px; color: var(--teal-ink); font-size: 13px; font-weight: 600; }
+.chapter-progress span { white-space: nowrap; }
+.chapter-no.done { background: var(--teal-soft); color: var(--teal-ink); font-size: 18px; }
 /* 학습 개요를 글머리표로 (시트의 goal 칸을 줄바꿈 또는 '-'로 나눈 경우) */
 .goal-list { margin: 2px 0 0; padding-left: 18px; }
 .goal-list li { margin: 0; }

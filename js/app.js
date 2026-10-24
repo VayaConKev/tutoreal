@@ -78,6 +78,7 @@ function show(name) {
   document.body.classList.toggle('has-tabbar', !!tab);
   document.body.classList.toggle('on-word', name === 'word');   // 작은 휴대폰에서 오늘의 단어 화면만 로고 줄을 숨긴다 (78단계, style.css)
   document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+  if (name === 'list' && chapters.length) renderList();   // 대화·문장 연습을 하고 돌아오면 진행 상황(79단계)을 새로 센다
   window.scrollTo(0, 0);
 }
 
@@ -164,6 +165,38 @@ function setDifficulty(d) {
   renderList();
 }
 
+/* 내 진행 상황 (79단계): 이 휴대폰의 기록(내 기록 최근 100개)과 문장 연습 표시로 챕터마다 센다. 서버에는 없다.
+   완료 = 체크리스트의 꼭 할 항목(선택 제외)을 한 대화에서 모두 했다 (피드백의 'N / M'과 같은 기준). 체크리스트가 없는 챕터는 대화 1번 */
+function chapterProgress(c, history, marks) {
+  const talks = history.filter((e) => e.chapterId === c.chapter_id);
+  const drillIds = (c.drills || []).map((d) => d.drill_id);
+  const drillsDone = drillIds.filter((id) => marks[id]).length;
+  const times = talks.map((e) => Date.parse(e.at)).concat(drillIds.map((id) => (marks[id] || {}).at)).filter(Boolean);
+  const allDone = (e) => {
+    const required = ((e.feedback && e.feedback.checklist) || []).filter((x) => !x.optional);
+    return required.length > 0 && required.every((x) => x.done);
+  };
+  return {
+    talks: talks.length, drillsDone, drillsTotal: drillIds.length, last: times.length ? Math.max(...times) : 0,
+    complete: (c.checklist || []).length ? talks.some(allDone) : talks.length > 0
+  };
+}
+function dayLabel(ms) {
+  const d = new Date(ms);
+  const now = new Date();
+  const days = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
+  return days === 0 ? '오늘' : days === 1 ? '어제' : `${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
+/** 💬 대화 2번 · 📝 문장 12/36 · 10월 23일. 한 번도 안 한 챕터는 빈 글 */
+function progressHtml(p) {
+  if (!p.talks && !p.drillsDone) return '';
+  const parts = [];
+  if (p.talks) parts.push(`💬 대화 ${p.talks}번`);
+  if (p.drillsTotal) parts.push(`📝 문장 ${p.drillsDone}/${p.drillsTotal}`);
+  if (p.last) parts.push(dayLabel(p.last));
+  return `<span class="chapter-progress">${parts.map((x) => `<span>${escapeHtml(x)}</span>`).join('')}</span>`;
+}
+
 function renderList() {
   const box = $('#chapter-list');
   if (!chapters.length) {
@@ -180,16 +213,26 @@ function renderList() {
   }
   // 과정이 둘 이상이면(선생님) 과정마다 제목을 붙인다. 서버가 과정별·순서대로 보낸다.
   const many = new Set(list.map((c) => c.course)).size > 1;
-  box.innerHTML = list.map((c, i) => `
+  const history = loadHistory();
+  const marks = loadDrillMarks();
+  box.innerHTML = list.map((c, i) => {
+    const p = chapterProgress(c, history, marks);
+    // 완료한 챕터는 번호 대신 ✓ (화면 읽기에는 'N장 완료')
+    const no = p.complete
+      ? `<span class="chapter-no done"><span aria-hidden="true">✓</span><span class="visually-hidden">${escapeHtml(c.order)}장 완료</span></span>`
+      : `<span class="chapter-no">${escapeHtml(c.order)}</span>`;
+    return `
     ${many && (i === 0 || list[i - 1].course !== c.course) ? `<p class="eyebrow course-label">${COURSE_NAME[c.course] || c.course} 과정</p>` : ''}
     <button class="chapter" data-id="${escapeHtml(c.chapter_id)}">
-      <span class="chapter-no">${escapeHtml(c.order)}</span>
+      ${no}
       <span class="chapter-text">
         <span class="chapter-title">${escapeHtml(c.title)}${c.preview ? ' <span class="opt-tag preview-tag">미리 보기</span>' : ''}</span>
         <span class="chapter-goal">${goalHtml(c.goal)}</span>
+        ${progressHtml(p)}
       </span>
       <span class="chevron" aria-hidden="true">›</span>
-    </button>`).join('');
+    </button>`;
+  }).join('');
   box.querySelectorAll('.chapter').forEach((btn) => {
     btn.addEventListener('click', () => openChapter(btn.dataset.id));
   });
