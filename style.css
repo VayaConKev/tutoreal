@@ -137,7 +137,11 @@ button.primary, button.secondary {
 button.primary { background: var(--accent); color: var(--on-accent); }
 button.primary:disabled { opacity: 0.45; cursor: default; }
 button.secondary { background: var(--accent-soft); color: var(--accent); margin-top: 8px; }
-.link { background: none; border: 0; color: var(--accent); font: inherit; padding: 0; margin-bottom: 14px; cursor: pointer; }
+/* 뒤로 가기 같은 글자 버튼 (81단계): 누르는 영역을 높이 44px로 넓힌다. 글자 자리와 아래 간격은 예전 그대로가 되도록 바깥 여백을 음수로 */
+.link {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; margin: -10px 0 4px -12px;
+  background: none; border: 0; color: var(--accent); font: inherit; cursor: pointer;
+}
 input[type="text"] {
   width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px;
   background: var(--bg); color: var(--text); font: inherit; font-size: 17px;
@@ -645,5 +649,12 @@ button.word-hint-btn { display: block; width: auto; margin: 0 auto; padding: 6px
 .word-say-pill { display: inline-flex; width: auto; height: auto; gap: 6px; align-items: center; margin: 8px auto 0; padding: 6px 14px;
   border-radius: 999px; background: var(--teal-soft); font: inherit; font-size: 14px; font-weight: 600; }
 .word-stats { color: var(--muted); font-size: 14px; margin: 12px 0; }
+/* 피드백 아래 이어서 연습하기 (82단계): 오늘의 단어 권하기와 같은 모양 */
+.after-box { display: flex; flex-direction: column; gap: 8px; align-items: stretch; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); text-align: center; }
+.after-box[hidden] { display: none; }
+.after-box button { margin-top: 0; }
+.after-box .row { display: flex; gap: 8px; }
+.after-box .row button { flex: 1 1 0; min-width: 0; }
+.record-more { margin-top: 12px; border-top: 0; padding-top: 0; }
 .word-nudge { display: flex; flex-direction: column; gap: 8px; align-items: stretch; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); text-align: center; }
 .word-reset { display: block; margin: 6px auto 0; font-size: 13px; color: var(--muted); }

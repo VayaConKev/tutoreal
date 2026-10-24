@@ -829,6 +829,8 @@ function goStep(n) {
   $('#review-next').textContent = n === REVIEW_STEPS ? '완료' : '다음';
   // 마지막 쪽(피드백)에서 오늘의 단어를 한 번 권한다 (67단계). 오늘 이미 풀었으면 숨긴다
   $('#word-nudge').hidden = !(n === REVIEW_STEPS && dailyWord && !wordDoneToday());
+  // 피드백 다음 문장 연습으로 바로 (82단계). 문장 연습이 없는 챕터는 숨김
+  $('#review-drill-box').hidden = !(n === REVIEW_STEPS && review.data && (review.data.chapter.drills || []).length);
   window.scrollTo(0, 0);
 }
 
@@ -1019,6 +1021,7 @@ async function finishReview(next) {
     saveLocal(d);
     review.data = null;
     if (next === 'word' && dailyWord) openWord();
+    else if (next === 'drill') { openChapter(d.chapter.chapter_id); startDrill(); }
     else show('detail');
   } catch (err) {
     console.warn(err);
@@ -1254,7 +1257,8 @@ function openHistory() {
 
 /* ── 내 기록에서 피드백 받기 (40단계): 피드백이 없는 대화만. 받으면 이 휴대폰의 기록에 저장한다.
    공유한 대화였다면 서버가 시트에도 채운다 (선생님 화면에 반영). ── */
-let recordOpen = '';   // 지금 열려 있는 기록의 대화 번호 (기다리는 사이 다른 기록을 열었는지 확인)
+let recordOpen = '';
+let recordChapterId = '';   // 지금 열린 기록의 챕터 (82단계, 이어서 연습하기)   // 지금 열려 있는 기록의 대화 번호 (기다리는 사이 다른 기록을 열었는지 확인)
 
 function showRecordNoFeedback(e, message = '', err = null) {
   const box = $('#record-feedback');
@@ -1396,6 +1400,11 @@ function openRecord(e) {
   $('#record-lines').innerHTML = (e.lines || []).map((l) => `
     <div class="line ${l.who === 'me' ? 'me' : 'ai'}${l.hard ? ' picked' : ''}">${lineInner(l)}</div>`).join('');
   viewCourse = '';
+  // 이 챕터 이어서 연습하기 (82단계): 지금 챕터 목록에 있는 챕터만. 문장 연습이 없으면 다시 대화만
+  const c = chapters.find((x) => x.chapter_id === e.chapterId);
+  recordChapterId = c ? c.chapter_id : '';
+  $('#record-more').hidden = !c;
+  $('#record-drill').hidden = !(c && (c.drills || []).length);
   show('record');
   fitPagerHeight();
   showSwipeHintOnce();
@@ -2018,6 +2027,9 @@ $('#tstudent-back').addEventListener('click', () => show('teacher'));
 $('#tsession-back').addEventListener('click', () => show('tstudent'));
 
 $('#record-back').addEventListener('click', openHistory);
+// 내 기록에서 이 챕터 이어서 연습하기 (82단계). 다시 대화는 누른 이 순간에 시작한다 (iOS는 버튼을 누를 때만 소리를 켤 수 있다)
+$('#record-drill').addEventListener('click', () => { openChapter(recordChapterId); startDrill(); });
+$('#record-again').addEventListener('click', () => { openChapter(recordChapterId); withMicIntro(beginTalk); });
 $('#record-share').addEventListener('click', shareRecord);
 // 피드백 안의 발음 듣기 버튼 (61단계): 4/4, 내 기록, 선생님 화면 어디서든
 document.addEventListener('click', (ev) => {
@@ -2388,6 +2400,7 @@ $('#word-hint').addEventListener('click', () => {
 });
 $('#word-back').addEventListener('click', () => { renderWordCard(); show('list'); });
 $('#word-nudge-btn').addEventListener('click', () => finishReview('word'));
+$('#review-drill').addEventListener('click', () => finishReview('drill'));
 
 setVersion();
 renderThemeBtn();

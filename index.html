@@ -195,6 +195,14 @@
           <div class="rec-panel" id="record-lines-box"><div class="card"><div class="transcript" id="record-lines"></div></div></div>
         </div>
       </div>
+      <!-- 이 챕터 이어서 연습하기 (82단계): 두 쪽 아래, 어느 쪽을 보든 보인다. 챕터 목록에 없는 챕터(내려간 챕터)는 숨김 -->
+      <div class="after-box record-more" id="record-more" hidden>
+        <span>이 챕터를 이어서 연습해 볼까요?</span>
+        <div class="row">
+          <button class="secondary" id="record-drill">📝 문장 연습</button>
+          <button class="primary" id="record-again">💬 다시 대화하기</button>
+        </div>
+      </div>
     </section>
 
     <section id="view-teacher" hidden>
@@ -270,6 +278,11 @@
         <h3>피드백</h3>
         <div id="feedback"></div>
         <p class="hint" id="finish-msg" role="alert"></p>
+        <!-- 피드백 다음 문장 연습으로 바로 (82단계). 문장 연습이 있는 챕터만 -->
+        <div class="after-box" id="review-drill-box" hidden>
+          <span>피드백의 문장을 바로 연습해 볼까요?</span>
+          <button class="secondary" id="review-drill">📝 저장하고 문장 연습하기</button>
+        </div>
         <!-- 대화를 마친 뒤 한 번 권하기 (67단계). 오늘 이미 풀었으면 보이지 않는다 -->
         <div class="word-nudge" id="word-nudge" hidden>
           <span>수고했어요! 🎮 오늘의 단어 한 판 어때요?</span>
