@@ -204,6 +204,14 @@ function renderList() {
     box.innerHTML = '<p class="state">아직 공개된 챕터가 없어요.</p>';
     return;
   }
+  // 챕터가 아직 없는 난이도 탭에 '준비 중' (86단계). 누르면 지금처럼 '준비 중이에요' 카드
+  document.querySelectorAll('.diff-tab').forEach((b) => {
+    const soon = !chapters.some((c) => levelOf(c) === b.dataset.diff);
+    b.classList.toggle('not-ready', soon);
+    const tag = b.querySelector('.soon-tag');
+    if (soon && !tag) b.insertAdjacentHTML('beforeend', '<small class="soon-tag">준비 중</small>');
+    if (!soon && tag) tag.remove();
+  });
   const list = chapters.filter((c) => levelOf(c) === difficulty);
   if (!list.length) {
     box.innerHTML = `<div class="card soon">
@@ -1129,9 +1137,10 @@ function openAvatarPicker() {
   if (!ids.length) {
     grid.innerHTML = '<p class="state" style="grid-column:1/-1">캐릭터 그림을 준비 중이에요. 조금만 기다려 주세요!</p>';
   } else {
-    grid.innerHTML = ids.map((id) => `<button class="pick${id === me.avatar ? ' selected' : ''}" data-avatar="${escapeHtml(id)}" aria-label="캐릭터 ${escapeHtml(id)}">
+    // 화면 읽기 (86단계): 'VoiceOver: 캐릭터 3번, 선택됨'처럼 (전에는 '캐릭터 s03')
+    grid.innerHTML = ids.map((id, i) => `<button class="pick${id === me.avatar ? ' selected' : ''}" data-avatar="${escapeHtml(id)}" aria-label="캐릭터 ${i + 1}번" aria-pressed="${id === me.avatar}">
         <img src="img/avatars/${escapeHtml(avatars.students[id])}" alt="" loading="lazy"></button>`).join('') +
-      `<button class="pick none${me.avatar ? '' : ' selected'}" data-avatar="">이니셜</button>`;
+      `<button class="pick none${me.avatar ? '' : ' selected'}" data-avatar="" aria-label="그림 없이 이름 머리글자" aria-pressed="${!me.avatar}">이니셜</button>`;
     grid.querySelectorAll('.pick').forEach((b) => b.addEventListener('click', () => confirmAvatar(b.dataset.avatar)));
   }
   show('avatar');
@@ -1152,9 +1161,24 @@ function showModal(pic, title, text, buttons) {
     el.addEventListener('click', b.onClick);
     box.append(el);
   });
+  // 창을 연 버튼을 기억했다가 닫을 때 그 자리로 돌아간다. 창이 열리면 첫 버튼에 (86단계, 화면 읽기·키보드)
+  if ($('#modal').hidden) modalReturn = document.activeElement;
   $('#modal').hidden = false;
+  const first = box.querySelector('button:not([disabled])');
+  if (first) first.focus({ preventScroll: true });
 }
-const closeModal = () => { $('#modal').hidden = true; };
+let modalReturn = null;
+const closeModal = () => {
+  $('#modal').hidden = true;
+  if (modalReturn && document.contains(modalReturn) && modalReturn.focus) modalReturn.focus({ preventScroll: true });
+  modalReturn = null;
+};
+// Esc로 닫기 (86단계): '닫기'·'나중에'·'아니요' 같은 보조 버튼을 누른 것과 같게. 보조 버튼이 없으면 그냥 닫는다
+document.addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Escape' || $('#modal').hidden) return;
+  const cancel = $('#modal-actions').querySelector('button.secondary:not([disabled])');
+  if (cancel) cancel.click(); else closeModal();
+});
 const avatarModal = (id, title, text, buttons) => showModal(studentAvatar(me.name, id, 'xl'), title, text, buttons);
 const closeAvatarModal = closeModal;
 

@@ -58,6 +58,9 @@ body.no-brand .wrap { padding-top: max(14px, env(safe-area-inset-top, 0px)); }
 .theme-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 /* 로고: 원본 그림의 체크무늬 배경을 잘라 낸 흰 알약 모양. 모서리를 둥글게 잘라 남은 배경을 가린다 */
 .brand img { display: block; height: 40px; width: auto; border-radius: 999px; box-shadow: 0 1px 4px rgba(20, 30, 50, 0.10); }
+/* 다크 모드 (86단계): 흰 알약 로고가 혼자 아주 밝아서 조금 어둡게 */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .brand img { filter: brightness(0.82); box-shadow: none; } }
+:root[data-theme="dark"] .brand img { filter: brightness(0.82); box-shadow: none; }
 
 /* 첫 화면 인사 */
 .greet { display: flex; align-items: center; gap: 14px; margin: 0 0 24px; }
@@ -150,6 +153,8 @@ input[type="text"] {
   background: var(--bg); color: var(--text); font: inherit; font-size: 17px;
 }
 input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* 키보드·스위치로 움직일 때 지금 고른 곳 표시 (86단계). 손가락으로 누를 때는 보이지 않는다 */
+button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .talk-head { padding: 14px 16px; }
 .talk-head-row { display: flex; justify-content: space-between; align-items: center; }
 .talk-head h3 { margin: 2px 0 0; font-size: 20px; }
@@ -456,7 +461,11 @@ textarea {
 .level.on, .diff-tab.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 700; }
 /* 챕터 목록의 난이도 탭 (38단계): 휴대폰 폭에서 세 개가 한 줄에 들어가게 */
 .diff-tabs { margin: 0 0 14px; }
-.diff-tab { padding: 8px 4px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.diff-tab { padding: 8px 4px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; }
+/* 챕터가 아직 없는 난이도 (86단계): 점선 테두리 + 아래 작은 '준비 중' */
+.diff-tab.not-ready { border-style: dashed; }   /* .soon은 '준비 중이에요' 카드가 이미 씀 */
+.soon-tag { font-size: 11px; font-weight: 400; color: var(--muted); line-height: 1.2; }
 .soon { text-align: center; padding: 28px 20px; }
 .soon-title { font-size: 18px; font-weight: 700; margin: 0 0 6px; }
 .soon-sub { color: var(--muted); margin: 0; }
