@@ -76,6 +76,7 @@ function show(name) {
   const tab = TAB_OF[name];
   $('#tabbar').hidden = !tab;
   document.body.classList.toggle('has-tabbar', !!tab);
+  document.body.classList.toggle('on-word', name === 'word');   // 작은 휴대폰에서 오늘의 단어 화면만 로고 줄을 숨긴다 (78단계, style.css)
   document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   window.scrollTo(0, 0);
 }

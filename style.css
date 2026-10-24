@@ -553,6 +553,19 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 .word-card.done { background: var(--card); padding: 10px 16px; font-size: 15px; }
 .word-card.done > span:first-child { flex: 1; color: var(--muted); }
 .word-streak { flex: none; font-weight: 700; font-size: 14px; }
+/* 칸·키 크기 (78단계): 화면 높이가 860px 이하인 휴대폰(아이폰 SE·8은 4~6번째 줄, 미니·X는 안내 글이 뜨면 6번째 줄)에서 칸이 화면 아래 키보드에 가려졌다.
+   그런 화면에서는 위쪽 로고 줄과 안내 문장을 숨기고, 칸과 키를 화면 높이에 맞춰 줄인다 (svh: 주소창이 보일 때의 높이) */
+#view-word { --w-tile: 48px; --w-keyh: 52px; }
+@media (max-height: 860px) {
+  body.on-word header { display: none; }
+  body.on-word .wrap { padding-top: 14px; }
+  #view-word .word-game .goal { display: none; }
+  #view-word .word-legend { margin: 2px 0 8px; }
+  #view-word { --w-tile: clamp(32px, calc((100vh - 420px) / 6.6), 46px); --w-keyh: clamp(40px, 6.6vh, 50px); }
+  @supports (height: 100svh) {
+    #view-word { --w-tile: clamp(32px, calc((100svh - 420px) / 6.6), 46px); --w-keyh: clamp(40px, 6.6svh, 50px); }
+  }
+}
 .word-game { padding: 16px; }
 .word-game h3 { margin: 2px 0 0; }
 .word-game .goal { margin: 2px 0 0; }
@@ -561,10 +574,10 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 .wl:first-child { margin-left: 0; }
 .wl.correct { background: var(--w-correct); } .wl.present { background: var(--w-present); } .wl.absent { background: var(--w-absent); }
 .word-grid { display: grid; gap: 6px; justify-content: center; margin: 0 auto; }
-.word-row { display: grid; grid-template-columns: repeat(5, 48px); gap: 6px; }
+.word-row { display: grid; grid-template-columns: repeat(5, var(--w-tile)); gap: 6px; }
 .word-tile {
-  height: 48px; display: grid; place-items: center; border: 2px solid var(--line); border-radius: 6px;
-  font-size: 24px; font-weight: 800; text-transform: uppercase; color: var(--text); background: var(--card);
+  height: var(--w-tile); display: grid; place-items: center; border: 2px solid var(--line); border-radius: 6px;
+  font-size: calc(var(--w-tile) / 2); font-weight: 800; text-transform: uppercase; color: var(--text); background: var(--card);
 }
 .word-tile.filled { border-color: var(--muted); }
 .word-tile.correct, .word-tile.present, .word-tile.absent { color: #fff; border-color: transparent; }
@@ -605,7 +618,7 @@ button.word-hint-btn { display: block; width: auto; margin: 0 auto; padding: 6px
 }
 .word-key-row { display: flex; justify-content: center; gap: 5px; }
 .word-key {
-  flex: 1; max-width: 44px; height: 52px; border: 0; border-radius: 6px; padding: 0; cursor: pointer;
+  flex: 1; max-width: 44px; height: var(--w-keyh); border: 0; border-radius: 6px; padding: 0; cursor: pointer;
   background: var(--w-key); color: var(--text); font: inherit; font-size: 16px; font-weight: 700;
 }
 .word-key.wide { max-width: 66px; flex: 1.5; font-size: 14px; }
