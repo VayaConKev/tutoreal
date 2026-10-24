@@ -825,8 +825,9 @@ function goStep(n) {
   review.step = n;
   document.querySelectorAll('#view-review [data-step]').forEach((el) => { el.hidden = Number(el.dataset.step) !== n; });
   $('#review-step').textContent = `${n} / ${REVIEW_STEPS}`;
-  $('#review-prev').hidden = n === 1;
-  $('#review-next').textContent = n === REVIEW_STEPS ? '완료' : '다음';
+  const saved = !!(review.data && review.data.saved);
+  $('#review-prev').hidden = n === 1 || saved;
+  $('#review-next').textContent = n === REVIEW_STEPS ? (saved ? SAVED_LABEL : '완료') : '다음';
   // 마지막 쪽(피드백)에서 오늘의 단어를 한 번 권한다 (67단계). 오늘 이미 풀었으면 숨긴다
   $('#word-nudge').hidden = !(n === REVIEW_STEPS && dailyWord && !wordDoneToday());
   // 피드백 다음 문장 연습으로 바로 (82단계). 문장 연습이 없는 챕터는 숨김
@@ -999,6 +1000,18 @@ async function importBackup(file) {
 }
 
 /** 돌아보기를 마치고 저장한다. next: 저장한 뒤 갈 화면 ('word'면 오늘의 단어, 아니면 챕터 화면) */
+/** 대화를 저장한다 (공유를 골랐으면 시트에도). 한 번만 — 저장한 뒤 다시 불려도 그냥 지나간다 (84단계) */
+async function saveReview(d) {
+  if (d.saved) return;
+  if (d.shared) {
+    await shareTalk(loadCode(), d.sessionId, d.confidence, d.difficulty,
+      d.lines.map((l) => ({ who: l.who, text: l.text, ...(l.hard ? { hard: true } : {}) })));
+  }
+  saveLocal(d);
+  d.saved = true;
+}
+const SAVED_LABEL = '챕터로 돌아가기';
+
 async function finishReview(next) {
   const d = review.data;
   const btn = $('#review-next');
@@ -1006,19 +1019,21 @@ async function finishReview(next) {
   $('#finish-msg').textContent = '';
   try {
     // 피드백이 아직 만들어지는 중이면 끝날 때까지 기다린다 (공유할 때 피드백도 함께 저장되고, 내 기록에도 남도록).
-    // 기다리던 피드백이 도착하면 저장하지 않고 이 화면에 머물러 읽게 한다 (다시 '완료'를 누르면 저장).
+    // 기다리던 피드백이 도착하면 바로 저장하고, 읽을 수 있게 이 화면에 머문다 (84단계: 전에는 저장하지 않고 머물러서 '완료'를 한 번 더 눌러야 했다).
     // 피드백이 실패했으면 피드백 없이 저장한다.
     if (d.feedbackJob && !d.feedback) {
       btn.textContent = '피드백을 기다리는 중…';
       await d.feedbackJob;
-      if (d.feedback) return;
+      if (d.feedback) {
+        btn.textContent = '저장 중…';
+        await saveReview(d);
+        $('#review-prev').hidden = true;   // 저장한 뒤에는 앞 단계(공유 선택)로 돌아가지 않는다
+        $('#finish-msg').textContent = '피드백이 도착해서 저장했어요. 다 읽었으면 아래 버튼을 눌러 주세요.';
+        return;
+      }
     }
     btn.textContent = '저장 중…';
-    if (d.shared) {
-      await shareTalk(loadCode(), d.sessionId, d.confidence, d.difficulty,
-        d.lines.map((l) => ({ who: l.who, text: l.text, ...(l.hard ? { hard: true } : {}) })));
-    }
-    saveLocal(d);
+    await saveReview(d);
     review.data = null;
     if (next === 'word' && dailyWord) openWord();
     else if (next === 'drill') { openChapter(d.chapter.chapter_id); startDrill(); }
@@ -1028,7 +1043,7 @@ async function finishReview(next) {
     $('#finish-msg').textContent = `저장하지 못했어요. 다시 눌러 주세요. (${errorText(err)})`;
   } finally {
     btn.disabled = false;
-    btn.textContent = '완료';
+    btn.textContent = d.saved ? SAVED_LABEL : '완료';
   }
 }
 

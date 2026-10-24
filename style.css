@@ -90,6 +90,8 @@ body.no-brand .wrap { padding-top: max(14px, env(safe-area-inset-top, 0px)); }
 }
 body.has-tabbar .wrap { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }   /* 탭 바 높이 + 홈 표시줄 */
 h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin: 0 0 10px; }
+/* 탭 화면의 제목 (85단계): 내 기록·내 캐릭터·선생님 요약. 작은 회색 글자(구역 이름)와 구분되게 크고 진하게 */
+h2.page-title { font-size: 22px; color: var(--text); font-weight: 800; letter-spacing: -0.01em; margin: 0 0 10px; }
 
 .chapter {
   width: 100%; display: flex; align-items: center; gap: 14px; text-align: left;
@@ -125,9 +127,10 @@ h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin: 0 0 10px; }
 .card h3 { margin: 2px 0 8px; font-size: 22px; }
 .card .goal { color: var(--muted); margin: 0 0 16px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
+#detail-keywords { gap: 8px; }   /* 누르는 칩 사이는 조금 더 띄워 옆 칩을 잘못 누르지 않게 (85단계) */
 .chip { background: var(--teal-soft); color: var(--teal-ink); border-radius: 999px; padding: 4px 10px; font-size: 14px; }
 /* 핵심 단어 발음 듣기 (56단계): 칩 앞의 작은 스피커, 읽는 동안 진하게 */
-.chip-say { display: inline-flex; align-items: center; gap: 4px; border: 0; font: inherit; font-size: 14px; cursor: pointer; }
+.chip-say { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 6px 12px; border: 0; font: inherit; font-size: 14px; cursor: pointer; }   /* 85단계: 높이 30→36px (누르기 쉽게) */
 .chip-say .say-icon { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .chip-say.speaking { background: var(--teal); color: var(--on-accent); }
 
@@ -412,7 +415,8 @@ textarea {
 .rec-pager { position: relative; overflow: hidden; touch-action: pan-y; }
 .rec-track { display: flex; align-items: flex-start; will-change: transform; }
 .rec-panel { flex: 0 0 100%; min-width: 0; }
-.swipe-hint { position: absolute; z-index: 2; top: 8px; left: 50%; transform: translateX(-50%); width: max-content; max-width: 92%;
+/* 85단계: 총평 위에 떠서 글을 가리던 것을 코칭 리포트 / 대화 전체 탭 위로 */
+.swipe-hint { position: absolute; z-index: 3; top: 50%; left: 50%; transform: translate(-50%, -50%); width: max-content; max-width: 96%;
   display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: rgba(15, 23, 42, 0.82); color: #fff; font-size: 13px; pointer-events: none;
   animation: hint-fade 2.2s ease forwards; }
 .swipe-hint[hidden] { display: none; }

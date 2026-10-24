@@ -130,7 +130,7 @@
     </section>
 
     <section id="view-avatar" hidden>
-      <h2>내 캐릭터</h2>
+      <h2 class="page-title">내 캐릭터</h2>
       <!-- 지금 캐릭터 미리 보기 (58단계) -->
       <div class="card me-preview" id="me-preview"></div>
       <p class="hint history-note">마음에 드는 캐릭터를 골라 주세요.</p>
@@ -153,7 +153,7 @@
     </div>
 
     <section id="view-history" hidden>
-      <h2>내 기록</h2>
+      <h2 class="page-title">내 기록</h2>
       <p class="hint history-note">이 휴대폰에만 저장돼요 (최근 100개).<br>휴대폰을 바꾸기 전에 꼭 백업해 두세요.</p>
       <!-- 백업 권하기 (57단계): 백업 뒤로 기록이 10개 넘게 늘었거나, 2주 넘게 백업하지 않았을 때 -->
       <div class="backup-nudge" id="backup-nudge" hidden role="status">
@@ -186,10 +186,11 @@
         <span class="seg-ind" id="seg-ind" aria-hidden="true"></span>
         <button type="button" class="seg-tab on" data-rtab="report" role="tab" aria-selected="true">📊 코칭 리포트</button>
         <button type="button" class="seg-tab" data-rtab="lines" role="tab" aria-selected="false" id="record-tab-lines">💬 대화 전체</button>
+        <!-- 넘기기 안내 (85단계): 총평 위에 떠서 글을 가리던 것을 이 탭 위로. 무엇을 넘기는지 바로 보인다 -->
+        <div class="swipe-hint" id="swipe-hint" hidden aria-hidden="true"><span class="swipe-hand">👆</span>옆으로 넘겨서 대화 전체를 볼 수 있어요</div>
       </div>
       <!-- 옆으로 넘기는 두 쪽 (62단계): 코칭 리포트 / 대화 전체. 화면 양 끝 20px에서 시작한 터치는 무시(브라우저 '뒤로 가기') -->
       <div class="rec-pager" id="record-pager">
-        <div class="swipe-hint" id="swipe-hint" hidden aria-hidden="true"><span class="swipe-hand">👆</span>옆으로 넘겨서 대화 전체를 볼 수 있어요</div>
         <div class="rec-track" id="record-track">
           <div class="rec-panel" id="record-report"><div id="record-feedback"></div></div>
           <div class="rec-panel" id="record-lines-box"><div class="card"><div class="transcript" id="record-lines"></div></div></div>
@@ -206,7 +207,7 @@
     </section>
 
     <section id="view-teacher" hidden>
-      <h2>선생님 요약</h2>
+      <h2 class="page-title">선생님 요약</h2>
       <p class="hint teacher-period" id="teacher-period"></p>
       <div id="teacher-body"></div>
       <button class="secondary" id="teacher-refresh">새로 정리하기</button>
