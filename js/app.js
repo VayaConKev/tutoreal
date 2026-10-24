@@ -220,7 +220,9 @@ function openChapter(id) {
   currentChapter = c;
   const n = (c.drills || []).length;
   $('#drill-open').hidden = !n;
-  $('#drill-open').textContent = `문장 연습 · ${n}문장`;
+  // 화면 아래 버튼 줄(77단계)에서 반 칸만 쓰므로 짧게. 읽기 기능에는 '문장 30개'까지
+  $('#drill-open').textContent = `문장 연습 · ${n}`;
+  $('#drill-open').setAttribute('aria-label', `문장 연습, 문장 ${n}개`);
   show('detail');
 }
 

@@ -422,7 +422,17 @@ textarea {
 #record-share-msg:empty { display: none; }
 
 /* 문장 연습 */
-.drill-open { margin: 0 0 8px; }
+/* 챕터 화면 아래 버튼 (77단계): 탭 바 바로 위에 붙어 있고, 위로 지나가는 글은 옅게 사라지듯 가린다.
+   문장 연습이 있으면 [문장 연습 | 대화 시작] 두 칸, 없으면 대화 시작 한 칸 */
+.detail-actions {
+  position: sticky; bottom: calc(68px + env(safe-area-inset-bottom, 0px)); z-index: 5; display: flex; gap: 8px;
+  margin: 12px -16px 0; padding: 10px 16px 12px; background: var(--bg);
+}
+.detail-actions::before { content: ""; position: absolute; left: 0; right: 0; top: -16px; height: 16px; background: linear-gradient(to bottom, transparent, var(--bg)); pointer-events: none; }
+.detail-actions button { margin-top: 0; }
+.detail-actions .drill-open { flex: 2 1 0; min-width: 0; }
+.detail-actions #talk-start { flex: 3 1 0; min-width: 0; }
+.detail-mic { margin-top: 4px; }
 .levels { display: flex; gap: 6px; margin-bottom: 10px; }
 .level, .diff-tab {
   flex: 1; padding: 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--card);
