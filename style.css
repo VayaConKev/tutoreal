@@ -47,6 +47,9 @@ body {
 header h1 { margin: 0 0 16px; font-size: 22px; letter-spacing: -0.02em; }
 header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 16px; }
 header h1 { margin: 0; }
+/* 대화·오늘의 단어 화면 (80단계): 로고 줄을 숨기고 위 여백을 줄인다. 홈 화면 앱에서 상태 표시줄과 겹치지 않게 safe-area */
+body.no-brand header { display: none; }
+body.no-brand .wrap { padding-top: max(14px, env(safe-area-inset-top, 0px)); }
 /* 라이트/다크 전환 버튼 */
 .theme-btn {
   display: flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 999px; cursor: pointer;
@@ -558,11 +561,9 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 .word-card.done > span:first-child { flex: 1; color: var(--muted); }
 .word-streak { flex: none; font-weight: 700; font-size: 14px; }
 /* 칸·키 크기 (78단계): 화면 높이가 860px 이하인 휴대폰(아이폰 SE·8은 4~6번째 줄, 미니·X는 안내 글이 뜨면 6번째 줄)에서 칸이 화면 아래 키보드에 가려졌다.
-   그런 화면에서는 위쪽 로고 줄과 안내 문장을 숨기고, 칸과 키를 화면 높이에 맞춰 줄인다 (svh: 주소창이 보일 때의 높이) */
+   그런 화면에서는 안내 문장을 숨기고, 칸과 키를 화면 높이에 맞춰 줄인다 (svh: 주소창이 보일 때의 높이). 로고 줄은 80단계부터 이 화면에서 늘 숨김 */
 #view-word { --w-tile: 48px; --w-keyh: 52px; }
 @media (max-height: 860px) {
-  body.on-word header { display: none; }
-  body.on-word .wrap { padding-top: 14px; }
   #view-word .word-game .goal { display: none; }
   #view-word .word-legend { margin: 2px 0 8px; }
   #view-word { --w-tile: clamp(32px, calc((100vh - 420px) / 6.6), 46px); --w-keyh: clamp(40px, 6.6vh, 50px); }

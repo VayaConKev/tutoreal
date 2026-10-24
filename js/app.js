@@ -76,7 +76,8 @@ function show(name) {
   const tab = TAB_OF[name];
   $('#tabbar').hidden = !tab;
   document.body.classList.toggle('has-tabbar', !!tab);
-  document.body.classList.toggle('on-word', name === 'word');   // 작은 휴대폰에서 오늘의 단어 화면만 로고 줄을 숨긴다 (78단계, style.css)
+  // 대화·오늘의 단어 화면은 위쪽 로고 줄을 숨겨 대화 글자와 칸이 더 많이 보이게 한다 (80단계, 78단계에는 작은 휴대폰의 오늘의 단어만)
+  document.body.classList.toggle('no-brand', name === 'talk' || name === 'word');
   document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   if (name === 'list' && chapters.length) renderList();   // 대화·문장 연습을 하고 돌아오면 진행 상황(79단계)을 새로 센다
   window.scrollTo(0, 0);
