@@ -667,7 +667,8 @@ button.word-hint-btn { display: block; width: auto; margin: 0 auto; padding: 6px
 .wx { text-align: left; margin: 16px 0 4px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); }
 .wx-title { font-weight: 700; margin: 0 0 4px; }
 .wx-desc { color: var(--muted); font-size: 14px; margin: 0 0 10px; }
-.wx-desc b { color: var(--teal-ink); letter-spacing: 0.04em; }
+.wx-sub { display: block; margin-top: 2px; font-size: clamp(12px, 4.2vw, 15px); white-space: nowrap; }   /* 한 줄에 (작은 휴대폰에서는 글자를 줄여서) */
+.wx-desc b { color: var(--teal-ink); }
 .wx-frames { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .wx-frame { border: 0; min-height: 36px; padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; }
 .wx textarea { background: var(--card); }

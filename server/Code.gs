@@ -86,7 +86,7 @@
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.55';
+const SERVER_VERSION = 'v0.56';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -1277,7 +1277,8 @@ const EXPLAIN_SCHEMA = {
 };
 const EXPLAIN_MAX_CHARS = 200;
 
-/** 글에 정답 단어(또는 그 꼴: knee·knees, smiling, sleepy…)가 들어 있는지. 앱도 같은 규칙으로 먼저 거른다. */
+/** 글에 정답 단어(또는 그 꼴: knee·knees, smiling, sleepy…)가 들어 있는지.
+ *  v0.56 (88단계): 막지 않는다 ("Lunch is …"처럼 단어로 시작하는 습관도 있다). 피드백 지시문에 알리고, 다른 표현에서만 뺀다. */
 function hasWord_(text, word) {
   let base = String(word).toLowerCase();
   if (base.length > 4 && /s$/.test(base)) base = base.slice(0, -1);
@@ -1292,7 +1293,6 @@ function explainWord_(code, text) {
   if (!dw) return { ok: false, error: 'NO_WORD' };
   text = String(text || '').replace(/\s+/g, ' ').trim();
   if (!text || text.length > EXPLAIN_MAX_CHARS) return { ok: false, error: 'BAD_TEXT' };
-  if (hasWord_(text, dw.word)) return { ok: false, error: 'HAS_WORD' };
 
   const settings = getSettings_();
   const sid = String(auth.student.student_id);
@@ -1310,7 +1310,12 @@ function explainWord_(code, text) {
   const system = String(prompt.text)
     .replace(/\{word\}/g, dw.word)
     .replace(/\{meaning\}/g, dw.meaning || '(none)')
-    .replace(/\{hint\}/g, dw.hint || '(none)');
+    .replace(/\{hint\}/g, dw.hint || '(none)') +
+    // 정답 단어를 써도 괜찮다 (88단계). 지시문(prompts 탭)은 그대로 두고 쓴 경우에만 한 줄을 붙인다
+    (hasWord_(text, dw.word)
+      ? '\nNote: the nurse used the word "' + dw.word + '" itself (for example "' + dw.word.charAt(0).toUpperCase() + dw.word.slice(1) +
+        ' is …"). That is allowed, so do not treat it as a mistake or lower overall for it. At the end of message, add one short, friendly tip that explaining it without the word is also good practice.'
+      : '');
   // 학생이 결과를 기다리므로 빠른 모델을 가장 짧은 생각으로 (발음 코칭과 같은 방식)
   const model = String(settings.explain_model || '').trim();
   const ai = callTextModel_(system, "The nurse's explanation: " + JSON.stringify(text), EXPLAIN_SCHEMA, '단어 설명 피드백',

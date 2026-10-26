@@ -1,5 +1,5 @@
-// 87단계: 오늘의 단어 설명하기 — doPost(action=explain_word). 정답 단어가 들어간 글은 AI에 보내지 않고, 하루 횟수 한도(선생님은 없음)와
-// 월 예산을 지키며, word_checks 탭에는 학생 글 없이 횟수·비용만. 이미 쓰던 시트에 setup을 다시 돌리면 탭·설정·지시문이 더해진다. 서버 v0.55
+// 87단계: 오늘의 단어 설명하기 — doPost(action=explain_word). 정답 단어를 써도 받아 주고(88단계, 지시문에 한 줄), 하루 횟수 한도(선생님은 없음)와
+// 월 예산을 지키며, word_checks 탭에는 학생 글 없이 횟수·비용만. 이미 쓰던 시트에 setup을 다시 돌리면 탭·설정·지시문이 더해진다. 서버 v0.56
 const { makeWorld, CODE, baseline } = require('./fakesheet.js');
 const assert = require('assert');
 const kst = (offsetDays) => new Date(Date.now() + 9 * 3600e3 + offsetDays * 86400e3).toISOString().slice(0, 10);
@@ -46,14 +46,15 @@ const wc = w.tabs.word_checks; const H = wc[0];
 assert.equal(wc.length, 2); assert.equal(wc[1][H.indexOf('word_no')], 1); assert.equal(wc[1][H.indexOf('overall')], 'clear');
 assert(!JSON.stringify(wc).includes('bend'), 'word_checks에 학생 글이 남지 않음');
 
-// 2) 정답 단어(복수·단수 꼴 포함)가 들어 있으면 AI에 보내지 않고 횟수도 안 셈
-let fetches = w.stats.fetches.length;
-for (const t of ['My knee hurts.', 'KNEES are in your legs']) {
-  r = post({ action: 'explain_word', code: 'stu', text: t });
-  assert.equal(r.error, 'HAS_WORD', t);
-}
-assert.equal(w.stats.fetches.length, fetches); assert.equal(wc.length, 2);
-console.log('정답 단어가 든 글: HAS_WORD, AI 호출 없음');
+// 2) 88단계: 정답 단어(복수·단수 꼴 포함)를 써도 막지 않는다 — 지시문에 '써도 괜찮다'는 한 줄이 붙고, 횟수는 센다.
+//    단어를 쓰지 않은 글(1번)에는 그 줄이 없다
+assert(!sys.includes('used the word'), '단어를 안 쓴 글에는 안내 줄 없음');
+r = post({ action: 'explain_word', code: 'tch', text: 'KNEES are in the middle of your legs.' });
+assert(r.ok, JSON.stringify(r));
+const sys2 = sent.systemInstruction.parts[0].text;
+assert(sys2.includes('used the word "knees"') && sys2.includes('That is allowed'));
+console.log('정답 단어를 쓴 글: 받아 주고, 지시문에 안내 한 줄');
+wc.pop();   // 선생님 줄은 아래 학생 횟수 확인과 상관없지만 표를 1번 뒤 상태로 되돌린다
 
 // 3) 너무 긴 글, 빈 글
 assert.equal(post({ action: 'explain_word', code: 'stu', text: 'a'.repeat(201) }).error, 'BAD_TEXT');

@@ -57,7 +57,6 @@ const ERROR_TEXT = {
   PRON_BUSY: 'AI가 붐벼서 발음을 확인하지 못했어요. 잠시 뒤 다시 해 주세요. "정답 보기"로 계속 연습할 수 있어요.',
   BAD_AUDIO: '녹음이 제대로 되지 않았어요. 다시 해 주세요.',
   NO_PROMPT: '이 과정에서는 아직 준비 중인 기능이에요.',
-  HAS_WORD: '오늘의 단어를 쓰지 않고 설명해 보세요.',
   BAD_TEXT: '설명은 200자 안으로 써 주세요.',
   NO_WORD: '오늘의 단어를 찾지 못했어요. 챕터 목록으로 돌아갔다가 다시 열어 주세요.',
   EXPLAIN_LIMIT: '오늘 받을 수 있는 피드백을 다 썼어요. 내일 새 단어로 또 해 봐요.',
@@ -2332,7 +2331,7 @@ function renderWordEnd(st) {
 /* ── 오늘의 단어 한 마디로 설명하기 (87단계) ──
    정답이 공개된 뒤(맞혀도, 못 맞혀도) 그 단어를 쉬운 영어 한두 문장으로 설명해 보고 짧은 피드백을 받는다.
    결과 설명의 ③ "It means …"처럼 '어려운 말을 쉬운 말로'의 기초 연습. 선택이라 건너뛸 수 있고, 게임 기록과는 따로다.
-   정답 단어(knee·knees처럼 꼴이 바뀐 것 포함)는 쓰지 않는다 — 서버에 보내기 전에 여기서 먼저 거른다 (서버도 같은 규칙).
+   정답 단어는 최대한 쓰지 않도록 권하지만 막지는 않는다 (88단계: "Lunch is …"처럼 단어로 시작하는 습관도 있다). 쓰면 피드백이 한마디 권한다.
    쓴 글과 피드백은 이 휴대폰에만 (오늘 푼 상태의 explain). */
 const WORD_FRAMES = ["It's in your ", 'You use it to ', "It's like ", "It's a kind of "];
 const WORD_VERDICT = {
@@ -2344,16 +2343,7 @@ let wordExplainDraft = '';     // 쓰는 중인 글 (화면을 다시 그려도 
 let wordExplainEditing = false;   // 피드백을 받은 뒤 '다시 써 보기' 또는 건너뛴 뒤 '설명해 보기'로 다시 쓰는 중
 let wordExplainBusy = false;
 
-/** 글에 정답 단어나 그 꼴이 들어 있는지 (서버의 hasWord_와 같은 규칙: 끝의 s·e를 뗀 앞부분으로 시작하는 단어) */
-function hasWordForm(text, word) {
-  let base = word.toLowerCase();
-  if (base.length > 4 && base.endsWith('s')) base = base.slice(0, -1);
-  if (base.length > 4 && base.endsWith('e')) base = base.slice(0, -1);
-  return (text.toLowerCase().match(/[a-z]+/g) || []).some((t) => t.startsWith(base));
-}
-
 function explainHtml(ex) {
-  const W = escapeHtml(dailyWord.word.toUpperCase());
   if (ex.fb && !wordExplainEditing) {
     const fb = ex.fb;
     const fixed = fb.corrected && fb.corrected !== ex.text;
@@ -2380,8 +2370,8 @@ function explainHtml(ex) {
   }
   const frames = WORD_FRAMES.map((f) => `<button type="button" class="chip wx-frame" data-frame="${escapeHtml(f)}">${escapeHtml(f.trim())} …</button>`).join('');
   return `<div class="wx" id="wx">
-    <p class="wx-title">✍️ 그럼 오늘의 단어를 한 마디로 설명해 볼까요?</p>
-    <p class="wx-desc">수검자에게 말하듯 쉬운 영어로 한두 문장. <b>${W}</b>는 쓰지 않아요.</p>
+    <p class="wx-title">Good Work!<span class="wx-sub">오늘의 단어를 한 마디로 설명해 봅시다!</span></p>
+    <p class="wx-desc"><b>오늘의 단어</b>는 최대한 쓰지 않고 설명해 봅시다.</p>
     <div class="wx-frames">${frames}</div>
     <textarea id="wx-text" rows="2" maxlength="200" lang="en" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="false"
       aria-label="오늘의 단어 설명" placeholder="It's … / You use it to …"></textarea>
@@ -2404,10 +2394,6 @@ async function sendExplain() {
   const err = $('#wx-err');
   wordExplainDraft = text;
   if (!text) { err.textContent = '설명을 한두 문장 써 주세요.'; return; }
-  if (hasWordForm(text, dailyWord.word)) {
-    err.textContent = `'${dailyWord.word.toUpperCase()}'(또는 비슷한 꼴)를 쓰지 않고 설명해 보세요.`;
-    return;
-  }
   wordExplainBusy = true;
   renderWordEnd(wordState());
   try {
