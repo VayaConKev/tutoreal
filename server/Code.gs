@@ -86,7 +86,7 @@
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.54';
+const SERVER_VERSION = 'v0.55';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -118,7 +118,9 @@ const SCHEMA = {
   // 지금은 영어 과정(course 빈칸·en)만. 5글자가 아닌 줄은 건너뛴다.
   // hint (73단계): 3번째 시도부터 볼 수 있는 쉬운 영어 설명 (정답 단어는 쓰지 않는다). 비우면 앱이 글자 하나를 알려 준다.
   //   meaning(한국어 뜻)은 힌트로 쓰지 않고 다 푼 뒤에만 보인다. 이미 쓰던 시트에는 setup이 맨 오른쪽에 칸을 더한다.
-  words:          ['order', 'word', 'meaning', 'sentence', 'course', 'active', 'hint']
+  words:          ['order', 'word', 'meaning', 'sentence', 'course', 'active', 'hint'],
+  // 오늘의 단어 설명하기 기록 (87단계): 학생이 쓴 문장과 피드백은 휴대폰에만 남고 여기에는 남기지 않는다. 하루 횟수 한도와 월 예산 계산에 쓴다.
+  word_checks:    ['at', 'student_id', 'word_no', 'overall', 'cost_usd']
 };
 
 const PATIENT_PROMPT_V1 = [
@@ -212,6 +214,22 @@ const PRON_PROMPT_V1 = [
   '- message: one short, kind sentence in Korean.',
   '- words: up to 3 words that need work, key words first. For each: word, tip (Korean, what to change: stress, a sound, a missing word), respelling (like "glaw-KOH-muh", stressed part in capitals). Empty list if everything is fine.',
   'Be honest but encouraging. Do not invent problems you did not hear. If the audio is silent or not speech, overall is "retry" and say so in message.'
+].join('\n');
+
+// 오늘의 단어 설명하기 (87단계): 게임이 끝난 뒤 학생이 정답 단어를 쉬운 영어 한두 문장으로 설명하면 짧게 피드백한다.
+// {word} {meaning} {hint} 는 서버가 채운다. 학생이 쓴 문장은 지시문이 아니라 요청 본문으로 보낸다.
+const WORD_EXPLAIN_PROMPT_V1 = [
+  'You are a friendly English coach for Korean nurses (beginners) at a health check-up center in Seoul.',
+  'Today\'s word is "{word}" (Korean meaning: {meaning}). The nurse wrote one or two sentences to explain this word in easy English',
+  'without using the word itself, like explaining it to a foreign patient. This is practice for explaining medical results in easy words.',
+  'Teacher\'s example explanation (the game hint, may be empty): {hint}',
+  'Return:',
+  '- overall: "clear" if a listener would easily know what the nurse means, "okay" if understandable with some awkward parts, "unclear" if it is hard to understand, about something else, or not English.',
+  '- message: 1-2 short sentences in Korean, in 해요체 (…했어요, …해 보세요; never …하셨습니다). Start by naming concretely what the nurse explained well. If the sentence is (almost) the same as the teacher\'s example, praise copying it correctly and suggest trying their own words next time. If it is not English, kindly ask them to write it in English.',
+  '- corrected: the nurse\'s text with only real grammar and word mistakes fixed. Keep their idea, words and length. If there are no mistakes, return it unchanged.',
+  '- changes: for each fix in corrected, one short Korean note (해요체) like "a를 넣어요: 셀 수 있는 물건 앞" (at most 3). Empty if nothing was fixed.',
+  '- alternatives: 2 other easy ways to explain the same word, each one short sentence (at most 12 words) a beginner could say. Do not use the word "{word}" or its forms.',
+  'Be warm and short. Do not point out style preferences as mistakes.'
 ].join('\n');
 
 // 중국어 과정의 대화 상대 지시문 (24단계). 학생은 중국어 초보(HSK 2 정도)의 한국인 패션 브랜드 대표.
@@ -324,6 +342,7 @@ const SEED = {
     ['feedback-v2', FEEDBACK_PROMPT_V2, true],
     ['insight-v1', INSIGHT_PROMPT_V1, true],
     ['pron-v1', PRON_PROMPT_V1, true],
+    ['word-explain-v1', WORD_EXPLAIN_PROMPT_V1, true],
     ['zh-partner-v1', ZH_PARTNER_PROMPT_V1, true],
     ['zh-gloss-v1', ZH_GLOSS_PROMPT_V1, true],
     ['zh-feedback-v1', ZH_FEEDBACK_PROMPT_V1, true],
@@ -371,6 +390,8 @@ const SEED = {
     ['fallback_text_model', '', '피드백을 만들 때 text_model이 계속 붐비면(503 등) 한 번 더 시도할 다른 모델. 비우면 쓰지 않음. 예: gemini-3.6-flash (같은 요금)'],
     ['diag_log', true, '피드백 진단 기록을 quality 탭에 남김 (TRUE 켜짐 / FALSE 꺼짐, 비우면 켜짐). 대화 내용·이름은 남기지 않음'],
     ['daily_word_published', 'preview', '오늘의 단어를 누구에게 보일지: preview(선생님·테스터만, students 탭 role이 teacher·tester), TRUE(모든 영어 과정 학생), FALSE(아무에게도). 챕터의 published와 같은 뜻'],
+    ['daily_explain_limit', 3, '오늘의 단어 설명하기: 학생 1명이 하루에 받을 수 있는 피드백 횟수 (선생님·테스터는 제한 없음)'],
+    ['explain_model', 'gemini-3.5-flash-lite', '오늘의 단어 설명하기 피드백용 빠른 모델 (생각 minimal). 비우면 text_model'],
     ['daily_word_start', '2026-10-22', '오늘의 단어 #1 날짜 (yyyy-mm-dd). 이 날부터 words 탭의 order 순서대로 하루에 한 단어 (한국 시간 자정에 바뀜, 끝까지 가면 처음부터). 비우면 오늘의 단어를 보여 주지 않음'],
     ['slip_legend', SLIP_LEGEND_DEFAULT, '검사 결과 슬립 아래에 보이는 결과 약어 풀이 (· 로 구분, \'약어 뜻\'). 챕터마다 그 챕터 슬립에 나오는 약어만 보인다. 비우면 보이지 않음 (실전처럼 글자만)']
   ],
@@ -859,6 +880,9 @@ function handlePost_(body) {
     if (body.action === 'pronounce') {
       return json_(pronounce_(body.code, String(body.drill_id || ''), body.level === 'korean' ? 'korean' : 'blank', String(body.audio || '')));
     }
+    if (body.action === 'explain_word') {
+      return json_(explainWord_(body.code, String(body.text || '')));
+    }
     if (body.action === 'gloss') {
       return json_(gloss_(body.code, String(body.session_id || ''), String(body.text || '')));
     }
@@ -1236,6 +1260,89 @@ function dailyWord_(student) {
   const w = words[days % words.length];
   return { no: days + 1, date: today, word: w.word, meaning: w.meaning, hint: w.hint,
            sentence: w.sentences[0] || '', sentences: w.sentences, preview: preview, test_account: canPreview_(student) };
+}
+
+/* 오늘의 단어 설명하기 (87단계): 게임이 끝난 뒤 학생이 정답 단어를 쉬운 영어로 설명한 글에 짧은 피드백.
+   학생이 쓴 글과 피드백은 저장하지 않고(휴대폰에만), word_checks 탭에 횟수·비용만 남긴다. */
+const EXPLAIN_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    overall: { type: 'STRING' },   // clear / okay / unclear — 서버가 값을 검사한다
+    message: { type: 'STRING' },
+    corrected: { type: 'STRING' },
+    changes: { type: 'ARRAY', items: { type: 'STRING' } },
+    alternatives: { type: 'ARRAY', items: { type: 'STRING' } }
+  },
+  required: ['overall', 'message', 'corrected', 'changes', 'alternatives']
+};
+const EXPLAIN_MAX_CHARS = 200;
+
+/** 글에 정답 단어(또는 그 꼴: knee·knees, smiling, sleepy…)가 들어 있는지. 앱도 같은 규칙으로 먼저 거른다. */
+function hasWord_(text, word) {
+  let base = String(word).toLowerCase();
+  if (base.length > 4 && /s$/.test(base)) base = base.slice(0, -1);
+  if (base.length > 4 && /e$/.test(base)) base = base.slice(0, -1);
+  return (String(text).toLowerCase().match(/[a-z]+/g) || []).some(function (t) { return t.indexOf(base) === 0; });
+}
+
+function explainWord_(code, text) {
+  const auth = auth_(code);
+  if (!auth.ok) return auth;
+  const dw = dailyWord_(auth.student);
+  if (!dw) return { ok: false, error: 'NO_WORD' };
+  text = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!text || text.length > EXPLAIN_MAX_CHARS) return { ok: false, error: 'BAD_TEXT' };
+  if (hasWord_(text, dw.word)) return { ok: false, error: 'HAS_WORD' };
+
+  const settings = getSettings_();
+  const sid = String(auth.student.student_id);
+  const limit = Number(settings.daily_explain_limit) || 3;
+  const used = readTable_('word_checks').filter(function (c) {
+    return String(c.student_id) === sid && Number(c.word_no) === dw.no;
+  }).length;
+  const test = isTestAccount_(auth.student);   // 선생님·테스터는 '다시 하기'로 여러 번 시험하므로 횟수 제한 없음
+  if (!test && used >= limit) return { ok: false, error: 'EXPLAIN_LIMIT' };
+  const budget = checkBudget_();
+  if (!budget.ok) return budget;
+
+  const prompt = activePrompt_('word-explain');
+  if (!prompt) return { ok: false, error: 'NO_PROMPT' };
+  const system = String(prompt.text)
+    .replace(/\{word\}/g, dw.word)
+    .replace(/\{meaning\}/g, dw.meaning || '(none)')
+    .replace(/\{hint\}/g, dw.hint || '(none)');
+  // 학생이 결과를 기다리므로 빠른 모델을 가장 짧은 생각으로 (발음 코칭과 같은 방식)
+  const model = String(settings.explain_model || '').trim();
+  const ai = callTextModel_(system, "The nurse's explanation: " + JSON.stringify(text), EXPLAIN_SCHEMA, '단어 설명 피드백',
+    model ? { model: model, thinkingLevel: 'minimal' } : null);
+
+  const r = ai.ok ? ai.data : null;
+  const overall = r && ['clear', 'okay', 'unclear'].indexOf(r.overall) >= 0 ? r.overall : '';
+  appendRow_('word_checks', {
+    at: new Date(), student_id: sid, word_no: dw.no, overall: overall || 'failed',
+    cost_usd: Math.round((ai.cost || 0) * 10000) / 10000
+  });
+  if (!ai.ok) {
+    diag_('', 'explain', '실패 · ' + ai.error + ' · ' + (model || String(settings.text_model || '')) + ' · #' + dw.no +
+      (ai.meta ? ' · ' + metaNote_(ai.meta) : ''));
+    return { ok: false, error: ai.error === 'AI_BUSY' ? 'EXPLAIN_BUSY' : ai.error === 'AI_FAILED' ? 'EXPLAIN_FAILED' : ai.error };
+  }
+  const clean = function (list, n, max) {
+    return (Array.isArray(list) ? list : []).map(function (x) { return String(x || '').trim().slice(0, max); })
+      .filter(Boolean).slice(0, n);
+  };
+  return {
+    ok: true,
+    left: test ? null : Math.max(0, limit - used - 1),
+    fb: {
+      overall: overall || 'okay',
+      message: String(r.message || '').slice(0, 300),
+      corrected: String(r.corrected || '').trim().slice(0, 300) || text,
+      changes: clean(r.changes, 3, 120),
+      // 다른 표현에 정답 단어가 섞이면 빼서, 학생이 '단어 없이 설명하기'의 본을 보게 한다
+      alternatives: clean(r.alternatives, 2, 120).filter(function (a) { return !hasWord_(a, dw.word); })
+    }
+  };
 }
 
 /** 생년월일이 날짜로 바뀌어 있어도 2003-05-11 형태의 글자로 돌려준다. */
@@ -1850,9 +1957,11 @@ function monthSpent_(r) {
       : Math.min((Date.now() - s.started_at.getTime()) / 1000, LIVE_SESSION_MAX_MIN * 60);
     total += liveCost_(sec, sec, r);
   });
-  // 발음 코칭 비용 (21단계)
-  readTable_('pron_checks').forEach(function (p) {
-    if (p.at instanceof Date && Utilities.formatDate(p.at, tz, 'yyyy-MM') === month) total += Number(p.cost_usd) || 0;
+  // 발음 코칭 비용 (21단계), 오늘의 단어 설명하기 비용 (87단계)
+  ['pron_checks', 'word_checks'].forEach(function (tab) {
+    readTable_(tab).forEach(function (p) {
+      if (p.at instanceof Date && Utilities.formatDate(p.at, tz, 'yyyy-MM') === month) total += Number(p.cost_usd) || 0;
+    });
   });
   return total;
 }

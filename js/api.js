@@ -81,6 +81,13 @@ export async function checkPronunciation(code, drillId, level, audio) {
   return data.coach;
 }
 
+// 오늘의 단어 설명하기 (87단계): 학생이 쓴 설명 한두 문장에 짧은 피드백. 서버는 글을 저장하지 않는다.
+// left: 오늘 더 받을 수 있는 횟수 (선생님·테스터는 null = 제한 없음)
+export async function explainWord(code, text) {
+  const data = await postServer('explain_word', { code, text }, 45000);
+  return { fb: data.fb, left: data.left ?? null };
+}
+
 // 중국어 과정: 상대가 한 말 한 줄의 교과서식 병음과 한국어 뜻. 대화 중에 줄마다 부른다.
 export async function getGloss(code, sessionId, text) {
   const data = await postServer('gloss', { code, session_id: sessionId, text }, 30000);

@@ -663,6 +663,27 @@ button.word-hint-btn { display: block; width: auto; margin: 0 auto; padding: 6px
 .word-say-pill { display: inline-flex; width: auto; height: auto; gap: 6px; align-items: center; margin: 8px auto 0; padding: 6px 14px;
   border-radius: 999px; background: var(--teal-soft); font: inherit; font-size: 14px; font-weight: 600; }
 .word-stats { color: var(--muted); font-size: 14px; margin: 12px 0; }
+/* 오늘의 단어 한 마디로 설명하기 (87단계): 정답 아래, 수업 문장·기록·공유보다 먼저 */
+.wx { text-align: left; margin: 16px 0 4px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); }
+.wx-title { font-weight: 700; margin: 0 0 4px; }
+.wx-desc { color: var(--muted); font-size: 14px; margin: 0 0 10px; }
+.wx-desc b { color: var(--teal-ink); letter-spacing: 0.04em; }
+.wx-frames { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.wx-frame { border: 0; min-height: 36px; padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+.wx textarea { background: var(--card); }
+.wx-err:empty { display: none; }
+.wx button.primary { margin-top: 10px; }
+button.wx-link { display: block; width: auto; margin: 10px auto 0; }
+.wx-verdict { font-weight: 700; margin: 8px 0 4px; color: var(--teal-ink); }
+.wx-verdict.unclear { color: var(--danger); }
+.wx-msg { margin: 0 0 10px; }
+.wx-ok { color: var(--teal-ink); font-weight: 600; margin: 0 0 10px; }
+.wx-changes { margin: 0 0 10px; padding-left: 20px; font-size: 14px; color: var(--muted); }
+.wx-changes li { margin: 2px 0; }
+.wx-alt-title { margin-top: 4px; }
+.wx-alts { display: flex; flex-direction: column; gap: 6px; }
+.wx-alts .fb-better-row { background: var(--card); border-radius: 10px; padding: 8px 10px; }
+.wx-alts .fb-better-row > span:first-child { font-weight: 600; }
 /* 피드백 아래 이어서 연습하기 (82단계): 오늘의 단어 권하기와 같은 모양 */
 .after-box { display: flex; flex-direction: column; gap: 8px; align-items: stretch; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); text-align: center; }
 .after-box[hidden] { display: none; }

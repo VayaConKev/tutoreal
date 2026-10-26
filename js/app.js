@@ -1,6 +1,6 @@
 // 화면 전환과 전체 흐름을 담당한다.
 import { APP_VERSION } from './config.js';
-import { getChapters, login, startTalk, endTalk, getFeedback, shareTalk, getSummary, checkPronunciation, setAvatar, getGloss, getStudentTalks } from './api.js';
+import { getChapters, login, startTalk, endTalk, getFeedback, shareTalk, getSummary, checkPronunciation, setAvatar, getGloss, getStudentTalks, explainWord } from './api.js';
 import { LiveSession } from './live.js';
 import { Recorder } from './recorder.js';
 import { WAIT_CAT_SVG } from './wait-cat.js';
@@ -56,7 +56,13 @@ const ERROR_TEXT = {
   PRON_FAILED: '발음 확인에 실패했어요. 잠시 뒤 다시 해 주세요.',
   PRON_BUSY: 'AI가 붐벼서 발음을 확인하지 못했어요. 잠시 뒤 다시 해 주세요. "정답 보기"로 계속 연습할 수 있어요.',
   BAD_AUDIO: '녹음이 제대로 되지 않았어요. 다시 해 주세요.',
-  NO_PROMPT: '이 과정에서는 아직 준비 중인 기능이에요.'
+  NO_PROMPT: '이 과정에서는 아직 준비 중인 기능이에요.',
+  HAS_WORD: '오늘의 단어를 쓰지 않고 설명해 보세요.',
+  BAD_TEXT: '설명은 200자 안으로 써 주세요.',
+  NO_WORD: '오늘의 단어를 찾지 못했어요. 챕터 목록으로 돌아갔다가 다시 열어 주세요.',
+  EXPLAIN_LIMIT: '오늘 받을 수 있는 피드백을 다 썼어요. 내일 새 단어로 또 해 봐요.',
+  EXPLAIN_BUSY: 'AI가 붐벼서 피드백을 만들지 못했어요. 잠시 뒤 다시 눌러 주세요.',
+  EXPLAIN_FAILED: '피드백을 만들지 못했어요. 잠시 뒤 다시 눌러 주세요.'
 };
 const LIMIT_TEXT = {
   daily: '오늘 사용 시간을 다 써서 대화를 마쳤어요.',
@@ -2102,7 +2108,7 @@ window.addEventListener('pagehide', () => { if (live) { talk.endReason = 'left';
 const WORD_LEN = 5;
 const WORD_TRIES = 6;
 const WORD_HINT_AFTER = 2;   // 2번 틀린 뒤, 곧 3번째 시도부터 힌트가 열린다
-const WORD_KEY = 'tutoreal.word';         // 오늘 푼 상태 { no, guesses, hint, done, won, pick(보여 줄 수업 문장 번호), replay(시험용 다시 하기) }
+const WORD_KEY = 'tutoreal.word';         // 오늘 푼 상태 { no, guesses, hint, done, won, pick(보여 줄 수업 문장 번호), replay(시험용 다시 하기), explain(87단계: { text, fb, left, skipped }) }
 const WORD_STATS_KEY = 'tutoreal.wordstats';   // { played, won, streak, best, lastWonNo }
 const WORD_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
 const WORD_MARK = { correct: '🟩', present: '🟨', absent: '⬜' };
@@ -2176,7 +2182,7 @@ function renderWordCard() {
   const tag = dailyWord.preview ? ' <span class="opt-tag preview-tag">미리 보기</span>' : '';
   box.innerHTML = st.done
     ? `<button class="word-card done" id="word-card">
-        <span>✓ 오늘의 단어 #${dailyWord.no} · ${st.won ? st.guesses.length : 'X'}/${WORD_TRIES}${tag}</span>${fire}<span class="chevron" aria-hidden="true">›</span>
+        <span>✓ 오늘의 단어 #${dailyWord.no} · ${st.won ? st.guesses.length : 'X'}/${WORD_TRIES}${st.explain && st.explain.fb ? ' ✍️' : ''}${tag}</span>${fire}<span class="chevron" aria-hidden="true">›</span>
       </button>`
     : `<button class="word-card" id="word-card">
         <span class="word-card-text">
@@ -2192,6 +2198,7 @@ function openWord() {
   if (!dailyWord) return;
   loadWordDict();
   wordTyping = '';
+  wordExplainEditing = false;
   $('#word-no').textContent = `#${dailyWord.no} · ${dailyWord.date}`;
   $('#word-msg').textContent = '';
   renderWord();
@@ -2298,6 +2305,9 @@ function renderWordEnd(st) {
   const picked = list.length ? list[st.pick] : '';
   const sentence = picked
     ? escapeHtml(picked).replace(new RegExp(`\\b(${w})\\b`, 'i'), '<strong>$1</strong>') : '';
+  // 설명하기(87단계)를 마치거나 건너뛴 뒤에 수업 문장·기록·공유가 이어진다 (게임 기록은 이미 저장됨)
+  const ex = st.explain || {};
+  const after = !!(ex.fb || ex.skipped) && !wordExplainEditing;
   end.innerHTML = `
     <p class="word-result">${st.won ? `🎉 ${st.guesses.length}번 만에 맞혔어요!` : '아쉬워요! 내일 또 도전해요.'}</p>
     <div class="word-answer">
@@ -2305,16 +2315,143 @@ function renderWordEnd(st) {
       ${dailyWord.meaning ? `<span class="word-answer-ko">${escapeHtml(dailyWord.meaning)}</span>` : ''}
       ${wordSayBtn(w, `${w} 발음 듣기`)}
     </div>
-    ${sentence ? `<p class="word-sentence">${sentence}</p>
+    ${explainHtml(ex)}
+    ${!after ? '' : `${sentence ? `<p class="word-sentence">${sentence}</p>
       <button type="button" class="say-btn word-say-pill" data-say="${escapeHtml(picked)}" data-course="en" aria-label="문장 듣기">${SPEAKER_ICON}<span>문장 듣기</span></button>` : ''}
     <p class="word-stats">${streak > 0 ? `🔥 ${streak}일 연속` : '연속 기록 없음'} · 맞힌 날 ${stats.won} / ${stats.played} · 최고 ${stats.best}일 연속</p>
     <button class="primary" id="word-share">결과 공유하기</button>
     <p class="hint" id="word-share-msg" role="status"></p>
-    <p class="hint">다음 단어는 내일 0시(한국 시간)에 나와요.</p>
+    <p class="hint">다음 단어는 내일 0시(한국 시간)에 나와요.</p>`}
     ${dailyWord.test_account ? `<button class="link word-reset" id="word-reset">↺ 다시 하기 · 시험용 (선생님·테스터에게만 보여요)</button>` : ''}`;
-  $('#word-share').addEventListener('click', shareWord);
+  if (after) $('#word-share').addEventListener('click', shareWord);
   if (dailyWord.test_account) $('#word-reset').addEventListener('click', resetWordForTest);
+  const ta = $('#wx-text');
+  if (ta) ta.value = wordExplainDraft;
 }
+
+/* ── 오늘의 단어 한 마디로 설명하기 (87단계) ──
+   정답이 공개된 뒤(맞혀도, 못 맞혀도) 그 단어를 쉬운 영어 한두 문장으로 설명해 보고 짧은 피드백을 받는다.
+   결과 설명의 ③ "It means …"처럼 '어려운 말을 쉬운 말로'의 기초 연습. 선택이라 건너뛸 수 있고, 게임 기록과는 따로다.
+   정답 단어(knee·knees처럼 꼴이 바뀐 것 포함)는 쓰지 않는다 — 서버에 보내기 전에 여기서 먼저 거른다 (서버도 같은 규칙).
+   쓴 글과 피드백은 이 휴대폰에만 (오늘 푼 상태의 explain). */
+const WORD_FRAMES = ["It's in your ", 'You use it to ', "It's like ", "It's a kind of "];
+const WORD_VERDICT = {
+  clear: '✓ 뜻이 잘 통해요',
+  okay: '✓ 조금 어색하지만 통해요',
+  unclear: '뜻이 잘 전해지지 않았어요. 다시 써 볼까요?'
+};
+let wordExplainDraft = '';     // 쓰는 중인 글 (화면을 다시 그려도 남게)
+let wordExplainEditing = false;   // 피드백을 받은 뒤 '다시 써 보기' 또는 건너뛴 뒤 '설명해 보기'로 다시 쓰는 중
+let wordExplainBusy = false;
+
+/** 글에 정답 단어나 그 꼴이 들어 있는지 (서버의 hasWord_와 같은 규칙: 끝의 s·e를 뗀 앞부분으로 시작하는 단어) */
+function hasWordForm(text, word) {
+  let base = word.toLowerCase();
+  if (base.length > 4 && base.endsWith('s')) base = base.slice(0, -1);
+  if (base.length > 4 && base.endsWith('e')) base = base.slice(0, -1);
+  return (text.toLowerCase().match(/[a-z]+/g) || []).some((t) => t.startsWith(base));
+}
+
+function explainHtml(ex) {
+  const W = escapeHtml(dailyWord.word.toUpperCase());
+  if (ex.fb && !wordExplainEditing) {
+    const fb = ex.fb;
+    const fixed = fb.corrected && fb.corrected !== ex.text;
+    const alts = (fb.alternatives || []).map((a) =>
+      `<div class="fb-better-row"><span>${escapeHtml(a)}</span>${wordSayBtn(a, '문장 듣기')}</div>`).join('');
+    const again = ex.left === 0
+      ? '<p class="hint">오늘 받을 수 있는 피드백을 다 썼어요.</p>'
+      : `<button class="link wx-link" id="wx-again">↺ 다시 써 보기${ex.left != null ? ` · 오늘 ${ex.left}번 남음` : ''}</button>`;
+    return `<div class="wx" id="wx">
+      <p class="wx-title">✍️ 내 설명</p>
+      <p class="fb-said">${escapeHtml(ex.text)}</p>
+      <p class="wx-verdict ${escapeHtml(fb.overall)}">${WORD_VERDICT[fb.overall] || WORD_VERDICT.okay}</p>
+      ${fb.message ? `<p class="wx-msg">${escapeHtml(fb.message)}</p>` : ''}
+      ${fixed ? `<div class="fb-better"><span class="fb-label">이렇게 고쳐 보면</span>
+          <div class="fb-better-row"><span>${escapeHtml(fb.corrected)}</span>${wordSayBtn(fb.corrected, '고친 문장 듣기')}</div></div>
+        ${(fb.changes || []).length ? `<ul class="wx-changes">${fb.changes.map((c) => `<li>${escapeHtml(c)}</li>`).join('')}</ul>` : ''}`
+        : '<p class="wx-ok">고칠 곳 없이 잘 썼어요 👍</p>'}
+      ${alts ? `<p class="fb-label wx-alt-title">이렇게도 말할 수 있어요</p><div class="wx-alts">${alts}</div>` : ''}
+      ${again}
+    </div>`;
+  }
+  if (ex.skipped && !wordExplainEditing) {
+    return '<button class="link wx-link" id="wx-open">✍️ 오늘의 단어를 한 마디로 설명해 보기</button>';
+  }
+  const frames = WORD_FRAMES.map((f) => `<button type="button" class="chip wx-frame" data-frame="${escapeHtml(f)}">${escapeHtml(f.trim())} …</button>`).join('');
+  return `<div class="wx" id="wx">
+    <p class="wx-title">✍️ 그럼 오늘의 단어를 한 마디로 설명해 볼까요?</p>
+    <p class="wx-desc">수검자에게 말하듯 쉬운 영어로 한두 문장. <b>${W}</b>는 쓰지 않아요.</p>
+    <div class="wx-frames">${frames}</div>
+    <textarea id="wx-text" rows="2" maxlength="200" lang="en" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="false"
+      aria-label="오늘의 단어 설명" placeholder="It's … / You use it to …"></textarea>
+    <p class="hint wx-err" id="wx-err" role="alert"></p>
+    <button class="primary" id="wx-send"${wordExplainBusy ? ' disabled' : ''}>${wordExplainBusy ? '피드백을 만들고 있어요…' : '피드백 받기'}</button>
+    ${ex.fb || ex.skipped ? '<button class="link wx-link" id="wx-cancel">취소</button>' : '<button class="link wx-link" id="wx-skip">건너뛰기</button>'}
+  </div>`;
+}
+
+function saveExplain(patch) {
+  const st = wordState();
+  st.explain = { ...(st.explain || {}), ...patch };
+  saveJson(WORD_KEY, st);
+  return st;
+}
+
+async function sendExplain() {
+  if (wordExplainBusy) return;
+  const text = $('#wx-text').value.replace(/\s+/g, ' ').trim();
+  const err = $('#wx-err');
+  wordExplainDraft = text;
+  if (!text) { err.textContent = '설명을 한두 문장 써 주세요.'; return; }
+  if (hasWordForm(text, dailyWord.word)) {
+    err.textContent = `'${dailyWord.word.toUpperCase()}'(또는 비슷한 꼴)를 쓰지 않고 설명해 보세요.`;
+    return;
+  }
+  wordExplainBusy = true;
+  renderWordEnd(wordState());
+  try {
+    const { fb, left } = await explainWord(loadCode(), text);
+    wordExplainBusy = false;
+    wordExplainEditing = false;
+    wordExplainDraft = '';
+    const st = saveExplain({ text, fb, left, skipped: false });
+    renderWordEnd(st);
+    renderWordCard();
+    const box = $('#wx');
+    if (box) box.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
+  } catch (e) {
+    wordExplainBusy = false;
+    const st = e.message === 'EXPLAIN_LIMIT' && wordState().explain ? saveExplain({ left: 0 }) : wordState();
+    renderWordEnd(st);
+    $('#wx-err').textContent = errorText(e);
+  }
+}
+
+$('#word-end').addEventListener('input', (ev) => { if (ev.target.id === 'wx-text') wordExplainDraft = ev.target.value; });
+$('#word-end').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button');
+  if (!b) return;
+  if (b.classList.contains('wx-frame')) {
+    // 설명 틀: 쓰던 글 뒤에 이어 붙이고 바로 이어서 쓸 수 있게
+    const ta = $('#wx-text');
+    ta.value = (ta.value.trim() ? ta.value.trim() + ' ' : '') + b.dataset.frame;
+    wordExplainDraft = ta.value;
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    return;
+  }
+  if (b.id === 'wx-send') return sendExplain();
+  if (b.id === 'wx-skip') { wordExplainDraft = ''; renderWordEnd(saveExplain({ skipped: true })); return; }
+  if (b.id === 'wx-open' || b.id === 'wx-again') {
+    wordExplainEditing = true;
+    wordExplainDraft = b.id === 'wx-again' ? wordState().explain.text : '';
+    renderWordEnd(wordState());
+    $('#wx-text').focus();
+    return;
+  }
+  if (b.id === 'wx-cancel') { wordExplainEditing = false; wordExplainDraft = ''; renderWordEnd(wordState()); }
+});
 
 function wordKey(key) {
   const st = wordState();
@@ -2378,6 +2515,8 @@ async function submitWord(st) {
 function resetWordForTest() {
   saveJson(WORD_KEY, { no: dailyWord.no, guesses: [], hint: false, done: false, won: false, replay: true });
   wordTyping = '';
+  wordExplainDraft = '';
+  wordExplainEditing = false;
   $('#word-msg').textContent = '';
   renderWord();
   renderWordCard();
@@ -2388,7 +2527,7 @@ function resetWordForTest() {
 function wordShareText() {
   const st = wordState();
   const grid = st.guesses.map((g) => scoreGuess(g, dailyWord.word).map((m) => WORD_MARK[m]).join('')).join('\n');
-  return `Tutoreal 오늘의 단어 #${dailyWord.no}  ${st.won ? st.guesses.length : 'X'}/${WORD_TRIES}${hintOpen(st) ? ' 💡' : ''}\n${grid}`;
+  return `Tutoreal 오늘의 단어 #${dailyWord.no}  ${st.won ? st.guesses.length : 'X'}/${WORD_TRIES}${hintOpen(st) ? ' 💡' : ''}${st.explain && st.explain.fb ? ' ✍️' : ''}\n${grid}`;
 }
 async function shareWord() {
   const text = wordShareText();
@@ -2410,6 +2549,7 @@ $('#word-keys').addEventListener('click', (ev) => {
 });
 document.addEventListener('keydown', (ev) => {
   if (views.word.hidden || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  if (ev.target.closest && ev.target.closest('textarea, input')) return;   // 설명 칸(87단계)에 쓰는 글자는 게임 키로 쓰지 않는다
   const k = ev.key === 'Enter' ? 'enter' : ev.key === 'Backspace' ? 'back' : ev.key.toLowerCase();
   if (k === 'enter' || k === 'back' || /^[a-z]$/.test(k)) { ev.preventDefault(); wordKey(k); }
 });

@@ -10,7 +10,10 @@ row('patient-v1')[2] = false;                                        // v0.15 �
 const before = P().length;
 w.run('setup');
 console.log('setup 뒤 prompts 줄 수:', before, '→', P().length, '/ 추가된 줄:', P().slice(before).map((r) => r[0]).join(', '));
-assert.equal(P().length, before + 1); assert(row('patient-v3') && row('patient-v3')[2] === true);
+// 그 뒤 버전의 새 지시문(예: 87단계 word-explain-v1)도 함께 더해질 수 있다. 같은 이름이 두 줄이 되지 않으면 된다
+const ids = P().slice(1).map((r) => r[0]);
+assert(P().slice(before).some((r) => r[0] === 'patient-v3')); assert.equal(new Set(ids).size, ids.length);
+assert(row('patient-v3') && row('patient-v3')[2] === true);
 assert(row('patient-v2')[1] === old.tabs.prompts.find((r) => r[0] === 'patient-v2')[1], 'v2 내용은 그대로');
 
 const s = w.tabs.settings; const set = (k, v) => { const r = s.find((x) => x[0] === k); if (r) r[1] = v; else s.push([k, v, '']); };
