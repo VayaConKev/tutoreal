@@ -581,7 +581,6 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
    그런 화면에서는 안내 문장을 숨기고, 칸과 키를 화면 높이에 맞춰 줄인다 (svh: 주소창이 보일 때의 높이). 로고 줄은 80단계부터 이 화면에서 늘 숨김 */
 #view-word { --w-tile: 48px; --w-keyh: 52px; }
 @media (max-height: 860px) {
-  #view-word .word-game .goal { display: none; }
   #view-word .word-legend { margin: 2px 0 8px; }
   #view-word { --w-tile: clamp(32px, calc((100vh - 420px) / 6.6), 46px); --w-keyh: clamp(40px, 6.6vh, 50px); }
   @supports (height: 100svh) {
@@ -590,7 +589,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 }
 .word-game { padding: 16px; }
 .word-game h3 { margin: 2px 0 0; }
-.word-game .goal { margin: 2px 0 0; }
+.word-rule { margin-left: 4px; color: var(--muted); font-size: 14px; font-weight: 600; white-space: nowrap; }
 .word-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; color: var(--muted); font-size: 13px; margin: 4px 0 12px; }
 .wl { display: inline-block; width: 14px; height: 14px; border-radius: 3px; margin-left: 4px; }
 .wl:first-child { margin-left: 0; }
@@ -631,6 +630,18 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 .word-msg:empty { min-height: 0; margin: 0 0 10px; }   /* 글이 없을 때는 자리를 비워 6줄이 키보드 위에 다 보이게 */
 button.word-hint-btn { display: block; width: auto; margin: 0 auto; padding: 6px 16px; border-radius: 999px; font-size: 14px; }   /* button.secondary보다 뒤에서 이기게 */
 .word-hint-btn.locked { opacity: 0.6; cursor: default; }   /* 3번째 시도 전: 잠김 */
+/* 힌트가 막 열렸을 때 두 번 살짝 커지며 알려 준다 (90단계) */
+.word-hint-btn.ready { animation: word-hint-ready 0.6s ease-in-out 2; }
+@keyframes word-hint-ready { 50% { transform: scale(1.08); box-shadow: 0 0 0 4px var(--teal-soft); } }
+@media (prefers-reduced-motion: reduce) { .word-hint-btn.ready { animation: none; } }
+/* 오류 안내 (90단계): 칸 바로 위(힌트 버튼·힌트 글 자리)에 겹쳐 2초 동안. 자리를 차지하지 않아 칸이 밀리지 않고, 지금 쓰는 줄도 가리지 않는다 */
+.word-board { position: relative; }
+.word-toast {
+  position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); z-index: 4; width: max-content; max-width: 92%; margin: 0;
+  padding: 8px 14px; border-radius: 8px; background: var(--text); color: var(--bg); font-size: 15px; font-weight: 700; text-align: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); pointer-events: none;
+}
+.word-toast[hidden] { display: none; }
 /* display: block·flex가 hidden을 덮어쓰지 않게 (72단계: 다 푼 뒤에도 힌트 버튼·키보드·권하기가 보이던 문제) */
 .word-hint-btn[hidden], .word-keys[hidden], .word-nudge[hidden], .word-end[hidden] { display: none; }
 /* 키보드는 화면 아래에 붙여 둔다 (작은 휴대폰에서도 칸과 키보드가 함께 보이게) */

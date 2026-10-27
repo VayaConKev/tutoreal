@@ -2200,6 +2200,7 @@ function openWord() {
   wordExplainEditing = false;
   $('#word-no').textContent = `#${dailyWord.no} · ${dailyWord.date}`;
   $('#word-msg').textContent = '';
+  wordToast('');
   renderWord();
   show('word');
 }
@@ -2449,27 +2450,35 @@ $('#word-end').addEventListener('click', (ev) => {
 function wordKey(key) {
   const st = wordState();
   if (st.done || wordFlipping || wordChecking) return;
-  $('#word-msg').textContent = hintOpen(st) ? wordHintText(st) : '';
   if (key === 'back') { wordTyping = wordTyping.slice(0, -1); return renderWord(); }
   if (key === 'enter') return submitWord(st);
   if (/^[a-z]$/.test(key) && wordTyping.length < WORD_LEN) { wordTyping += key; renderWord(); }
 }
 
+/** 오류 안내 (90단계): 칸 위에 잠깐 띄운다. 힌트 글(#word-msg)은 그대로 둔다 (전에는 같은 줄을 써서 힌트가 사라졌다) */
+let wordToastTimer = 0;
+function wordToast(msg) {
+  const t = $('#word-toast');
+  clearTimeout(wordToastTimer);
+  t.textContent = msg;
+  t.hidden = !msg;
+  if (msg) wordToastTimer = setTimeout(() => { t.hidden = true; }, 2000);
+}
 function shakeNowRow(msg) {
-  $('#word-msg').textContent = msg;
+  wordToast(msg);
   const row = document.querySelector('.word-row.now');
   if (row) { row.classList.remove('shake'); void row.offsetWidth; row.classList.add('shake'); }
 }
 
 async function submitWord(st) {
-  if (wordTyping.length < WORD_LEN) return shakeNowRow(`${WORD_LEN}글자를 모두 채워 주세요.`);
+  if (wordTyping.length < WORD_LEN) return shakeNowRow(`${WORD_LEN}글자를 모두 채워 주세요`);
   // 사전에 없는 단어는 받지 않는다 (기회도 줄지 않음). 정답 단어는 사전에 없어도 받는다
   if (!wordDict) {
     wordChecking = true;
     await loadWordDict();
     wordChecking = false;
   }
-  if (wordDict && wordTyping !== dailyWord.word && !wordDict.has(wordTyping)) return shakeNowRow('사전에 없는 단어예요. 다른 단어를 넣어 보세요.');
+  if (wordDict && wordTyping !== dailyWord.word && !wordDict.has(wordTyping)) return shakeNowRow('사전에 없는 단어예요');
   st.guesses.push(wordTyping);
   wordTyping = '';
   const won = st.guesses[st.guesses.length - 1] === dailyWord.word;
@@ -2497,6 +2506,11 @@ async function submitWord(st) {
     renderWord();
     renderWordCard();
     if (won) speak(dailyWord.word, 'en');
+    // 이번 줄로 힌트가 막 열렸으면 버튼이 두 번 살짝 커지며 알려 준다 (90단계)
+    const hintBtn = $('#word-hint');
+    if (!st.done && !hintBtn.hidden && st.guesses.length === WORD_HINT_AFTER && !st.guesses.includes(dailyWord.word)) {
+      hintBtn.classList.remove('ready'); void hintBtn.offsetWidth; hintBtn.classList.add('ready');
+    }
     // 방금 끝났으면 결과·설명 칸으로 내려간다 (89단계: 812px 높이 휴대폰에서도 입력 칸이 화면 아래에 숨었다)
     if (st.done) $('#word-end').scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
   };
@@ -2513,6 +2527,7 @@ function resetWordForTest() {
   wordExplainDraft = '';
   wordExplainEditing = false;
   $('#word-msg').textContent = '';
+  wordToast('');
   renderWord();
   renderWordCard();
   window.scrollTo(0, 0);
@@ -2565,6 +2580,7 @@ function wordHintText(st) {
   }
   return `💡 ${st.hintPos + 1}번째 글자는 ${w[st.hintPos].toUpperCase()}예요.`;
 }
+$('#word-hint').addEventListener('animationend', (ev) => ev.currentTarget.classList.remove('ready'));   // 다시 그려도 또 반짝이지 않게
 $('#word-hint').addEventListener('click', () => {
   const st = wordState();
   if (st.guesses.filter((g) => g !== dailyWord.word).length < WORD_HINT_AFTER) return;   // 잠긴 동안은 열리지 않게

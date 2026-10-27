@@ -235,13 +235,17 @@
       <button class="link" id="word-back">‹ 챕터 목록</button>
       <div class="card word-game">
         <p class="eyebrow" id="word-no"></p>
-        <h3>오늘의 단어</h3>
-        <p class="goal">5글자 영어 단어를 6번 안에 맞혀 보세요.</p>
+        <!-- 규칙은 제목 옆 한 줄에 (90단계: 따로 둔 안내 문장은 높이 860px 이하 휴대폰에서 숨겨져 학생 대부분이 못 봤다) -->
+        <h3>오늘의 단어 <span class="word-rule">5글자 · 6번 안에</span></h3>
         <p class="word-legend"><span class="wl correct"></span>자리까지 맞음 <span class="wl present"></span>다른 자리에 있음 <span class="wl absent"></span>없음</p>
         <!-- 힌트와 안내 글은 칸 위에 (73단계): 아래에 두면 화면 아래 키보드에 가려졌다 -->
         <button class="secondary word-hint-btn" id="word-hint" hidden>💡 힌트 보기</button>
         <p class="word-msg" id="word-msg" role="status" aria-live="polite"></p>
-        <div class="word-grid" id="word-grid"></div>
+        <!-- 오류 안내는 칸 위에 잠깐 떠오른다 (90단계: 힌트 글을 덮지 않고, 칸이 아래로 밀리지 않게) -->
+        <div class="word-board">
+          <div class="word-grid" id="word-grid"></div>
+          <p class="word-toast" id="word-toast" role="alert" hidden></p>
+        </div>
         <div class="word-end" id="word-end" hidden></div>
       </div>
       <div class="word-keys" id="word-keys"></div>
