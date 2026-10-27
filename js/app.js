@@ -2212,7 +2212,8 @@ function renderWord(pending = false) {
   const pend = pending ? st.guesses[st.guesses.length - 1] : '';
   const done = st.done && !pending;
   const rows = [];
-  for (let r = 0; r < WORD_TRIES; r++) {
+  // 다 푼 뒤에는 쓰지 않은 빈 줄을 그리지 않는다 (89단계: 결과와 설명 칸이 화면 위쪽에 오게)
+  for (let r = 0; r < (done ? shown.length : WORD_TRIES); r++) {
     const g = shown[r];
     const pendRow = !!pend && r === shown.length;
     const typing = !g && !pend && r === shown.length && !done ? wordTyping : '';
@@ -2248,6 +2249,7 @@ function renderWord(pending = false) {
   hintBtn.classList.toggle('locked', locked);
   hintBtn.textContent = locked ? `🔒 힌트 · ${WORD_HINT_AFTER + 1}번째 시도부터 열려요` : '💡 힌트 보기';
   if (hintOpen(st) && !done) $('#word-msg').textContent = wordHintText(st);
+  if (done) $('#word-msg').textContent = '';   // 다 푼 뒤에는 힌트 글도 치운다 (89단계)
   renderWordEnd({ ...st, done });
 }
 
@@ -2308,21 +2310,25 @@ function renderWordEnd(st) {
   const ex = st.explain || {};
   const after = !!(ex.fb || ex.skipped) && !wordExplainEditing;
   end.innerHTML = `
-    <p class="word-result">${st.won ? `🎉 ${st.guesses.length}번 만에 맞혔어요!` : '아쉬워요! 내일 또 도전해요.'}</p>
+    <p class="word-result">${st.won ? `🎉 ${st.guesses.length}번 만에 맞혔어요!` : '아쉬워요! 정답은 이 단어예요.'}</p>
     <div class="word-answer">
       <span class="word-answer-text">${escapeHtml(w.toUpperCase())}</span>
       ${dailyWord.meaning ? `<span class="word-answer-ko">${escapeHtml(dailyWord.meaning)}</span>` : ''}
       ${wordSayBtn(w, `${w} 발음 듣기`)}
     </div>
-    ${explainHtml(ex)}
+    ${explainHtml(ex, st.won)}
     ${!after ? '' : `${sentence ? `<p class="word-sentence">${sentence}</p>
       <button type="button" class="say-btn word-say-pill" data-say="${escapeHtml(picked)}" data-course="en" aria-label="문장 듣기">${SPEAKER_ICON}<span>문장 듣기</span></button>` : ''}
     <p class="word-stats">${streak > 0 ? `🔥 ${streak}일 연속` : '연속 기록 없음'} · 맞힌 날 ${stats.won} / ${stats.played} · 최고 ${stats.best}일 연속</p>
     <button class="primary" id="word-share">결과 공유하기</button>
     <p class="hint" id="word-share-msg" role="status"></p>
+    <button class="secondary" id="word-done-back">챕터 목록으로</button>
     <p class="hint">다음 단어는 내일 0시(한국 시간)에 나와요.</p>`}
     ${dailyWord.test_account ? `<button class="link word-reset" id="word-reset">↺ 다시 하기 · 시험용 (선생님·테스터에게만 보여요)</button>` : ''}`;
-  if (after) $('#word-share').addEventListener('click', shareWord);
+  if (after) {
+    $('#word-share').addEventListener('click', shareWord);
+    $('#word-done-back').addEventListener('click', leaveWord);   // 맨 아래에서도 돌아가게 (89단계: 이 화면에는 아래쪽 탭 바가 없다)
+  }
   if (dailyWord.test_account) $('#word-reset').addEventListener('click', resetWordForTest);
   const ta = $('#wx-text');
   if (ta) ta.value = wordExplainDraft;
@@ -2343,7 +2349,8 @@ let wordExplainDraft = '';     // 쓰는 중인 글 (화면을 다시 그려도 
 let wordExplainEditing = false;   // 피드백을 받은 뒤 '다시 써 보기' 또는 건너뛴 뒤 '설명해 보기'로 다시 쓰는 중
 let wordExplainBusy = false;
 
-function explainHtml(ex) {
+/** won: 못 맞힌 날은 제목을 'Nice try!'로 (89단계: '아쉬워요' 바로 아래 'Good Work!'는 말이 맞지 않았다) */
+function explainHtml(ex, won) {
   if (ex.fb && !wordExplainEditing) {
     const fb = ex.fb;
     const fixed = fb.corrected && fb.corrected !== ex.text;
@@ -2370,7 +2377,7 @@ function explainHtml(ex) {
   }
   const frames = WORD_FRAMES.map((f) => `<button type="button" class="chip wx-frame" data-frame="${escapeHtml(f)}">${escapeHtml(f.trim())} …</button>`).join('');
   return `<div class="wx" id="wx">
-    <p class="wx-title">Good Work!<span class="wx-sub">오늘의 단어를 한 마디로 설명해 봅시다!</span></p>
+    <p class="wx-title">${won ? 'Good Work!' : 'Nice try!'}<span class="wx-sub">오늘의 단어를 한 마디로 설명해 봅시다!</span></p>
     <p class="wx-desc"><b>오늘의 단어</b>는 최대한 쓰지 않고 설명해 봅시다.</p>
     <div class="wx-frames">${frames}</div>
     <textarea id="wx-text" rows="2" maxlength="200" lang="en" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="false"
@@ -2490,6 +2497,8 @@ async function submitWord(st) {
     renderWord();
     renderWordCard();
     if (won) speak(dailyWord.word, 'en');
+    // 방금 끝났으면 결과·설명 칸으로 내려간다 (89단계: 812px 높이 휴대폰에서도 입력 칸이 화면 아래에 숨었다)
+    if (st.done) $('#word-end').scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
   };
   if (reduceMotion()) return after();
   wordFlipping = true;
@@ -2563,7 +2572,8 @@ $('#word-hint').addEventListener('click', () => {
   saveJson(WORD_KEY, st);
   renderWord();
 });
-$('#word-back').addEventListener('click', () => { renderWordCard(); show('list'); });
+function leaveWord() { renderWordCard(); show('list'); }
+$('#word-back').addEventListener('click', leaveWord);
 $('#word-nudge-btn').addEventListener('click', () => finishReview('word'));
 $('#review-drill').addEventListener('click', () => finishReview('drill'));
 

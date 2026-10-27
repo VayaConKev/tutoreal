@@ -653,7 +653,7 @@ button.word-hint-btn { display: block; width: auto; margin: 0 auto; padding: 6px
    빨리 누를 때 글자가 선택되거나 회색 깜빡임이 생기지 않게 */
 #view-word, .word-key, .word-hint-btn { touch-action: manipulation; }
 .word-key { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
-.word-end { text-align: center; margin-top: 14px; }
+.word-end { text-align: center; margin-top: 14px; scroll-margin-top: 12px; }   /* 다 푼 뒤 여기로 내려올 때 위에 조금 여유 (89단계) */
 .word-result { font-size: 18px; font-weight: 700; margin: 0 0 10px; }
 .word-answer { display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap; }
 .word-answer-text { font-size: 28px; font-weight: 800; letter-spacing: 0.08em; color: var(--teal-ink); }
