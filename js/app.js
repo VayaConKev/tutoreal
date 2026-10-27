@@ -2318,7 +2318,7 @@ function renderWordEnd(st) {
       ${wordSayBtn(w, `${w} 발음 듣기`)}
     </div>
     ${explainHtml(ex, st.won)}
-    ${!after ? '' : `${sentence ? `<p class="word-sentence">${sentence}</p>
+    ${!after ? '' : `${sentence ? `<p class="word-sentence"><span class="word-sentence-label">수업에서는 이렇게 써요</span>${sentence}</p>
       <button type="button" class="say-btn word-say-pill" data-say="${escapeHtml(picked)}" data-course="en" aria-label="문장 듣기">${SPEAKER_ICON}<span>문장 듣기</span></button>` : ''}
     <p class="word-stats">${streak > 0 ? `🔥 ${streak}일 연속` : '연속 기록 없음'} · 맞힌 날 ${stats.won} / ${stats.played} · 최고 ${stats.best}일 연속</p>
     <button class="primary" id="word-share">결과 공유하기</button>
@@ -2357,9 +2357,10 @@ function explainHtml(ex, won) {
     const fixed = fb.corrected && fb.corrected !== ex.text;
     const alts = (fb.alternatives || []).map((a) =>
       `<div class="fb-better-row"><span>${escapeHtml(a)}</span>${wordSayBtn(a, '문장 듣기')}</div>`).join('');
+    // 뜻이 잘 전해지지 않았으면 '다시 써 보기'를 버튼으로 키운다 (91단계: 판정 글이 다시 써 보자고 하는데 작은 링크였다)
     const again = ex.left === 0
       ? '<p class="hint">오늘 받을 수 있는 피드백을 다 썼어요.</p>'
-      : `<button class="link wx-link" id="wx-again">↺ 다시 써 보기${ex.left != null ? ` · 오늘 ${ex.left}번 남음` : ''}</button>`;
+      : `<button class="${fb.overall === 'unclear' ? 'secondary wx-again-btn' : 'link wx-link'}" id="wx-again">↺ 다시 써 보기${ex.left != null ? ` · 오늘 ${ex.left}번 남음` : ''}</button>`;
     return `<div class="wx" id="wx">
       <p class="wx-title">✍️ 내 설명</p>
       <p class="fb-said">${escapeHtml(ex.text)}</p>
@@ -2376,16 +2377,18 @@ function explainHtml(ex, won) {
   if (ex.skipped && !wordExplainEditing) {
     return '<button class="link wx-link" id="wx-open">✍️ 오늘의 단어를 한 마디로 설명해 보기</button>';
   }
-  const frames = WORD_FRAMES.map((f) => `<button type="button" class="chip wx-frame" data-frame="${escapeHtml(f)}">${escapeHtml(f.trim())} …</button>`).join('');
+  // 피드백을 기다리는 동안은 틀·입력 칸·건너뛰기를 잠근다 (91단계: 건너뛴 뒤 피드백이 뒤늦게 와서 화면이 두 번 바뀌었다)
+  const busy = wordExplainBusy ? ' disabled' : '';
+  const frames = WORD_FRAMES.map((f) => `<button type="button" class="chip wx-frame" data-frame="${escapeHtml(f)}"${busy}>${escapeHtml(f.trim())} …</button>`).join('');
   return `<div class="wx" id="wx">
     <p class="wx-title">${won ? 'Good Work!' : 'Nice try!'}<span class="wx-sub">오늘의 단어를 한 마디로 설명해 봅시다!</span></p>
     <p class="wx-desc"><b>오늘의 단어</b>는 최대한 쓰지 않고 설명해 봅시다.</p>
     <div class="wx-frames">${frames}</div>
-    <textarea id="wx-text" rows="2" maxlength="200" lang="en" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="false"
+    <textarea id="wx-text" rows="2" maxlength="200" lang="en" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="false"${busy}
       aria-label="오늘의 단어 설명" placeholder="It's … / You use it to …"></textarea>
     <p class="hint wx-err" id="wx-err" role="alert"></p>
-    <button class="primary" id="wx-send"${wordExplainBusy ? ' disabled' : ''}>${wordExplainBusy ? '피드백을 만들고 있어요…' : '피드백 받기'}</button>
-    ${ex.fb || ex.skipped ? '<button class="link wx-link" id="wx-cancel">취소</button>' : '<button class="link wx-link" id="wx-skip">건너뛰기</button>'}
+    <button class="primary" id="wx-send"${busy}>${wordExplainBusy ? '피드백을 만들고 있어요…' : '피드백 받기'}</button>
+    ${ex.fb || ex.skipped ? `<button class="link wx-link" id="wx-cancel"${busy}>취소</button>` : `<button class="link wx-link" id="wx-skip"${busy}>건너뛰기</button>`}
   </div>`;
 }
 
@@ -2423,9 +2426,19 @@ async function sendExplain() {
 }
 
 $('#word-end').addEventListener('input', (ev) => { if (ev.target.id === 'wx-text') wordExplainDraft = ev.target.value; });
+/* 입력 칸을 누르면 휴대폰 키보드가 '피드백 받기'를 가렸다 (91단계). 키보드가 올라온 뒤 보이는 영역(visualViewport) 안으로 버튼까지 올린다 */
+function keepExplainSendVisible() {
+  const vv = window.visualViewport;
+  const btn = $('#wx-send');
+  if (!vv || !btn || document.activeElement !== $('#wx-text')) return;
+  const over = btn.getBoundingClientRect().bottom + 12 - (vv.offsetTop + vv.height);
+  if (over > 0) window.scrollBy({ top: over, behavior: reduceMotion() ? 'auto' : 'smooth' });
+}
+$('#word-end').addEventListener('focusin', (ev) => { if (ev.target.id === 'wx-text') setTimeout(keepExplainSendVisible, 350); });
+if (window.visualViewport) window.visualViewport.addEventListener('resize', keepExplainSendVisible);
 $('#word-end').addEventListener('click', (ev) => {
   const b = ev.target.closest('button');
-  if (!b) return;
+  if (!b || (wordExplainBusy && b.closest('#wx'))) return;
   if (b.classList.contains('wx-frame')) {
     // 설명 틀: 쓰던 글 뒤에 이어 붙이고 바로 이어서 쓸 수 있게
     const ta = $('#wx-text');
