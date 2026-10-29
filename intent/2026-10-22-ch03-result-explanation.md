@@ -1,7 +1,7 @@
 # 3장 검사 결과 설명 시리즈
 
 - 날짜: 2026-10-22 (Part 1·2를 만든 뒤에 정리, 앞으로의 Part를 위한 문서)
-- 상태: 만드는 중 — Part 1(ch03) 3주 차 수업 끝, 수업 뒤 설명 내용 보강 중, Part 2(ch03b) 시트 반영 확인 중, Part 3~5와 Advanced는 아직
+- 상태: 만드는 중 — Part 1(ch03) 3주 차 수업 끝, Part 2(ch03b) 내용 확정 (2026-10-29, 동료 간호사 확인 반영, 4주 차 수업), Part 3~5와 Advanced는 아직
 - 관련 단계: 47단계 gentle 피드백, 48·52단계 검사 결과 슬립, 66단계 소지품 번호, 63단계 체크리스트 문구 (앱 v0.44~v0.71)
 
 ## 한 줄 요약
@@ -25,7 +25,7 @@
 | Part | 챕터 | 다루는 결과 | 함께 익힐 조각 |
 | --- | --- | --- | --- |
 | 1 | ch03 | S 표재성 · E 미란성 · A 위축성 위염, R 역류성 식도염, P 용종 | 설명 3단계 (모습 → 진단명 → 쉬운 말), 작은 용종 설명 |
-| 2 | ch03b | BG 담즙역류성 위염, IM 장상피화생, D 십이지장염, N 특이사항 없음 (LFG는 정보가 모이면) | 부위 안내 ("This is your … No problems here."), 십이지장 설명 |
+| 2 | ch03b | BG 담즙역류성 위염, IM 장상피화생, D 십이지장염, N 특이사항 없음 (LFG는 다음 주차로) | 부위 안내 ("This is your … No problems here."), 십이지장 설명 |
 | 3 | (예정) | GU 위궤양, DU 십이지장궤양, GU·DU Scar 반흔 | 안심·생활 습관 안내 |
 | 4 | (예정) | 대장: 치질, 게실, 흑색증, 정상 | 대장 사진 안내 |
 | 5 | (예정) | 검사를 끝까지 못 한 경우, 의사 상담 항목 (SMT, CLO, Bx, 대장 용종 처치 등) | 담당의에게 넘기는 말 |
@@ -55,7 +55,7 @@
 | 피드백은 너그럽게 (gentle) | 목표는 문법보다 '뜻이 통했나'. 쉬운 말로 바꾼 것을 칭찬 | 보통 피드백 (꼼꼼히) |
 | 설명 3단계: 모습 → 진단명 → 쉬운 말 | 실제 설명이 사진의 모습에서 시작한다. 초급도 따라 할 수 있는 틀 | 진단명부터 말하기 |
 | 식도는 esophagus + "the tube from your mouth to your stomach" | food pipe는 실제로 잘 쓰이지 않는 것 같다 (선생님 의견) | food pipe |
-| 십이지장은 "the part right after your stomach" | small intestine도 모르는 수검자가 있어 위를 기준으로 위치만 | the first part of your small intestine (선택 표현으로만) |
+| 십이지장은 이름을 말한 뒤 위치로 풀기: "This part is called the duodenum. It is the part right after your stomach." (Part 2 확정 때 바꿈) | 결과 이름(duodenitis)에 duodenum이 들어 있어 이름을 먼저 알려 주는 편이 자연스럽다. small intestine도 모르는 수검자가 있어 풀이는 위를 기준으로 위치만 | 이름 없이 "the part right after your stomach"만, the first part of your small intestine (선택 표현으로만) |
 | 실제 설명 흐름 전체(부위 안내, 여러 소견, 생활 습관)는 **Advanced**로 | 초급에게 한 번에 하기엔 너무 길다. Part마다 조각을 하나씩 익힌 뒤 이어 붙인다 | Part 1에 전부 넣기 |
 | Part 1에는 짧은 두 문장만 추가 예정: "No problems here." / "Everything else looks normal." | 세 단어짜리라 부담 없고 매번 하는 말 | 부위 안내 전체 (Part 2로) |
 | 부위 안내는 Part 2에서 | 특이사항 없음(N) 설명 자체가 부위 안내라 잘 맞는다 | Part 1 |
@@ -70,10 +70,16 @@
 | 역류성 식도염은 "You have acid reflux." 뒤에 풀어 말하지 않고 **바로 주의할 점**으로 (커피·술 피하기, 식사 후 바로 눕지 않기) | acid reflux는 이미 쉬운 말이라 더 풀 필요가 없다. 실제로도 그렇게 말하는 게 일반적이고 실용적이다 | "Acid reflux means stomach acid comes back up …" |
 | Beginner 모범 대화의 수검자는 **대부분 알아듣는다** (되묻기 "Sorry, the eso…?", "What does that mean?", 말이 빠른 수검자는 빼고, 결과마다 내용 질문 하나만). 앱의 AI 수검자도 같게 하고, 체크리스트의 '되물으면 더 쉬운 말로'는 뺌 (7개) | 초급은 기본 흐름을 먼저 익히는 게 목표. 못 알아듣는 상황과 식도 풀이("the tube from your mouth to your stomach")는 **Intermediate**에서 | 되묻는 수검자를 Beginner 대화에 넣기 |
 | 원인·추가 주의사항은 독백에 넣지 않고 **수검자가 물으면 한 문장으로** 답하기 | 긴 문장이 이어지면 초급 학생의 흥미가 떨어진다. 묻고 답하기로 나누면 대화가 된다 | 결과마다 원인·진료·생활 습관을 모두 이어서 설명 (인쇄 미리 보기 7쪽) |
+| (Part 2, 동료 간호사 확인) 장상피화생은 모습 **"some bumpy, red areas"**, 쉬운 말 **"some parts of your stomach are changing to look like your intestine"** | 실제로 "울퉁불퉁한 발적, 장점막화가 진행 중"으로 설명한다. 진행 중이라는 느낌을 are changing으로 | whitish patches (희끄무레한), have changed |
+| 장상피화생 추적은 **"We recommend an endoscopy every year."** — 수검자가 "Is it dangerous?"라고 물어도 이 한 문장으로 답한다 | 병원 안내가 매년 추적 내시경. 위암 위험·금연·음식·금주 안내는 초급에게 길어서 Intermediate 목표로 | every one to two years, "It's not dangerous now. We just need to check it." |
+| 십이지장염 쉬운 말: "your duodenum, the part right after your stomach, is a little red and **inflamed**" | 실제 설명에 가깝게 염증을 말한다 | is a little red |
+| 담즙역류성 위염 "Is it serious?" → "No, it's not serious."만 | "아주 흔해요"는 빼는 게 낫다 (선생님 의견) | It's very common. |
+| 같은 안내는 **레벨마다 다른 문장을 쓰지 않는다** (예: 추적 간격). 한 문장을 정해 모든 레벨에서 쓴다 | 레벨이 올라갈 때 같은 말을 새로 외울 이유가 없다. 새 표현은 따로 소개하는 파트로 | Beginner/Intermediate/Advanced마다 다른 문장 |
 
 ## 성공 기준
 
 - [x] Part 1: 시트(ch03, 시나리오 5개, 문장 연습 25개), 3주 차 핸드아웃(학생용·선생님용·예습 단어장)
+- [x] Part 2: 시트 줄(ch03b, 시나리오 5개, 문장 연습 25개), 4주 차 핸드아웃(학생용·선생님용·모범 대화)
 - [ ] 3주 차 수업에서 학생이 S·E·A·R·P를 3단계로 설명할 수 있다
 - [ ] 동료 간호사가 보기에 실제 설명과 어긋나는 곳이 없다 (인터뷰 결과 반영)
 - [ ] Part 2~5와 Advanced를 차례로 만들고, Part마다 시나리오·문장 연습·핸드아웃
@@ -85,7 +91,8 @@
 - (동료 인터뷰로 확인) 위축성 위염에 덧붙이는 말, 담당의에게 넘기는 기준, 위대장 수검자의 대장 사진 안내 순서
 - (동료 인터뷰로 확인) 수검자가 결과마다 자주 묻는 질문과 실제 답, MD 코멘트(PACS/EMR)의 표기 방식
 - 미란성 위염의 원인 약: 타이레놀(아세트아미노펜)은 보통 위 점막을 상하게 하지 않는 약으로 알려져 있어, 아스피린·이부프로펜 같은 진통소염제로만 말할지 병원 기준 확인
-- LFG 자세한 내용, IM 추적 검사 주기
+- LFG 자세한 내용 (다음 주차)
+- 위대장 수검자에서 대장이 정상일 때 따로 하는 안내 (다음 대장내시경 간격 등), Part 2에 헬리코박터를 넣을지
 - 소견이 두 개일 때 슬립 표기 (Advanced 시나리오에 필요)
 - Advanced에서 영어 모범 문장을 숨길지
 - Part 2 시트 반영 확인, ch03·ch03b 수검자 그림 10장
