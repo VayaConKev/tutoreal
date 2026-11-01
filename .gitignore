@@ -2,3 +2,8 @@
 .DS_Store
 # 캐릭터 원본 그림 (2048px, 약 110MB) — 앱에는 줄인 그림(img/avatars/students, patients)만 올린다
 img/avatars/originals/
+# Claude Code 개인 설정·메모 (공개 저장소에 올리지 않음)
+.claude/settings.local.json
+CLAUDE.local.md
+# 비밀값 파일
+.env*
