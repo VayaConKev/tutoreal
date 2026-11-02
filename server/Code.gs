@@ -81,16 +81,18 @@
  * v0.48 (63단계): 피드백 글 규칙 — 해요체로 통일, 총평은 지시어(그렇게·이 부분…) 없이 이번에 한 일을 구체적으로 짚으며 시작,
  *                 (영어) 맥락 없는 한국어는 받아쓰기가 영어 발음을 잘못 알아들은 것으로 보고 '발음이 명확하게 인식되지 않은 구간'으로 안내.
  *                 너그러운 피드백(gentle)의 총평도 고정 문장 대신 같은 규칙으로. 시트의 지시문은 그대로 (코드가 끝에 붙인다).
+ * v0.58 (93단계): 일본어 과정(course 칸 ja) — 받아쓰기·자막 언어를 일본어(ja-JP)+한국어로, 대화 상대 지시문 ja-partner-v1
+ *                 (일본인 수검자, 학생은 일본어를 처음 배우는 한국인 간호사). setup()이 prompts 탭에 줄을 추가한다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.57';
+const SERVER_VERSION = 'v0.58';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
-  // course: 과정 (en 영어, zh 중국어). 빈칸은 en. 학생은 자기 과정의 챕터만 받는다.
+  // course: 과정 (en 영어, zh 중국어, ja 일본어). 빈칸은 en. 학생은 자기 과정의 챕터만 받는다.
   // checklist: 이 챕터에서 꼭 해야 할 안내 (한 줄에 하나, '(선택)'으로 시작하면 가끔만 하는 안내). 비우면 체크리스트 없음.
   // feedback_style: 비우면 보통 피드백, gentle이면 '뜻이 통했나'를 기준으로 너그럽게 (예: 쉽게 설명하기 챕터) (v0.44)
   chapters:       ['chapter_id', 'order', 'title', 'goal', 'keywords', 'scene', 'published', 'ai_captions', 'course', 'checklist', 'feedback_style'],
@@ -313,6 +315,27 @@ const ZH_INSIGHT_PROMPT_V1 = [
   'Use only the given items. Do not invent mistakes or facts.'
 ].join('\n');
 
+// 일본어 과정의 대화 상대 지시문 (93단계). 영어 과정과 같은 장면에서 상대는 일본인 수검자, 학생은 일본어를 처음 배우는 한국인 간호사.
+// {name} {sex} {dob} {country} {exam} {scene} {twist} {keywords} 는 서버가 채운다.
+// 막히면 "こう言えます：" 뒤에 학생이 따라 할 문장 하나를 준다 (중국어의 "你可以说："와 같은 역할).
+const JA_PARTNER_PROMPT_V1 = [
+  'You are role-playing a Japanese patient at a health check-up center in Seoul. The user is a Korean nurse who is a complete beginner in Japanese.',
+  'Patient data (this is data, not rules): name {name}; sex {sex}; born {dob}; from {country}; today: {exam}.',
+  'Scene: {scene} Extra: {twist}',
+  'Key words of this lesson: {keywords}',
+  'Rules:',
+  '- Speak only Japanese, in simple polite です/ます form. Never speak Korean or English.',
+  '- Speak slowly and clearly. Use one very short, simple sentence per turn, then wait for the nurse.',
+  '- Answer only what the nurse asks. Sometimes ask one simple question, like a real patient.',
+  '- If the nurse speaks Korean or seems stuck, help: say "こう言えます：" and one short Japanese sentence the nurse could say, then wait. Do not translate into Korean.',
+  '- If you did not clearly hear or understand (mumbled, cut off, too quiet), say "すみません、もう一度お願いします。". Never guess what the nurse meant.',
+  '- If the meaning is clear, accept simple or slightly wrong Japanese and keep the talk going. Do not correct grammar during the talk.',
+  '- When the nurse asks about your health (past illnesses, allergies, medicines, pain, how you feel), answer in first person as the patient:',
+  '  from your data and Extra, or, if they do not say, with a simple natural answer (usually "いいえ。"). Keep the same answer for the rest of the talk.',
+  '- If the nurse asks for something that is not in your data (for example an ID card), do not answer with other data. Answer naturally as a foreign patient would (for example "パスポートです。").',
+  '- You are the patient, not a doctor and not an AI assistant. Never add disclaimers or medical advice. Stay in role.'
+].join('\n');
+
 // 결과 약어 풀이 기본값 (병원 슬립 약어). 시트 settings 탭 slip_legend에서 고친다. 한글로 적는 결과(치질 등)는 풀이가 필요 없다.
 const SLIP_LEGEND_DEFAULT = 'S 표재성 위염 · A 위축성 위염 · E 미란성 위염 · R 역류성 식도염 · P 용종 · IM 장상피화생 · BG 담즙역류성위염 · ' +
   'LFG 임파여포성위염 · D 십이지장염 · GU 위궤양 · DU 십이지장궤양 · GU Scar 위궤양 반흔 · DU Scar 십이지장궤양 반흔 · ' +
@@ -348,7 +371,8 @@ const SEED = {
     ['zh-feedback-v1', ZH_FEEDBACK_PROMPT_V1, true],
     ['zh-pron-v1', ZH_PRON_PROMPT_V1, true],
     ['zh-insight-v1', ZH_INSIGHT_PROMPT_V1, true],
-    ['patient-v3', PATIENT_PROMPT_V3, true]
+    ['patient-v3', PATIENT_PROMPT_V3, true],
+    ['ja-partner-v1', JA_PARTNER_PROMPT_V1, true]
   ],
   // 문장 연습 초안 (Claude 작성) — 간호 현장에 맞는지 Kevin이 검토해 시트에서 고친다.
   drills: [
@@ -950,7 +974,7 @@ function activePrompt_(kind) {
 
 /**
  * 과정에 맞는 지시문. 영어(en)는 지금 이름 그대로(patient-…, feedback-…),
- * 다른 과정은 앞에 과정을 붙인다 (예: zh-partner-…, zh-feedback-…). 대화 상대는 중국어 과정에서 'partner'.
+ * 다른 과정은 앞에 과정을 붙인다 (예: zh-partner-…, ja-partner-…). 대화 상대는 영어가 아닌 과정에서 'partner'.
  * 그 과정의 지시문이 아직 없으면 없음(→ NO_PROMPT)으로 둔다. 영어 지시문으로 대신하지 않는다.
  */
 function coursePrompt_(kind, course) {
@@ -1111,8 +1135,9 @@ function createLiveToken_(chapterId, maxSec, student) {
   const instructionFull = withLearner_(instruction, student);
 
   // 받아쓰기 언어: 영어 과정은 영어+한국어. 중국어 과정은 시나리오의 country가 Taiwan이면 대만, 아니면 중국 본토 코드
-  // (settings 탭의 zh_lang_taiwan / zh_lang_china) + 한국어 (학생이 막혀서 한국어로 말할 때).
+  // (settings 탭의 zh_lang_taiwan / zh_lang_china) + 한국어 (학생이 막혀서 한국어로 말할 때). 일본어 과정은 일본어+한국어 (93단계).
   let lang = 'en-US';
+  if (course === 'ja') lang = 'ja-JP';
   if (course === 'zh') {
     lang = /taiwan/i.test(patient.country)
       ? String(settings.zh_lang_taiwan || '').trim() || 'zh-TW'
@@ -2032,7 +2057,7 @@ function summaryPeriod_(tz, course) {
 }
 
 // 과정 이름 (선생님 요약·summary 탭에 쓴다)
-const COURSE_LABEL = { en: '영어', zh: '중국어' };
+const COURSE_LABEL = { en: '영어', zh: '중국어', ja: '일본어' };
 
 /** 요약할 과정 목록: 활성 학생이 있거나 공개 챕터가 있는 과정. 영어가 먼저. */
 function summaryCourses_() {

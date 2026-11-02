@@ -154,7 +154,7 @@ function logout() {
 
 /* ── 챕터 ── */
 
-const COURSE_NAME = { en: '영어', zh: '중국어' };
+const COURSE_NAME = { en: '영어', zh: '중국어', ja: '일본어' };
 
 /* 난이도 탭 (38단계): Beginner / Intermediate / Advanced. 난이도를 정하는 방법은 나중에 정한다.
    지금은 챕터에 난이도 값이 없으므로 모두 Beginner. 나중에 시트에 난이도 칸이 생기면 c.level로 나뉜다. */
@@ -970,7 +970,7 @@ function cleanRecord(r) {
     ['strengths', 'fixes', 'keywords', 'next_practice'].every((k) => Array.isArray(fb[k]));
   return {
     sessionId: r.sessionId, scenarioId: str(r.scenarioId), chapterId: str(r.chapterId),
-    chapterOrder: Number(r.chapterOrder) || '', course: r.course === 'zh' ? 'zh' : 'en', chapterTitle: str(r.chapterTitle),
+    chapterOrder: Number(r.chapterOrder) || '', course: ['zh', 'ja'].includes(r.course) ? r.course : 'en', chapterTitle: str(r.chapterTitle),
     at: new Date(r.at).toISOString(), durationSec: Number(r.durationSec) || 0,
     patient: { name: str(r.patient && r.patient.name) }, confidence: [1, 2, 3].includes(r.confidence) ? r.confidence : undefined,
     difficulty: str(r.difficulty), shared: r.shared === true, lines, feedback: fbOk ? fb : null
@@ -1100,8 +1100,9 @@ const me = { name: '', avatar: '', course: 'en' };
 // 지금 연 챕터의 과정. 선생님은 영어·중국어 챕터를 모두 쓰므로 학생의 과정이 아니라 챕터를 따른다 (30단계).
 let viewCourse = '';   // 내 기록을 다시 볼 때 그 기록의 과정
 const courseNow = () => viewCourse || (currentChapter && currentChapter.course) || me.course;
-const partnerWord = () => (courseNow() === 'en' ? '수검자' : '상대');   // 대화 말풍선의 상대 이름 (63단계: 환자 → 수검자)
-const partnerTitle = () => (courseNow() === 'en' ? '수검자' : '상대');
+// 대화 말풍선의 상대 이름 (63단계: 환자 → 수검자). 일본어 과정도 영어 과정과 같은 검진센터 수검자 (93단계)
+const partnerWord = () => (courseNow() === 'zh' ? '상대' : '수검자');
+const partnerTitle = () => (courseNow() === 'zh' ? '상대' : '수검자');
 
 async function loadAvatars() {
   try {
@@ -1566,7 +1567,7 @@ const LEVEL_DESC = {
   korean: '상황만 보고 영어 문장을 처음부터 말해요. 실전처럼!'
 };
 // 과정 언어 이름 (문장 연습 문구에 쓴다)
-const langName = () => (courseNow() === 'zh' ? '중국어' : '영어');
+const langName = () => COURSE_NAME[courseNow()] || '영어';
 
 function loadDrillMarks() {
   try { return JSON.parse(localStorage.getItem(DRILL_KEY) || '{}'); } catch { return {}; }
@@ -1786,9 +1787,9 @@ function pickVoice(lang) {
 function speak(text, course = courseNow()) {
   if (!('speechSynthesis' in window)) return null;
   const u = new SpeechSynthesisUtterance(text);
-  // 중국어 과정은 휴대폰의 중국어 음성으로 조금 더 천천히
-  u.lang = course === 'zh' ? 'zh-CN' : 'en-US';
-  u.rate = course === 'zh' ? 0.8 : 0.9;
+  // 중국어·일본어 과정은 휴대폰의 그 언어 음성으로 조금 더 천천히
+  u.lang = { zh: 'zh-CN', ja: 'ja-JP' }[course] || 'en-US';
+  u.rate = course === 'en' ? 0.9 : 0.8;
   const voice = pickVoice(u.lang);
   if (voice) { u.voice = voice; u.lang = voice.lang; }
   // 아이폰: cancel() 바로 뒤의 speak()는 소리 없이 넘어가는 일이 있다. 읽는 중일 때만 멈추고 잠깐 뒤에 읽는다.
