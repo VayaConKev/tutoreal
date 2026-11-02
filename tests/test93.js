@@ -8,9 +8,9 @@ const before = w.tabs.prompts.length;
 w.run('setup');
 const added = w.tabs.prompts.slice(before).map((r) => r[0]);
 console.log('setup 뒤 추가된 지시문:', added.join(', '));
-assert.deepEqual(added, ['ja-partner-v1']);
+assert(added.includes('ja-partner-v1'));   // 그 뒤 단계의 일본어 지시문(94단계 ja-gloss-v1 등)도 함께 더해질 수 있다
 const ids = w.tabs.prompts.slice(1).map((r) => r[0]); assert.equal(new Set(ids).size, ids.length, '같은 이름 두 줄 없음');
-w.run('setup'); assert.equal(w.tabs.prompts.length, before + 1, '두 번 돌려도 한 줄');
+w.run('setup'); assert.equal(w.tabs.prompts.length, before + added.length, '두 번 돌려도 그대로');
 
 const s = w.tabs.settings; const set = (k, v) => { const r = s.find((x) => x[0] === k); if (r) r[1] = v; else s.push([k, v, '']); };
 set('live_model', 'x'); set('monthly_budget_usd', 50); set('daily_connect_limit', 100);

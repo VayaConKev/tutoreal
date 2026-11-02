@@ -403,8 +403,8 @@ function addText(who, text) {
     line.className = `line ${who}`;
     line.innerHTML = `<span class="who">${who === 'me' ? '나' : partnerWord()}</span>` +
       (who === 'ai' ? '<span class="cover">눌러서 자막 보기</span>' : '') + '<span class="text"></span>' +
-      (courseNow() === 'zh' ? '<span class="py"></span>' : '') +
-      (courseNow() === 'zh' && who === 'ai' ? '<button class="ko-btn" hidden>뜻 보기</button><span class="ko" hidden></span>' : '');
+      (courseNow() === 'zh' || (glossCourse() && who === 'ai') ? '<span class="py"></span>' : '') +
+      (glossCourse() && who === 'ai' ? '<button class="ko-btn" hidden>뜻 보기</button><span class="ko" hidden></span>' : '');
     if (who === 'ai' && currentChapter.ai_captions === 'tap') {
       line.classList.add('covered');
       line.addEventListener('click', () => line.classList.remove('covered'), { once: true });
@@ -424,10 +424,13 @@ function endTurn() {
   const ai = transcript.ai;
   transcript.me = null;
   transcript.ai = null;
-  if (ai && courseNow() === 'zh') glossLine(ai);
+  if (ai && glossCourse()) glossLine(ai);
 }
 
-/** 상대의 말 한 줄: 서버에서 병음·뜻을 받아 넣고 '뜻 보기' 버튼을 보여 준다. 실패하면 휴대폰 병음을 그대로 둔다. */
+/** 상대의 말에 읽기·뜻을 붙이는 과정: 중국어(병음), 일본어(로마자, 94단계). 일본어는 휴대폰에서 읽기를 만들 수 없어 서버 답이 올 때 보인다. */
+const glossCourse = () => ['zh', 'ja'].includes(courseNow());
+
+/** 상대의 말 한 줄: 서버에서 병음(일본어는 로마자)·뜻을 받아 넣고 '뜻 보기' 버튼을 보여 준다. 실패하면 휴대폰 병음을 그대로 둔다. */
 function glossLine(line) {
   const t = talk;
   const e = line.entry;
@@ -802,9 +805,9 @@ function feedbackHtml(fb) {
     </div>` : ''}`;
 }
 
-/** 대화 한 줄 (대화 후 2/4 고르기와 내 기록 보기가 같이 쓴다). 중국어 과정은 병음, 받아 둔 뜻이 있으면 뜻도. */
+/** 대화 한 줄 (대화 후 2/4 고르기와 내 기록 보기가 같이 쓴다). 중국어 과정은 병음, 일본어는 받아 둔 로마자, 받아 둔 뜻이 있으면 뜻도. */
 function lineInner(l) {
-  const py = courseNow() === 'zh' ? (l.py || localPinyin(l.text)) : '';
+  const py = courseNow() === 'zh' ? (l.py || localPinyin(l.text)) : (l.py || '');
   return `<span class="who">${l.who === 'me' ? '나' : partnerWord()}</span><span class="text">${escapeHtml(l.text)}</span>
     ${py ? `<span class="py">${escapeHtml(py)}</span>` : ''}
     ${l.ko ? `<span class="ko">${escapeHtml(l.ko)}</span>` : ''}
@@ -1366,7 +1369,7 @@ function recordText(e) {
   out.push('', '[대화]');
   (e.lines || []).forEach((l) => {
     out.push(`${l.hard ? '★ ' : ''}${who(l)}: ${l.text}`);
-    const py = zh ? (l.py || localPinyin(l.text)) : '';
+    const py = zh ? (l.py || localPinyin(l.text)) : (l.py || '');
     if (py) out.push(`    ${py}`);
     if (l.ko) out.push(`    ${l.ko}`);
   });

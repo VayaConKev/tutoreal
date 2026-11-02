@@ -83,12 +83,14 @@
  *                 너그러운 피드백(gentle)의 총평도 고정 문장 대신 같은 규칙으로. 시트의 지시문은 그대로 (코드가 끝에 붙인다).
  * v0.58 (93단계): 일본어 과정(course 칸 ja) — 받아쓰기·자막 언어를 일본어(ja-JP)+한국어로, 대화 상대 지시문 ja-partner-v1
  *                 (일본인 수검자, 학생은 일본어를 처음 배우는 한국인 간호사). setup()이 prompts 탭에 줄을 추가한다.
+ * v0.59 (94단계): 일본어 자막 도우미 — doPost(action=gloss)가 일본어 과정에서는 ja-gloss-v1로 로마자와 한국어 뜻을 받는다.
+ *                 앱에 돌려주는 칸 이름은 중국어와 같은 pinyin (= 그 줄의 읽기). setup()이 prompts 탭에 줄을 추가한다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.58';
+const SERVER_VERSION = 'v0.59';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -336,6 +338,19 @@ const JA_PARTNER_PROMPT_V1 = [
   '- You are the patient, not a doctor and not an AI assistant. Never add disclaimers or medical advice. Stay in role.'
 ].join('\n');
 
+// 일본어 자막 도우미 지시문 (94단계): 수검자가 한 말 한 줄 → 로마자(헵번식, 장음은 ō처럼 표시) + 한국어 뜻.
+// 학생이 가나를 아직 못 읽어서 로마자로 읽기를 보여 준다.
+const JA_GLOSS_PROMPT_V1 = [
+  'You help a Korean nurse who is a complete beginner in Japanese and cannot read kana yet.',
+  'You get one line spoken by a Japanese patient in a speaking practice. It comes from speech recognition.',
+  'Return:',
+  '- romaji: the whole line in Hepburn romaji, written as it is pronounced. Separate words with spaces, and write particles as pronounced (は → wa, を → o, へ → e).',
+  '  Mark long vowels with macrons (for example "Tōkyō", "byōin", "kūfuku"), but write えい as "ei" and いい as "ii". Write double consonants as in "chotto", "kippu".',
+  '  Capitalize the first letter of each sentence and of names, and keep the punctuation as English marks (。→ . 、→ , ？→ ?). Keep non-Japanese words as they are.',
+  '- ko: the meaning in natural, simple Korean. If the line contains "こう言えます：" with a suggested sentence, write that part as "이렇게 말해 보세요: " followed by the Korean meaning of the suggested sentence.',
+  'Do not add explanations.'
+].join('\n');
+
 // 결과 약어 풀이 기본값 (병원 슬립 약어). 시트 settings 탭 slip_legend에서 고친다. 한글로 적는 결과(치질 등)는 풀이가 필요 없다.
 const SLIP_LEGEND_DEFAULT = 'S 표재성 위염 · A 위축성 위염 · E 미란성 위염 · R 역류성 식도염 · P 용종 · IM 장상피화생 · BG 담즙역류성위염 · ' +
   'LFG 임파여포성위염 · D 십이지장염 · GU 위궤양 · DU 십이지장궤양 · GU Scar 위궤양 반흔 · DU Scar 십이지장궤양 반흔 · ' +
@@ -372,7 +387,8 @@ const SEED = {
     ['zh-pron-v1', ZH_PRON_PROMPT_V1, true],
     ['zh-insight-v1', ZH_INSIGHT_PROMPT_V1, true],
     ['patient-v3', PATIENT_PROMPT_V3, true],
-    ['ja-partner-v1', JA_PARTNER_PROMPT_V1, true]
+    ['ja-partner-v1', JA_PARTNER_PROMPT_V1, true],
+    ['ja-gloss-v1', JA_GLOSS_PROMPT_V1, true]
   ],
   // 문장 연습 초안 (Claude 작성) — 간호 현장에 맞는지 Kevin이 검토해 시트에서 고친다.
   drills: [
@@ -408,7 +424,7 @@ const SEED = {
     ['daily_pron_limit', 50, '학생 1명당 하루 발음 코칭 횟수 상한'],
     ['zh_lang_china', 'zh-CN', '중국어 과정 받아쓰기 언어 (중국 본토 시나리오)'],
     ['zh_lang_taiwan', 'zh-TW', '중국어 과정 받아쓰기 언어 (country가 Taiwan인 시나리오)'],
-    ['gloss_model', 'gemini-3.5-flash-lite', '중국어 자막 도우미(병음·뜻)용 빠른 모델 (생각 minimal). 비우면 text_model'],
+    ['gloss_model', 'gemini-3.5-flash-lite', '자막 도우미(중국어 병음·일본어 로마자, 뜻)용 빠른 모델 (생각 minimal). 비우면 text_model'],
     ['pron_model', 'gemini-3.5-flash-lite', '발음 코칭용 빠른 모델 (생각 minimal, 소리를 듣는 모델: gemini-3.5-flash-lite 또는 gemini-3.6-flash). 비우면 text_model (느림)'],
     ['last_class_date_zh', '', '중국어 과정의 최근 수업일 (요약 기간 시작). 비우면 last_class_date'],
     ['fallback_text_model', '', '피드백을 만들 때 text_model이 계속 붐비면(503 등) 한 번 더 시도할 다른 모델. 비우면 쓰지 않음. 예: gemini-3.6-flash (같은 요금)'],
@@ -2480,7 +2496,7 @@ function teacherSummary_(code, refresh, course) {
 
 /* ───────────────────────── 21단계: 발음 코칭 ───────────────────────── */
 
-/* ───────────────────────── 25단계: 중국어 자막의 병음과 한국어 뜻 ───────────────────────── */
+/* ───────────────────────── 25단계: 중국어 자막의 병음과 한국어 뜻 (94단계: 일본어는 로마자와 뜻) ───────────────────────── */
 
 const GLOSS_MAX_PER_SESSION = 80;   // 한 대화에서 병음·뜻을 받을 수 있는 줄 수
 const GLOSS_MAX_CHARS = 300;        // 한 줄 최대 글자 수
@@ -2489,9 +2505,15 @@ const GLOSS_SCHEMA = {
   properties: { pinyin: { type: 'STRING' }, ko: { type: 'STRING' } },
   required: ['pinyin', 'ko']
 };
+// 일본어는 읽기 칸 이름을 romaji로 묻는다 (pinyin이라고 하면 중국어 병음으로 읽을 수 있어서). 앱에는 pinyin 칸으로 돌려준다.
+const JA_GLOSS_SCHEMA = {
+  type: 'OBJECT',
+  properties: { romaji: { type: 'STRING' }, ko: { type: 'STRING' } },
+  required: ['romaji', 'ko']
+};
 
 /**
- * 대화 중 상대(AI)가 한 말 한 줄의 병음과 한국어 뜻. 지시문은 과정별(zh-gloss-…)이라 영어 과정은 NO_PROMPT.
+ * 대화 중 상대(AI)가 한 말 한 줄의 병음(일본어는 로마자)과 한국어 뜻. 지시문은 과정별(zh-gloss-…, ja-gloss-…)이라 영어 과정은 NO_PROMPT.
  * 글자는 이 요청에만 쓰고 저장하지 않는다. 비용은 그 대화(sessions 탭)에 더해 월 예산에 들어간다.
  */
 function gloss_(code, sessionId, text) {
@@ -2506,8 +2528,10 @@ function gloss_(code, sessionId, text) {
 
   // 과정은 그 대화의 챕터를 따른다 (선생님이 중국어 챕터를 연습할 때도 중국어 지시문)
   const chapter = readTable_('chapters').filter(function (c) { return String(c.chapter_id) === String(session.chapter_id); })[0];
-  const prompt = coursePrompt_('gloss', chapter ? courseOf_(chapter) : courseOf_(auth.student));
+  const course = chapter ? courseOf_(chapter) : courseOf_(auth.student);
+  const prompt = coursePrompt_('gloss', course);
   if (!prompt) return { ok: false, error: 'NO_PROMPT' };
+  const ja = course === 'ja';
 
   const cache = CacheService.getScriptCache();
   const n = Number(cache.get('gl_' + sessionId) || 0);
@@ -2519,11 +2543,12 @@ function gloss_(code, sessionId, text) {
   // 대화 중에 바로 보여야 하므로 가벼운 모델(settings의 gloss_model)을 가장 짧은 생각(minimal)으로 쓴다.
   // text_model(gemini-3.8-flash)은 minimal이 없어 한 줄에 15~37초가 걸렸다 (2026-10-13 실행 기록).
   const glossModel = String(getSettings_().gloss_model || '').trim();
-  const ai = callTextModel_(String(prompt.text), text, GLOSS_SCHEMA, '병음·뜻',
+  const ai = callTextModel_(String(prompt.text), text, ja ? JA_GLOSS_SCHEMA : GLOSS_SCHEMA, ja ? '로마자·뜻' : '병음·뜻',
     glossModel ? { model: glossModel, thinkingLevel: 'minimal' } : null);
   if (ai.cost) addCost_(sessionId, ai.cost);
   if (!ai.ok) return { ok: false, error: 'GLOSS_FAILED' };
-  return { ok: true, pinyin: String(ai.data.pinyin || '').trim(), ko: String(ai.data.ko || '').trim() };
+  // pinyin 칸 = 그 줄의 읽기 (중국어는 병음, 일본어는 로마자)
+  return { ok: true, pinyin: String((ja ? ai.data.romaji : ai.data.pinyin) || '').trim(), ko: String(ai.data.ko || '').trim() };
 }
 
 // 발음 코칭의 {mode}: 학생이 화면에서 무엇을 보고 말했는지
