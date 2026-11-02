@@ -33,5 +33,5 @@ assert.equal(w.tabs.words[0][w.tabs.words[0].length - 1], 'hint');
 teacher(w); set(w, 'daily_word_start', kst(0));
 r = today(w);
 assert.equal(r.daily_word.word, 'knees'); assert.equal(r.daily_word.hint, '', '예전 시트의 단어는 힌트 빈칸 → 앱이 글자 하나를 알려 줌');
-assert.match(r.server, /^v0\.5\d$/);
+assert.match(r.server, /^v\d+\.\d+$/);   // 버전 모양만 (95단계: v0.60이 되며 고침)
 console.log('모든 확인 통과');

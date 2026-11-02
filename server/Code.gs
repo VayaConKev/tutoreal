@@ -85,12 +85,14 @@
  *                 (일본인 수검자, 학생은 일본어를 처음 배우는 한국인 간호사). setup()이 prompts 탭에 줄을 추가한다.
  * v0.59 (94단계): 일본어 자막 도우미 — doPost(action=gloss)가 일본어 과정에서는 ja-gloss-v1로 로마자와 한국어 뜻을 받는다.
  *                 앱에 돌려주는 칸 이름은 중국어와 같은 pinyin (= 그 줄의 읽기). setup()이 prompts 탭에 줄을 추가한다.
+ * v0.60 (95단계): 일본어 피드백 — ja-feedback-v1 지시문. 추천 표현과 다음 연습 문장에 로마자를 받아 중국어와 같은 칸
+ *                 (better_py, py)으로 돌려준다. 받아쓰기 오류 안내(63단계)는 일본어 과정에도 '일본어를 잘못 알아들은 것'으로.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.59';
+const SERVER_VERSION = 'v0.60';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -351,6 +353,31 @@ const JA_GLOSS_PROMPT_V1 = [
   'Do not add explanations.'
 ].join('\n');
 
+// 일본어 피드백 지시문 (95단계). 영어 피드백과 같은 항목에 로마자(better_romaji, romaji)를 더한다.
+// {goal} {keywords} {name} {dob} {exam} 은 서버가 채운다. 대화 글자는 따로 붙는다.
+const JA_FEEDBACK_PROMPT_V1 = [
+  'You are a Japanese speaking coach for a Korean nurse at a health check-up center in Seoul. The nurse is a complete beginner in Japanese and cannot read kana yet.',
+  'You review one practice conversation between the nurse (the learner) and an AI playing a Japanese patient.',
+  'Lesson goal (Korean): {goal}',
+  'Key expressions: {keywords}',
+  'Patient chart: name {name}; born {dob}; exam {exam}.',
+  'The transcript comes from speech recognition, so:',
+  '- Do not comment on punctuation, on the choice of kanji, hiragana or katakana, or on how names are written. Names may be written differently from the chart.',
+  '- Recognition may write a word in different characters with the same sound. If the meaning is clear from context, do not count it as a mistake.',
+  '- Korean sentences mean the nurse switched to Korean. Suggest a simple Japanese way to say it.',
+  '- Do not judge pronunciation.',
+  '- Patient lines starting with "こう言えます：" are hints. If the nurse then repeated the hint, that is good practice, but note that it was with help.',
+  'Write feedback for the nurse:',
+  '- summary: one short sentence in Korean.',
+  '- strengths: 1-3 short points in Korean, based on what the nurse actually said in Japanese. Praise only what was really done well. Do not praise a line that you also correct.',
+  '- fixes: up to 3 items. "said" = the nurse\'s exact words, "better" = a short, natural, polite Japanese sentence a nurse would use (simple です/ます form; set polite phrases such as "お名前をお願いします。" are fine), "better_romaji" = its romaji, "why" = one short reason in Korean. Only include real improvements.',
+  '- keywords: for each key expression, in the same order, whether the nurse used it or a clear equivalent.',
+  '- next_practice: 1-2 short, useful Japanese sentences for next time ("ja"), their romaji ("romaji"), and the Korean meaning ("ko").',
+  'Romaji style: Hepburn, written as pronounced, words separated by spaces, particles は・を・へ as wa, o, e, long vowels with macrons (byōin, kūfuku) but えい as ei and いい as ii, first letter of a sentence and of names capitalized.',
+  'In "better" and "next_practice", do not add new facts (times, numbers, places, names) that are not in the conversation or the chart.',
+  'Be kind and specific. Give feedback only on the nurse\'s lines; patient lines are context.'
+].join('\n');
+
 // 결과 약어 풀이 기본값 (병원 슬립 약어). 시트 settings 탭 slip_legend에서 고친다. 한글로 적는 결과(치질 등)는 풀이가 필요 없다.
 const SLIP_LEGEND_DEFAULT = 'S 표재성 위염 · A 위축성 위염 · E 미란성 위염 · R 역류성 식도염 · P 용종 · IM 장상피화생 · BG 담즙역류성위염 · ' +
   'LFG 임파여포성위염 · D 십이지장염 · GU 위궤양 · DU 십이지장궤양 · GU Scar 위궤양 반흔 · DU Scar 십이지장궤양 반흔 · ' +
@@ -388,7 +415,8 @@ const SEED = {
     ['zh-insight-v1', ZH_INSIGHT_PROMPT_V1, true],
     ['patient-v3', PATIENT_PROMPT_V3, true],
     ['ja-partner-v1', JA_PARTNER_PROMPT_V1, true],
-    ['ja-gloss-v1', JA_GLOSS_PROMPT_V1, true]
+    ['ja-gloss-v1', JA_GLOSS_PROMPT_V1, true],
+    ['ja-feedback-v1', JA_FEEDBACK_PROMPT_V1, true]
   ],
   // 문장 연습 초안 (Claude 작성) — 간호 현장에 맞는지 Kevin이 검토해 시트에서 고친다.
   drills: [
@@ -1057,21 +1085,23 @@ function withGentle_(text, zh) {
 /**
  * 피드백 글 규칙 (63단계): 모든 피드백 지시문 끝에 붙인다 (시트의 지시문은 그대로).
  * 어투는 해요체로, 총평은 지시어 없이 이번에 한 일을 짚으며 시작. 영어 과정은 받아쓰기 오류를 한국어로 말한 것으로 오해하지 않게.
+ * 일본어 과정도 같은 규칙을 일본어로 (95단계). 중국어 과정은 붙이지 않는다.
  */
 const STT_NOTE = '발음이 명확하게 인식되지 않은 구간이 있어요. 아래 추천 표현을 참고해 조금 더 또렷하게 발음해 보세요.';
-function withWritingRules_(text, zh) {
+function withWritingRules_(text, course) {
+  const lang = course === 'ja' ? 'Japanese' : 'English';
   const rules = [
     'Writing rules for every Korean sentence in the feedback (these come last and win over any rule above):',
     '- Use only the polite 해요체 endings, for example "…했어요", "…해요", "…해 보세요". Never use 하십시오체 endings such as "…습니다", "…하셨습니다", "…하십시오". Keep the same 해요체 in summary, strengths, fixes and next_practice.',
     '- summary: the first sentence must say concretely what the learner did in this talk (for example 호명, 본인 확인, 자세 안내, 검사 결과 설명) and encourage them.',
     '  Never start the summary with a pointing word that has nothing to point to, such as 그렇게, 이렇게, 이 부분, 그 부분, 이것, 그것.'
   ];
-  if (!zh) rules.push(
+  if (course !== 'zh') rules.push(
     '- Speech recognition: the learner\'s lines come from automatic speech recognition. Korean words that make no sense in this conversation',
-    '  (for example "스틸을 코스프레하고 스틸 카운트를") are almost always English speech that was misheard, not Korean that the learner spoke.',
-    '  For such lines, never tell the learner to speak English instead of Korean. Add a fix: "said" = the line as written, "better" = the English sentence the learner most likely meant,',
+    '  (for example "스틸을 코스프레하고 스틸 카운트를") are almost always ' + lang + ' speech that was misheard, not Korean that the learner spoke.',
+    '  For such lines, never tell the learner to speak ' + lang + ' instead of Korean. Add a fix: "said" = the line as written, "better" = the ' + lang + ' sentence the learner most likely meant,',
     '  "why" = "' + STT_NOTE + '"',
-    '  Only when the Korean clearly makes sense here (for example "잠시만요", "어떻게 말하지") did the learner really switch to Korean; then suggest an English way to say it.',
+    '  Only when the Korean clearly makes sense here (for example "잠시만요", "어떻게 말하지") did the learner really switch to Korean; then suggest ' + (lang === 'English' ? 'an' : 'a') + ' ' + lang + ' way to say it.',
     '  This replaces the earlier rule about Korean sentences.'
   );
   return text + '\n' + rules.join('\n');
@@ -1536,6 +1566,13 @@ ZH_FEEDBACK_SCHEMA.properties.fixes.items.required.push('better_py');
 ZH_FEEDBACK_SCHEMA.properties.next_practice.items = {
   type: 'OBJECT', properties: { zh: { type: 'STRING' }, py: { type: 'STRING' }, ko: { type: 'STRING' } }, required: ['zh', 'py', 'ko']
 };
+// 일본어 피드백 (95단계): 영어와 같은 항목 + 로마자. 앱에는 중국어와 같은 칸(better_py, py)으로 돌려준다.
+const JA_FEEDBACK_SCHEMA = JSON.parse(JSON.stringify(FEEDBACK_SCHEMA));
+JA_FEEDBACK_SCHEMA.properties.fixes.items.properties.better_romaji = { type: 'STRING' };
+JA_FEEDBACK_SCHEMA.properties.fixes.items.required.push('better_romaji');
+JA_FEEDBACK_SCHEMA.properties.next_practice.items = {
+  type: 'OBJECT', properties: { ja: { type: 'STRING' }, romaji: { type: 'STRING' }, ko: { type: 'STRING' } }, required: ['ja', 'romaji', 'ko']
+};
 
 const FEEDBACK_CACHE_SEC = 6 * 3600;   // 같은 대화의 피드백은 6시간 동안 다시 만들지 않고 그대로 준다
 const FEEDBACK_MAX_TRIES = 3;          // 실패해도 한 대화에 3번까지만 시도
@@ -1667,6 +1704,7 @@ function makeFeedback_(chapter, scenario, lines, student) {
   const prompt = coursePrompt_('feedback', course);
   if (!prompt) return { ok: false, error: 'NO_PROMPT' };
   const zh = course === 'zh';
+  const ja = course === 'ja';
 
   const keywords = String(chapter.keywords || '').split(',').map(function (k) { return k.trim(); }).filter(Boolean);
   const system = String(prompt.text)
@@ -1679,11 +1717,11 @@ function makeFeedback_(chapter, scenario, lines, student) {
   const checklist = checklistFor_(checklistOf_(chapter), scenario);
   const gentle = isGentle_(chapter);
   const base = withChecklist_(withLearner_(system, student), checklist, gentle);
-  const systemFull = withWritingRules_(gentle ? withGentle_(base, zh) : base, zh);
+  const systemFull = withWritingRules_(gentle ? withGentle_(base, zh) : base, course);
   const who = zh ? ['Learner: ', 'Partner: '] : ['Nurse: ', 'Patient: '];
   const transcript = 'Transcript:\n' + lines.map(function (l) { return (l.who === 'me' ? who[0] : who[1]) + l.text; }).join('\n');
 
-  let schema = zh ? ZH_FEEDBACK_SCHEMA : FEEDBACK_SCHEMA;
+  let schema = zh ? ZH_FEEDBACK_SCHEMA : ja ? JA_FEEDBACK_SCHEMA : FEEDBACK_SCHEMA;
   if (checklist.length) {
     // 체크리스트가 있는 챕터만 결과에 checklist를 더 받는다 (없는 챕터는 지금과 같은 요청)
     schema = JSON.parse(JSON.stringify(schema));
@@ -1718,6 +1756,7 @@ function makeFeedback_(chapter, scenario, lines, student) {
       fixes: (fb.fixes || []).slice(0, 3).map(function (f) {
         const out = { said: String(f.said || ''), better: String(f.better || ''), why: String(f.why || '') };
         if (zh) out.better_py = String(f.better_py || '');
+        if (ja) out.better_py = String(f.better_romaji || '');   // 앱은 읽기를 better_py 칸으로 그린다
         return out;
       }),
       keywords: keywords.map(function (k) { return { keyword: k, used: used[k.toLowerCase()] === true }; }),
@@ -1725,10 +1764,11 @@ function makeFeedback_(chapter, scenario, lines, student) {
       checklist: checklist.map(function (item, i) {
         return { item: item.text, en: item.en, optional: item.optional, sex: item.sex, done: doneByNo[i + 1] === true };
       }),
-      // 앱과 내 기록은 연습 문장을 en 칸으로 읽는다 (중국어 과정에서도 같은 칸에 중국어 문장, py에 병음).
+      // 앱과 내 기록은 연습 문장을 en 칸으로 읽는다 (중국어·일본어 과정에서도 같은 칸에 그 언어 문장, py에 병음·로마자).
       next_practice: (fb.next_practice || []).slice(0, 2).map(function (n) {
         return zh ? { en: String(n.zh || ''), py: String(n.py || ''), ko: String(n.ko || '') }
-                  : { en: String(n.en || ''), ko: String(n.ko || '') };
+          : ja ? { en: String(n.ja || ''), py: String(n.romaji || ''), ko: String(n.ko || '') }
+          : { en: String(n.en || ''), ko: String(n.ko || '') };
       }),
       // 너그러운 피드백 챕터: 앱이 '이렇게도 말할 수 있어요', 안 한 체크리스트 항목은 '다음엔 이것도'로 보여 준다 (v0.44)
       gentle: gentle

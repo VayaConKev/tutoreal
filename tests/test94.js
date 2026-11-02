@@ -8,7 +8,7 @@ const before = w.tabs.prompts.length;
 w.run('setup');
 const added = w.tabs.prompts.slice(before).map((r) => r[0]);
 console.log('setup 뒤 추가된 지시문:', added.join(', '));
-assert.deepEqual(added, ['ja-partner-v1', 'ja-gloss-v1']);
+assert(added.includes('ja-partner-v1') && added.includes('ja-gloss-v1'));   // 그 뒤 단계의 일본어 지시문도 함께 더해질 수 있다
 
 const s = w.tabs.settings; const set = (k, v) => { const r = s.find((x) => x[0] === k); if (r) r[1] = v; else s.push([k, v, '']); };
 set('live_model', 'x'); set('monthly_budget_usd', 50); set('daily_connect_limit', 100);
