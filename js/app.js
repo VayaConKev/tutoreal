@@ -1600,6 +1600,8 @@ function startDrill() {
   drill.pos = 0;
   drill.hard = 0;
   drill.total = list.length;
+  drill.revealed = false;   // 지난번에 정답·힌트를 본 채로 나갔어도 첫 문장은 처음 상태로 (97단계)
+  drill.hintShown = false;
   drill.coach = null;
   drill.coachError = '';
   cancelRecording();
