@@ -86,7 +86,7 @@
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.56';
+const SERVER_VERSION = 'v0.57';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -815,7 +815,8 @@ function checklistFor_(checklist, scenario) {
 
 /* ───────────────────────── 5-1단계: 접속 코드 ───────────────────────── */
 
-// 10분 동안 전체 로그인 실패가 이 횟수에 닿으면 잠시 막는다 (코드 무작위 대입 방지).
+// 10분 동안 틀린 접속 코드가 이 횟수에 닿으면, 그 뒤의 틀린 코드는 잠시 막는다 (코드 무작위 대입 방지).
+// 맞는 코드는 잠금과 상관없이 통과한다 (v0.57) — 누가 틀린 코드를 쏟아부어도 학생이 막히지 않게.
 const LOGIN_FAIL_LIMIT = 20;
 
 /** 접속 코드처럼 주소(URL)에 남으면 안 되는 값은 POST 본문으로 받는다. 접속 코드는 로그에 남기지 않는다. */
@@ -914,16 +915,16 @@ function auth_(code) {
   code = String(code || '').trim().toLowerCase();
   if (!code) return { ok: false, error: 'INVALID_CODE' };
 
+  const student = findStudent_(code);
+  if (student) return { ok: true, student: student };
+
   const cache = CacheService.getScriptCache();
   const fails = Number(cache.get('login_fails') || 0);
   if (fails >= LOGIN_FAIL_LIMIT) return { ok: false, error: 'TOO_MANY_TRIES' };
-
-  const student = findStudent_(code);
-  if (!student) {
-    cache.put('login_fails', String(fails + 1), 600);
-    return { ok: false, error: 'INVALID_CODE' };
-  }
-  return { ok: true, student: student };
+  cache.put('login_fails', String(fails + 1), 600);
+  // 잠금이 걸리는 순간 한 줄 (접속 코드는 남기지 않는다)
+  if (fails + 1 === LOGIN_FAIL_LIMIT) console.log('[로그인] 10분 안에 틀린 접속 코드 ' + LOGIN_FAIL_LIMIT + '번 — 틀린 코드를 잠시 막아요 (맞는 코드는 그대로 들어와요)');
+  return { ok: false, error: 'INVALID_CODE' };
 }
 
 function findStudent_(code) {
