@@ -87,12 +87,14 @@
  *                 앱에 돌려주는 칸 이름은 중국어와 같은 pinyin (= 그 줄의 읽기). setup()이 prompts 탭에 줄을 추가한다.
  * v0.60 (95단계): 일본어 피드백 — ja-feedback-v1 지시문. 추천 표현과 다음 연습 문장에 로마자를 받아 중국어와 같은 칸
  *                 (better_py, py)으로 돌려준다. 받아쓰기 오류 안내(63단계)는 일본어 과정에도 '일본어를 잘못 알아들은 것'으로.
+ * v0.61 (96단계): 일본어 발음 코칭 — ja-pron-v1 지시문 (한국어 화자가 어려운 장음·っ·ん·つ·탁음 중심, 들린 발음은 로마자).
+ *                 drills의 pron 칸 = 문장 전체 로마자, 빈칸 부분은 sentence처럼 [대괄호] (AI에는 대괄호를 빼고 준다). setup()이 줄을 추가한다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.60';
+const SERVER_VERSION = 'v0.61';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -378,6 +380,25 @@ const JA_FEEDBACK_PROMPT_V1 = [
   'Be kind and specific. Give feedback only on the nurse\'s lines; patient lines are context.'
 ].join('\n');
 
+// 일본어 발음 코칭 지시문 (96단계). {sentence} {pron} {keywords} {mode} 는 서버가 채운다. 학생의 소리는 따로 붙는다.
+// 한국어 화자가 자주 틀리는 소리(장음, 작은 っ, ん, つ, 낱말 첫머리 탁음, ざ행)를 중심으로 본다. 높낮이(악센트)는 뜻이 바뀔 때만.
+const JA_PRON_PROMPT_V1 = [
+  'You are a friendly Japanese pronunciation coach for a Korean nurse who is a complete beginner in Japanese and cannot read kana yet.',
+  'Listen to the audio of the learner trying to say this target: "{sentence}"',
+  'Romaji of the target (the reference): {pron}',
+  'Key words to check closely: {keywords}',
+  'Mode: {mode}',
+  'Return:',
+  '- heard: what you heard, written in Hepburn romaji as the learner actually said it, word by word. Keep the learner\'s mistakes (a short vowel instead of a long one, a missing small っ pause, wrong sounds). Do not correct them.',
+  '- said_target: true if the learner said the target or a natural sentence with the same meaning.',
+  '- overall: "great" if clear and correct, "good" if understandable with 1-2 small issues, "retry" if hard to understand, a different sentence, or not speech.',
+  '- message: one short, kind sentence in Korean.',
+  '- words: up to 3 words that need work, key words first. For each: word (as written in the target), respelling (the correct romaji, long vowels with macrons like "byōin"), tip (Korean: what to change, for example "byōin의 ō는 두 박자예요. \'뵤-인\'처럼 길게 늘여 보세요." or "kitte의 っ 자리에서 한 박자 쉬어 보세요."). Empty list if everything is fine.',
+  'Check closely the sounds that are hard for Korean speakers: long vowels (two beats), small っ (a one-beat pause), ん (one full beat), つ (tsu),',
+  'voiced sounds at the start of a word (が, だ, ば, ざ should not sound like か, た, ぱ, さ), and ざ・ず・ぜ・ぞ (should not sound like じゃ・じゅ・じぇ・じょ).',
+  'Do not judge pitch accent unless it changes the meaning. Only report a problem when you clearly hear it. Be honest but encouraging. Do not invent problems. If the audio is silent or not speech, overall is "retry" and say so in message.'
+].join('\n');
+
 // 결과 약어 풀이 기본값 (병원 슬립 약어). 시트 settings 탭 slip_legend에서 고친다. 한글로 적는 결과(치질 등)는 풀이가 필요 없다.
 const SLIP_LEGEND_DEFAULT = 'S 표재성 위염 · A 위축성 위염 · E 미란성 위염 · R 역류성 식도염 · P 용종 · IM 장상피화생 · BG 담즙역류성위염 · ' +
   'LFG 임파여포성위염 · D 십이지장염 · GU 위궤양 · DU 십이지장궤양 · GU Scar 위궤양 반흔 · DU Scar 십이지장궤양 반흔 · ' +
@@ -416,7 +437,8 @@ const SEED = {
     ['patient-v3', PATIENT_PROMPT_V3, true],
     ['ja-partner-v1', JA_PARTNER_PROMPT_V1, true],
     ['ja-gloss-v1', JA_GLOSS_PROMPT_V1, true],
-    ['ja-feedback-v1', JA_FEEDBACK_PROMPT_V1, true]
+    ['ja-feedback-v1', JA_FEEDBACK_PROMPT_V1, true],
+    ['ja-pron-v1', JA_PRON_PROMPT_V1, true]
   ],
   // 문장 연습 초안 (Claude 작성) — 간호 현장에 맞는지 Kevin이 검토해 시트에서 고친다.
   drills: [
@@ -2596,7 +2618,9 @@ const PRON_MODE = {
   en: { korean: 'The nurse saw only the Korean situation and had to make the whole English sentence.',
         blank: 'The nurse saw the sentence with the key words blank.' },
   zh: { korean: 'The learner saw only the Korean situation and had to make the whole Chinese sentence.',
-        blank: 'The learner saw the sentence with the key words blank, with pinyin for the other words.' }
+        blank: 'The learner saw the sentence with the key words blank, with pinyin for the other words.' },
+  ja: { korean: 'The learner saw only the Korean situation and had to make the whole Japanese sentence.',
+        blank: 'The learner saw the sentence with the key words blank, with romaji for the other words.' }
 };
 
 const PRON_SCHEMA = {
@@ -2648,10 +2672,13 @@ function pronounce_(code, drillId, level, audio) {
   if (!prompt) return { ok: false, error: 'NO_PROMPT' };
   const sentence = String(drill.sentence).replace(/\[([^\]]+)\]/g, '$1');
   const keywords = (String(drill.sentence).match(/\[([^\]]+)\]/g) || []).map(function (k) { return k.slice(1, -1); });
+  // 일본어 pron 칸은 빈칸 자리를 [대괄호]로 표시한다 (앱의 힌트용, 96단계). AI에는 대괄호를 뺀 로마자를 준다.
+  let pron = String(drill.pron || '').trim();
+  if (course === 'ja') pron = pron.replace(/\[([^\]]+)\]/g, '$1');
   const system = String(prompt.text)
     .replace(/\{sentence\}/g, sentence)
     .replace(/\{keywords\}/g, keywords.join(', ') || '(none)')
-    .replace(/\{pron\}/g, String(drill.pron || '').trim() || '(none)')
+    .replace(/\{pron\}/g, pron || '(none)')
     .replace(/\{mode\}/g, (PRON_MODE[course] || PRON_MODE.en)[level === 'korean' ? 'korean' : 'blank']);
 
   // 학생이 결과를 기다리므로 빠른 모델(settings의 pron_model)을 가장 짧은 생각(minimal)으로 쓴다 (v0.32).

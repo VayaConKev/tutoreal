@@ -683,13 +683,15 @@ function checklistHtml(list, gentle) {
 
 /** 기다리는 동안 보여 줄 복습 문장: 체크리스트(성별 표시가 없는 항목)가 있으면 그것, 없으면 문장 연습. [{ ko, target, py }] */
 function waitTips(chapter) {
-  const zh = (chapter.course || me.course) === 'zh';
+  const course = chapter.course || me.course;
+  const zh = course === 'zh';
+  const ja = course === 'ja';   // 일본어: 띄어쓰기가 없어 단어 하나짜리를 가릴 수 없으니 모두, 읽기는 pron 칸의 로마자 (96단계)
   const plain = (s) => s.replace(/\[([^\]]+)\]/g, '$1');
   const fromChecklist = (chapter.checklist || []).filter((c) => !c.sex && c.en)
     .map((c) => ({ ko: c.text, target: c.en, py: zh ? localPinyin(c.en) : '' }));
   if (fromChecklist.length) return fromChecklist;
-  return (chapter.drills || []).filter((d) => /\s/.test(plain(d.sentence).trim()) || zh)   // 단어 하나짜리는 빼고 문장만
-    .map((d) => ({ ko: d.situation.replace(/^단어:\s*/, ''), target: plain(d.sentence), py: zh ? d.pron : '' }));
+  return (chapter.drills || []).filter((d) => /\s/.test(plain(d.sentence).trim()) || zh || ja)   // 단어 하나짜리는 빼고 문장만
+    .map((d) => ({ ko: d.situation.replace(/^단어:\s*/, ''), target: plain(d.sentence), py: zh || ja ? plain(d.pron || '') : '' }));
 }
 
 /**
@@ -1641,19 +1643,26 @@ function renderDrill() {
     sentence = '';
   }
   const zh = courseNow() === 'zh';
-  // 힌트: 영어는 첫 글자(f___ n___), 중국어는 빈칸 단어의 병음
-  const hint = parts.filter((p) => p.blank).map((p) => (zh ? localPinyin(p.blank)
-    : p.blank.split(/\s+/).map((w) => w[0] + '_'.repeat(Math.max(0, w.length - 1))).join(' '))).join(' · ');
-  // 중국어 1단계: 빈칸이 아닌 부분의 병음을 문장 아래에 (빈칸 자리는 비워 둔다)
-  const blankPy = zh && !drill.revealed && drill.level === 'blank'
-    ? parts.map((p) => (p.blank ? '<span class="blank py-blank" aria-label="빈칸"></span>' : escapeHtml(localPinyin(p.text)))).join(' ')
+  // 일본어 (96단계): pron 칸 = 문장 전체 로마자, 빈칸 자리는 sentence처럼 [대괄호]. 대괄호가 없으면 1단계 로마자·로마자 힌트는 없음
+  const ja = courseNow() === 'ja';
+  const romaji = ja ? parseSentence(d.pron || '') : [];
+  const jaBlanks = romaji.some((p) => p.blank);
+  // 힌트: 영어는 첫 글자(f___ n___), 중국어는 빈칸 단어의 병음, 일본어는 빈칸 단어의 로마자
+  const hint = ja && jaBlanks ? romaji.filter((p) => p.blank).map((p) => p.blank).join(' · ')
+    : parts.filter((p) => p.blank).map((p) => (zh ? localPinyin(p.blank)
+      : p.blank.split(/\s+/).map((w) => w[0] + '_'.repeat(Math.max(0, w.length - 1))).join(' '))).join(' · ');
+  // 중국어·일본어 1단계: 빈칸이 아닌 부분의 병음·로마자를 문장 아래에 (빈칸 자리는 비워 둔다)
+  const blankPy = !drill.revealed && drill.level === 'blank'
+    ? (zh ? parts.map((p) => (p.blank ? '<span class="blank py-blank" aria-label="빈칸"></span>' : escapeHtml(localPinyin(p.text)))).join(' ')
+      : jaBlanks ? romaji.map((p) => (p.blank ? '<span class="blank py-blank" aria-label="빈칸"></span>' : escapeHtml(p.text))).join('')
+      : '')
     : '';
 
   const c = drill.coach;
   const coachHtml = c ? `<div class="coach ${c.overall}">
       <p class="coach-title">${COACH_TITLE[c.overall] || COACH_TITLE.retry}</p>
       ${c.message ? `<p class="coach-msg">${escapeHtml(c.message)}</p>` : ''}
-      ${c.heard ? `<p class="coach-heard">${zh ? '들린 발음' : '들린 문장'}: "${escapeHtml(c.heard)}"</p>` : ''}
+      ${c.heard ? `<p class="coach-heard">${zh || ja ? '들린 발음' : '들린 문장'}: "${escapeHtml(c.heard)}"</p>` : ''}
       ${c.words.map((w) => `<p class="coach-word"><b>${escapeHtml(w.word)}</b> → <span class="resp">${escapeHtml(w.respelling)}</span>
         <span class="tip">${escapeHtml(w.tip)}</span></p>`).join('')}
     </div>` : '';
@@ -1664,7 +1673,7 @@ function renderDrill() {
     <p class="situation">${escapeHtml(d.situation)}</p>
     ${sentence ? `<p class="sentence-label">${drill.revealed ? '정답' : `${langName()} 문장`}</p><p class="sentence">${sentence}</p>` : ''}
     ${blankPy ? `<p class="drill-py">${blankPy}</p>` : ''}
-    ${drill.revealed ? (d.pron ? (zh ? `<p class="drill-py">${escapeHtml(d.pron)}</p>` : `<p class="drill-pron">발음: ${escapeHtml(d.pron)}</p>`) : '')
+    ${drill.revealed ? (d.pron ? (zh || ja ? `<p class="drill-py">${escapeHtml(plainSentence(d.pron))}</p>` : `<p class="drill-pron">발음: ${escapeHtml(d.pron)}</p>`) : '')
       : drill.phase === 'recording' ? `<p class="recording">${METER_HTML}<span>듣고 있어요. 문장을 말한 뒤 "다 말했어요"를 눌러 주세요.</span></p>`
       : drill.phase === 'checking' ? '<p class="drill-say">발음을 확인하는 중…</p>'
       : `<p class="drill-say">${drill.level === 'blank' ? '소리 내어 문장 전체를 말해 보세요.' : `${langName()} 문장 전체를 소리 내어 말해 보세요.`}</p>
@@ -1679,7 +1688,7 @@ function renderDrill() {
     actions.innerHTML = '';
   } else if (!drill.revealed) {
     actions.innerHTML = `<button class="primary" id="rec-start">🎤 말하고 확인받기</button>
-      <div class="row">${drill.hintShown ? '' : `<button class="secondary" id="drill-hint">${zh ? '힌트 (병음)' : '힌트 (첫 글자)'}</button>`}
+      <div class="row">${drill.hintShown ? '' : `<button class="secondary" id="drill-hint">${zh ? '힌트 (병음)' : ja && jaBlanks ? '힌트 (로마자)' : '힌트 (첫 글자)'}</button>`}
       <button class="secondary" id="drill-reveal">정답 보기</button></div>`;
     $('#rec-start').addEventListener('click', () => withMicIntro(startCoach));
     if ($('#drill-hint')) $('#drill-hint').addEventListener('click', () => { drill.hintShown = true; renderDrill(); });

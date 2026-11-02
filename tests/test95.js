@@ -39,7 +39,7 @@ function feedback(w, ch, lines, data) {
 const w = world(CODE);
 const added = w.tabs.prompts.slice(before).map((r) => r[0]);
 console.log('setup 뒤 추가된 지시문 (v0.59 시트에):', added.join(', '));
-assert.deepEqual(added, ['ja-feedback-v1']);
+assert(added.includes('ja-feedback-v1'));   // 그 뒤 단계의 일본어 지시문(96단계 ja-pron-v1 등)도 함께 더해질 수 있다
 
 // ① 일본어: romaji 칸으로 묻고 better_py·py로 돌려줌, 체크리스트도 그대로
 const JA = { summary: '이름을 물었어요.', strengths: ['좋아요'], keywords: [{ keyword: 'お名前', used: true }], checklist: [{ n: 1, done: true }],
