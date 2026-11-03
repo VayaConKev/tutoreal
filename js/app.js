@@ -270,12 +270,13 @@ function openChapter(id) {
   }));
   // 안내 체크리스트 (시트의 checklist 칸이 있는 챕터만): 대화 전에 미리 보고 공부한다 (33단계)
   // 한국어 아래에 따라 읽을 영어(en, 시트에서 '한국어 | English'). 지금은 모두 Beginner라 항상 보인다.
+  // 세 번째 칸이 있으면 그 아래에 읽기 (py, 예: 일본어 과정의 로마자, 98단계)
   const list = c.checklist || [];
   $('#detail-checklist-box').hidden = !list.length;
+  currentChapter = c;
   $('#detail-checklist').innerHTML = list.map((item) => `<li>
     <span class="ck-ko">${escapeHtml(item.text)}${checklistTags(item)}</span>
-    ${item.en ? `<span class="ck-en" lang="en">${escapeHtml(item.en)}</span>` : ''}</li>`).join('');
-  currentChapter = c;
+    ${checklistTarget(item)}</li>`).join('');
   const n = (c.drills || []).length;
   $('#drill-open').hidden = !n;
   // 화면 아래 버튼 줄(77단계)에서 반 칸만 쓰므로 짧게. 읽기 기능에는 '문장 30개'까지
@@ -648,6 +649,12 @@ function busyArt(err) {
   return '<img class="busy-art" src="img/busy-ai.webp" width="720" height="538" alt="학생들이 고양이에게 대화 리포트와 피드백 문서를 잔뜩 퍼붓는 그림. AI가 붐비는 중이에요.">';
 }
 
+/** 체크리스트의 따라 읽을 문장과 읽기 (98단계: 세 번째 칸 py). lang은 과정 언어 — 일본어 한자가 중국어 글꼴로 보이지 않게 */
+function checklistTarget(item) {
+  return (item.en ? `<span class="ck-en" lang="${courseNow() === 'en' ? 'en' : courseNow()}">${escapeHtml(item.en)}</span>` : '') +
+    (item.py ? `<span class="ck-py">${escapeHtml(item.py)}</span>` : '');
+}
+
 /** 체크리스트 항목 옆의 작은 표시: 선택(가끔만 하는 안내), 남성·여성(그 성별의 상대에게만, 34단계) */
 function checklistTags(item) {
   const SEX = { male: `남성 ${partnerTitle()}만`, female: `여성 ${partnerTitle()}만` };
@@ -666,7 +673,7 @@ function checklistHtml(list, gentle) {
     const state = c.done ? 'done' : c.optional ? 'opt' : gentle ? 'soft' : 'miss';
     return `<li class="${state}"><span class="mark" aria-hidden="true">${STATE[state][0]}</span>
       <span class="txt">${escapeHtml(c.item)}${checklistTags(c)}
-        ${c.en ? `<span class="ck-en" lang="en">${escapeHtml(c.en)}</span>` : ''}</span>
+        ${checklistTarget(c)}</span>
       ${STATE[state][1] ? `<span class="chk-state">${STATE[state][1]}</span>` : ''}</li>`;
   };
   // 접기 (61단계): 안 한 필수 항목만 펼쳐 두고, 한 항목·선택 항목은 접어 둔다. 모두 했으면 전부 접힌 채로
@@ -688,7 +695,7 @@ function waitTips(chapter) {
   const ja = course === 'ja';   // 일본어: 띄어쓰기가 없어 단어 하나짜리를 가릴 수 없으니 모두, 읽기는 pron 칸의 로마자 (96단계)
   const plain = (s) => s.replace(/\[([^\]]+)\]/g, '$1');
   const fromChecklist = (chapter.checklist || []).filter((c) => !c.sex && c.en)
-    .map((c) => ({ ko: c.text, target: c.en, py: zh ? localPinyin(c.en) : '' }));
+    .map((c) => ({ ko: c.text, target: c.en, py: c.py || (zh ? localPinyin(c.en) : '') }));
   if (fromChecklist.length) return fromChecklist;
   return (chapter.drills || []).filter((d) => /\s/.test(plain(d.sentence).trim()) || zh || ja)   // 단어 하나짜리는 빼고 문장만
     .map((d) => ({ ko: d.situation.replace(/^단어:\s*/, ''), target: plain(d.sentence), py: zh || ja ? plain(d.pron || '') : '' }));
@@ -1385,7 +1392,7 @@ function recordText(e) {
     if ((fb.checklist || []).length) {
       const req = fb.checklist.filter((c) => !c.optional);
       out.push('', `안내 체크리스트 ${req.filter((c) => c.done).length} / ${req.length}`);
-      fb.checklist.forEach((c) => out.push(`${c.done ? '✓' : c.optional ? '–' : fb.gentle ? '– (다음엔 이것도)' : '✗'} ${c.item}${c.optional ? ' (선택)' : ''}${c.en ? ` / ${c.en}` : ''}`));
+      fb.checklist.forEach((c) => out.push(`${c.done ? '✓' : c.optional ? '–' : fb.gentle ? '– (다음엔 이것도)' : '✗'} ${c.item}${c.optional ? ' (선택)' : ''}${c.en ? ` / ${c.en}` : ''}${c.py ? ` (${c.py})` : ''}`));
     }
     if (fb.strengths.length) out.push('', '잘한 점', ...fb.strengths.map((x) => `- ${x}`));
     if (fb.fixes.length) {

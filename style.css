@@ -297,6 +297,8 @@ textarea {
 /* 체크리스트 항목 아래 따라 읽을 영어 (중국어 과정의 병음과 같은 색) */
 .ck-ko { display: block; }
 .ck-en { display: block; margin-top: 1px; font-size: 15px; font-weight: 400; color: var(--teal-ink); }
+/* 세 번째 칸의 읽기 (일본어 과정의 로마자, 98단계): 따라 읽을 문장보다 한 단계 흐리게 */
+.ck-py { display: block; font-size: 14px; font-weight: 400; color: var(--muted); }
 .opt-tag {
   display: inline-block; margin-left: 4px; padding: 0 6px; border: 1px solid var(--line); border-radius: 6px;
   color: var(--muted); font-size: 12px; font-weight: 400; vertical-align: 1px;

@@ -89,12 +89,14 @@
  *                 (better_py, py)으로 돌려준다. 받아쓰기 오류 안내(63단계)는 일본어 과정에도 '일본어를 잘못 알아들은 것'으로.
  * v0.61 (96단계): 일본어 발음 코칭 — ja-pron-v1 지시문 (한국어 화자가 어려운 장음·っ·ん·つ·탁음 중심, 들린 발음은 로마자).
  *                 drills의 pron 칸 = 문장 전체 로마자, 빈칸 부분은 sentence처럼 [대괄호] (AI에는 대괄호를 빼고 준다). setup()이 줄을 추가한다.
+ * v0.62 (98단계): 체크리스트 세 번째 칸 — '한국어 | 日本語 | romaji'처럼 | 를 하나 더 쓰면 그 뒤는 읽기(py). 앱이 문장 아래에 보여 주고,
+ *                 피드백의 판단 기준(모범 문장)에는 넣지 않는다. 두 칸까지 쓴 줄(영어·중국어)은 그대로.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.61';
+const SERVER_VERSION = 'v0.62';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -872,7 +874,8 @@ function listChapters_(student) {
  * '(선택)'으로 시작하면 가끔만 하는 안내(optional: 안 해도 빠뜨린 것으로 세지 않음). 최대 20개, 한 줄 200자.
  * '한국어 | English'처럼 | 뒤에 따라 읽을 문장을 적으면 en으로 따로 둔다 (화면에서 한국어 아래에 보이고, 피드백의 판단 기준이 된다).
  * 영어를 따로 두는 것은 나중에 난이도(Beginner 등)에 따라 숨기거나 보이기 위해서다.
- * 결과: [{ text, en, optional }]
+ * '한국어 | 日本語 | romaji'처럼 | 를 하나 더 쓰면 그 뒤는 읽기(py, 98단계). 화면에만 보이고 피드백 판단에는 쓰지 않는다.
+ * 결과: [{ text, en, py, optional, sex }]
  */
 function checklistOf_(chapter) {
   return String((chapter && chapter.checklist) || '').split(/\r?\n/)
@@ -880,9 +883,10 @@ function checklistOf_(chapter) {
     .filter(Boolean)
     .slice(0, 20)
     .map(function (line) {
-      const bar = line.indexOf('|');
-      let ko = (bar >= 0 ? line.slice(0, bar) : line).trim();
-      const en = bar >= 0 ? line.slice(bar + 1).trim().slice(0, 200) : '';
+      const parts = line.split('|');
+      let ko = parts[0].trim();
+      const en = parts.length > 1 ? parts[1].trim().slice(0, 200) : '';
+      const py = parts.length > 2 ? parts.slice(2).join('|').trim().slice(0, 200) : '';
       // 앞의 표시 (순서 상관없이 여러 개): (선택) 가끔만 하는 안내 / (남성)·(여성) 그 성별의 상대에게만 하는 안내 (v0.35)
       let optional = false;
       let sex = '';
@@ -891,7 +895,7 @@ function checklistOf_(chapter) {
         if (m[1] === '선택') optional = true; else sex = m[1] === '남성' ? 'male' : 'female';
         ko = ko.slice(m[0].length);
       }
-      return { text: ko.slice(0, 200), en: en, optional: optional, sex: sex };
+      return { text: ko.slice(0, 200), en: en, py: py, optional: optional, sex: sex };
     })
     .filter(function (item) { return item.text; });
 }
@@ -1784,7 +1788,9 @@ function makeFeedback_(chapter, scenario, lines, student) {
       keywords: keywords.map(function (k) { return { keyword: k, used: used[k.toLowerCase()] === true }; }),
       // 안내 체크리스트 (체크리스트가 있는 챕터만). 앱과 내 기록이 그대로 그린다.
       checklist: checklist.map(function (item, i) {
-        return { item: item.text, en: item.en, optional: item.optional, sex: item.sex, done: doneByNo[i + 1] === true };
+        const out = { item: item.text, en: item.en, optional: item.optional, sex: item.sex, done: doneByNo[i + 1] === true };
+        if (item.py) out.py = item.py;   // 읽기 칸이 있는 줄만 (98단계). 두 칸 줄의 피드백은 지금과 같은 모양
+        return out;
       }),
       // 앱과 내 기록은 연습 문장을 en 칸으로 읽는다 (중국어·일본어 과정에서도 같은 칸에 그 언어 문장, py에 병음·로마자).
       next_practice: (fb.next_practice || []).slice(0, 2).map(function (n) {
