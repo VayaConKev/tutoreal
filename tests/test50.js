@@ -7,7 +7,7 @@ Object.assign(w.tabs, JSON.parse(JSON.stringify(old.tabs)));        // 지금 �
 w.run('setup');
 const ch = w.tabs.chapters, H = ch[0];
 console.log('setup 뒤 chapters 칸:', H.slice(-3).join(', '));
-assert.equal(H[H.length - 1], 'feedback_style');
+assert(H.includes('feedback_style'));   // 맨 오른쪽 칸은 99단계에 level이 됨
 const col = H.indexOf('feedback_style');
 // 비교가 흔들리지 않게 2장 시나리오는 하나만 켜고, 체크리스트를 넣는다
 w.tabs.scenarios.forEach((r) => { if (r[1] === 'ch02' && r[0] !== 'ch02-s01') r[w.tabs.scenarios[0].indexOf('active')] = false; });

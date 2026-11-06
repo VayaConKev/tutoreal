@@ -96,14 +96,15 @@
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.62';
+const SERVER_VERSION = 'v0.64';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
   // course: 과정 (en 영어, zh 중국어, ja 일본어). 빈칸은 en. 학생은 자기 과정의 챕터만 받는다.
   // checklist: 이 챕터에서 꼭 해야 할 안내 (한 줄에 하나, '(선택)'으로 시작하면 가끔만 하는 안내). 비우면 체크리스트 없음.
   // feedback_style: 비우면 보통 피드백, gentle이면 '뜻이 통했나'를 기준으로 너그럽게 (예: 쉽게 설명하기 챕터) (v0.44)
-  chapters:       ['chapter_id', 'order', 'title', 'goal', 'keywords', 'scene', 'published', 'ai_captions', 'course', 'checklist', 'feedback_style'],
+  // level: 이 챕터가 보이는 난이도 탭 (beginner / intermediate / advanced). 비우면 beginner (99단계). scenarios 탭의 level은 참고용 메모로, 다른 칸이다.
+  chapters:       ['chapter_id', 'order', 'title', 'goal', 'keywords', 'scene', 'published', 'ai_captions', 'course', 'checklist', 'feedback_style', 'level'],
   // slip: 검사 결과 슬립 (48단계). '검사 수면 결과' 순서로 띄어 쓴다. 예: G + S (위내시경, 수면, 표재성) / GC - P (위대장, 비수면, 용종).
   //       비우면 슬립 없이 지금처럼 바로 대화. 결과 글자는 여러 개 가능 (G + S P)
   scenarios:      ['scenario_id', 'chapter_id', 'name', 'sex', 'dob', 'country', 'exam', 'twist', 'level', 'active', 'slip'],
@@ -862,6 +863,7 @@ function listChapters_(student) {
         keywords: String(c.keywords || '').split(',').map(function (k) { return k.trim(); }).filter(Boolean),
         ai_captions: captionMode_(c.ai_captions),
         preview: isPreview_(c),   // 미리 보기 챕터 (선생님·테스터에게만 보임) — 앱이 '미리 보기' 표시를 붙인다
+        level: chapterLevel_(c),   // 난이도 탭 (99단계) — 앱이 이 값으로 탭을 나눈다
         checklist: checklistOf_(c),
         drills: drills[String(c.chapter_id)] || []
       };
@@ -869,13 +871,20 @@ function listChapters_(student) {
 }
 
 
+/** chapters 탭 level 칸 (99단계): intermediate·advanced가 아니면(빈칸 포함) 모두 beginner. */
+function chapterLevel_(chapter) {
+  const v = String((chapter && chapter.level) || '').trim().toLowerCase();
+  return v === 'intermediate' || v === 'advanced' ? v : 'beginner';
+}
+
 /**
  * 챕터의 안내 체크리스트 (33단계). 시트 칸 하나에 한 줄에 하나씩 적는다. 앞의 번호·글머리표(1. 1) - •)는 떼고,
  * '(선택)'으로 시작하면 가끔만 하는 안내(optional: 안 해도 빠뜨린 것으로 세지 않음). 최대 20개, 한 줄 200자.
  * '한국어 | English'처럼 | 뒤에 따라 읽을 문장을 적으면 en으로 따로 둔다 (화면에서 한국어 아래에 보이고, 피드백의 판단 기준이 된다).
  * 영어를 따로 두는 것은 나중에 난이도(Beginner 등)에 따라 숨기거나 보이기 위해서다.
  * '한국어 | 日本語 | romaji'처럼 | 를 하나 더 쓰면 그 뒤는 읽기(py, 98단계). 화면에만 보이고 피드백 판단에는 쓰지 않는다.
- * 결과: [{ text, en, py, optional, sex }]
+ * '(수면)'·'(대장)'·'(위)'로 시작하면 그 검사를 받는 상대에게만 하는 안내 (when, 100단계). 시나리오의 exam 글자로 가린다 (checklistFor_).
+ * 결과: [{ text, en, py, optional, sex, when? }]. when은 표시가 있는 줄에만 있다.
  */
 function checklistOf_(chapter) {
   return String((chapter && chapter.checklist) || '').split(/\r?\n/)
@@ -888,22 +897,35 @@ function checklistOf_(chapter) {
       const en = parts.length > 1 ? parts[1].trim().slice(0, 200) : '';
       const py = parts.length > 2 ? parts.slice(2).join('|').trim().slice(0, 200) : '';
       // 앞의 표시 (순서 상관없이 여러 개): (선택) 가끔만 하는 안내 / (남성)·(여성) 그 성별의 상대에게만 하는 안내 (v0.35)
+      // (수면)·(대장)·(위) 그 검사를 받는 상대에게만 하는 안내 (100단계)
       let optional = false;
       let sex = '';
+      const when = [];
       let m;
-      while ((m = ko.match(/^\((선택|남성|여성)\)\s*/))) {
-        if (m[1] === '선택') optional = true; else sex = m[1] === '남성' ? 'male' : 'female';
+      while ((m = ko.match(/^\((선택|남성|여성|수면|대장|위)\)\s*/))) {
+        if (m[1] === '선택') optional = true;
+        else if (m[1] === '남성' || m[1] === '여성') sex = m[1] === '남성' ? 'male' : 'female';
+        else when.push({ '수면': 'sedation', '대장': 'colon', '위': 'stomach' }[m[1]]);
         ko = ko.slice(m[0].length);
       }
-      return { text: ko.slice(0, 200), en: en, py: py, optional: optional, sex: sex };
+      const out = { text: ko.slice(0, 200), en: en, py: py, optional: optional, sex: sex };
+      if (when.length) out.when = when;   // 표시가 없는 줄은 지금과 같은 모양
+      return out;
     })
     .filter(function (item) { return item.text; });
 }
 
-/** 이 대화의 상대(시나리오의 sex 칸)에게 해당하는 체크리스트 항목만. 성별 표시가 없는 항목은 모두에게. */
+// 체크리스트의 검사 표시 (100단계)와 시나리오 exam 글자의 짝. 'without sedation'에는 'with sedation'이 들어 있지 않다.
+const CHECKLIST_EXAM = { sedation: /with sedation/i, colon: /colon/i, stomach: /stomach/i };
+
+/** 이 대화의 상대에게 해당하는 체크리스트 항목만 (성별은 시나리오 sex 칸, 검사는 exam 칸). 표시가 없는 항목은 모두에게. */
 function checklistFor_(checklist, scenario) {
   const sex = String((scenario && scenario.sex) || '').trim().toLowerCase();
-  return checklist.filter(function (item) { return !item.sex || item.sex === sex; });
+  const exam = String((scenario && scenario.exam) || '');
+  return checklist.filter(function (item) {
+    return (!item.sex || item.sex === sex) &&
+      (item.when || []).every(function (w) { return CHECKLIST_EXAM[w].test(exam); });
+  });
 }
 
 
@@ -1790,6 +1812,7 @@ function makeFeedback_(chapter, scenario, lines, student) {
       checklist: checklist.map(function (item, i) {
         const out = { item: item.text, en: item.en, optional: item.optional, sex: item.sex, done: doneByNo[i + 1] === true };
         if (item.py) out.py = item.py;   // 읽기 칸이 있는 줄만 (98단계). 두 칸 줄의 피드백은 지금과 같은 모양
+        if (item.when) out.when = item.when;   // 검사 표시가 있는 줄만 (100단계)
         return out;
       }),
       // 앱과 내 기록은 연습 문장을 en 칸으로 읽는다 (중국어·일본어 과정에서도 같은 칸에 그 언어 문장, py에 병음·로마자).

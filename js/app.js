@@ -156,8 +156,8 @@ function logout() {
 
 const COURSE_NAME = { en: '영어', zh: '중국어', ja: '일본어' };
 
-/* 난이도 탭 (38단계): Beginner / Intermediate / Advanced. 난이도를 정하는 방법은 나중에 정한다.
-   지금은 챕터에 난이도 값이 없으므로 모두 Beginner. 나중에 시트에 난이도 칸이 생기면 c.level로 나뉜다. */
+/* 난이도 탭 (38단계): Beginner / Intermediate / Advanced. 시트 chapters 탭의 level 칸을 서버가 보내면(99단계) c.level로 나뉜다.
+   칸이 비어 있으면 Beginner. 학생마다 정해 주지 않고, 기본 탭은 늘 Beginner. */
 const DIFF_NAME = { beginner: 'Beginner', intermediate: 'Intermediate', advanced: 'Advanced' };
 let difficulty = 'beginner';
 const levelOf = (c) => (String(c.level || '').trim().toLowerCase() || 'beginner');
@@ -655,10 +655,12 @@ function checklistTarget(item) {
     (item.py ? `<span class="ck-py">${escapeHtml(item.py)}</span>` : '');
 }
 
-/** 체크리스트 항목 옆의 작은 표시: 선택(가끔만 하는 안내), 남성·여성(그 성별의 상대에게만, 34단계) */
+/** 체크리스트 항목 옆의 작은 표시: 선택(가끔만 하는 안내), 남성·여성(그 성별의 상대에게만, 34단계), 수면·대장·위(그 검사의 상대에게만, 100단계) */
 function checklistTags(item) {
   const SEX = { male: `남성 ${partnerTitle()}만`, female: `여성 ${partnerTitle()}만` };
-  return (item.sex ? ` <span class="opt-tag">${SEX[item.sex] || ''}</span>` : '') +
+  const EXAM = { sedation: '수면', colon: '대장 검사', stomach: '위 검사' };
+  return (item.when || []).map((w) => ` <span class="opt-tag">${EXAM[w] || ''} ${partnerTitle()}만</span>`).join('') +
+    (item.sex ? ` <span class="opt-tag">${SEX[item.sex] || ''}</span>` : '') +
     (item.optional ? ' <span class="opt-tag">선택</span>' : '');
 }
 
@@ -688,13 +690,13 @@ function checklistHtml(list, gentle) {
   </div>`;
 }
 
-/** 기다리는 동안 보여 줄 복습 문장: 체크리스트(성별 표시가 없는 항목)가 있으면 그것, 없으면 문장 연습. [{ ko, target, py }] */
+/** 기다리는 동안 보여 줄 복습 문장: 체크리스트(성별·검사 표시가 없는 항목)가 있으면 그것, 없으면 문장 연습. [{ ko, target, py }] */
 function waitTips(chapter) {
   const course = chapter.course || me.course;
   const zh = course === 'zh';
   const ja = course === 'ja';   // 일본어: 띄어쓰기가 없어 단어 하나짜리를 가릴 수 없으니 모두, 읽기는 pron 칸의 로마자 (96단계)
   const plain = (s) => s.replace(/\[([^\]]+)\]/g, '$1');
-  const fromChecklist = (chapter.checklist || []).filter((c) => !c.sex && c.en)
+  const fromChecklist = (chapter.checklist || []).filter((c) => !c.sex && !c.when && c.en)
     .map((c) => ({ ko: c.text, target: c.en, py: c.py || (zh ? localPinyin(c.en) : '') }));
   if (fromChecklist.length) return fromChecklist;
   return (chapter.drills || []).filter((d) => /\s/.test(plain(d.sentence).trim()) || zh || ja)   // 단어 하나짜리는 빼고 문장만

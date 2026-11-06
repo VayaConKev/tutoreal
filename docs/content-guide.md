@@ -25,6 +25,7 @@ Tutoreal의 교과서 내용은 **모두 구글 시트(Tutoreal DB)에만** 있�
 | 무엇 | 형식 | 예 |
 | --- | --- | --- |
 | 챕터 | 영어 `ch` + 두 자리, 중국어 `zh` + 두 자리, 일본어 `ja` + 두 자리 | `ch03`, `zh06`, `ja01` |
+| 영어 동의서 문진 | Intermediate는 `ci` + 두 자리 (나중에 Advanced는 `ca`) | `ci01`, `ci02` |
 | 시나리오 | 챕터 번호 + `-s` + 두 자리 | `ch03-s01`, `zh06-s02` |
 | 문장 연습 | 챕터 번호 + `-d` + 두 자리 | `ch03-d01`, `zh06-d05` |
 
@@ -33,7 +34,7 @@ Tutoreal의 교과서 내용은 **모두 구글 시트(Tutoreal DB)에만** 있�
 
 ## 3. chapters 탭
 
-칸 순서: `chapter_id` `order` `title` `goal` `keywords` `scene` `published` `ai_captions` `course` `checklist` `feedback_style`
+칸 순서: `chapter_id` `order` `title` `goal` `keywords` `scene` `published` `ai_captions` `course` `checklist` `feedback_style` `level`
 
 | 칸 | 뜻 | 영어 과정 | 중국어 과정 |
 | --- | --- | --- | --- |
@@ -48,12 +49,14 @@ Tutoreal의 교과서 내용은 **모두 구글 시트(Tutoreal DB)에만** 있�
 | course | 과정 | `en` 또는 빈칸 | `zh` |
 | checklist | 꼭 해야 할 안내 (**한 칸 안에 한 줄에 하나**). `한국어 \| 따라 읽을 문장`. 가끔만 하는 안내는 앞에 `(선택)`. 챕터 화면에 미리 보이고, 피드백이 항목마다 했는지(✓/✗) 확인한다. 없으면 비움 | `저를 바라보면서 왼쪽으로 누워주세요. \| Please lie down on your left side, facing me.` | `원단 성분 묻기 \| 这个面料是什么成分？` |
 | feedback_style | 피드백 말투. 비우면 보통(문법·빠진 안내까지 꼼꼼히). **gentle**이면 '뜻이 통했나'를 기준으로 너그럽게 — 아래 참고 | 쉽게 설명하기 챕터는 `gentle` | 보통 빈칸 |
+| level | 이 챕터가 보이는 난이도 탭: `beginner` / `intermediate` / `advanced`. 비우거나 다른 글자면 Beginner. 번호(`order`)는 탭 안에서 1, 2, 3… | 동의서 문진은 `intermediate` | 보통 빈칸 |
 
 **checklist 쓰는 법**
 - 대화에서 꼭 해야 할 안내나 질문을 순서대로, 한 줄에 하나씩. 앞의 번호(`1.` `1)` `-`)는 있어도 없어도 된다. 최대 20개.
 - `|` 뒤에 따라 읽을 문장(영어 과정은 영어, 중국어 과정은 중국어)을 적으면 한국어 아래에 보이고, 피드백 판단의 모범 문장으로도 쓰인다. `|`가 없으면 한국어만 보인다.
 - `|`를 하나 더 쓰면 그 뒤는 **읽기**: 따라 읽을 문장 아래에 흐리게 보이고, 피드백 판단에는 쓰지 않는다 (98단계). 일본어 과정은 로마자를 꼭 적는다. 예: `성함 묻기 | お名前をお願いします。 | Onamae o onegai shimasu.`
 - 앞에 `(남성)` 또는 `(여성)`을 붙이면 그 성별의 상대(시나리오 `sex` 칸)에게만 하는 안내가 된다. 다른 성별의 대화에서는 판단하지도 보여 주지도 않는다. `(선택)`과 함께 써도 된다. 예: `(남성) 혹시 녹내장이나 전립선 비대증 진단 받으신 적이 있으실까요? | Have you ever been diagnosed with glaucoma or an enlarged prostate?`
+- 앞에 `(수면)`, `(대장)`, `(위)`를 붙이면 그 검사를 받는 상대에게만 하는 안내가 된다 (100단계). 시나리오 `exam` 칸의 글자로 가린다: `(수면)`은 **with sedation**, `(대장)`은 **colon**, `(위)`는 **stomach**이 들어 있을 때. 그래서 이 표시를 쓰는 챕터의 exam은 `stomach endoscopy with sedation`, `colonoscopy without sedation`, `stomach endoscopy and colonoscopy with sedation`처럼 쓴다. 다른 표시와 함께 써도 되고, 해당하지 않는 대화에서는 판단하지도 보여 주지도 않는다. 챕터 화면에는 '수면 수검자만'처럼 표시가 붙어 보인다. 예: `(수면) 계란·콩 알레르기 묻기 | Are you allergic to eggs or soy?`
 - 한 칸 안에서 줄을 바꾸려면 ⌘+Enter. 여러 줄을 한 번에 넣을 때는 칸을 두 번 눌러 편집 상태로 만든 뒤 붙여 넣는다.
 - AI는 같은 뜻이면 표현이 달라도 '했음'으로, 일부만 말하면 '안 함'으로 본다. 순서는 보지 않는다. 받아쓰기 탓에 가끔 틀릴 수 있다.
 - 체크리스트를 쓰는 챕터는 scene에서 상대(AI)가 짧게 대답하도록 하면 안내 연습에 집중하기 좋다 (예: "Reply in 1 to 4 words, like 'OK.', 'Like this?', 'Sorry?'").
