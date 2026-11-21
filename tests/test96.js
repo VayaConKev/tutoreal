@@ -1,4 +1,4 @@
-// 96단계: 일본어 발음 코칭 — ja-pron-v1, pron 칸의 [대괄호]는 빼고 AI에. 영어·중국어 발음 코칭 지시문은 v0.60과 글자 하나까지 같음
+// 96단계: 일본어 발음 코칭 — ja-pron-v1, pron 칸의 [대괄호]는 빼고 AI에. 영어 발음 코칭 지시문은 v0.60과 글자 하나까지 같음 (중국어는 101단계에서 없앰)
 const { makeWorld, CODE, baseline } = require('./fakesheet.js');
 const assert = require('assert');
 const BASE = '06d5dff';   // 서버 v0.60 (95단계 커밋)
@@ -51,15 +51,15 @@ assert.equal(a.sent.first, "Here is the learner's audio.");
 assert.equal(a.r.coach.overall, 'good'); assert.equal(a.r.coach.words[0].respelling, 'onegai shimasu');
 console.log('일본어 지시문: ja-pron-v1, 대괄호 없는 로마자, 1·2단계 모드 문구');
 
-// ② 영어·중국어: 보낸 지시문이 v0.60과 똑같다
+// ② 영어: 보낸 지시문이 v0.60과 똑같다
 const prev = world(baseline(BASE));
-for (const id of ['ch02-d04', 'zh01-d04']) {
+for (const id of ['ch02-d04']) {
   for (const level of ['blank', 'korean']) {
     const x = pron(w, id, level).sent; const y = pron(prev, id, level).sent;
     assert.equal(x.system, y.system, id + ' ' + level); assert.equal(x.first, y.first);
   }
 }
-console.log('영어 ch02-d04·중국어 zh01-d04: 지시문이 v0.60과 똑같음');
+console.log('영어 ch02-d04: 지시문이 v0.60과 똑같음');
 
 // ③ 일본어 지시문을 끄면 NO_PROMPT
 w.tabs.prompts.find((r) => r[0] === 'ja-pron-v1')[2] = false;

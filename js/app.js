@@ -144,7 +144,7 @@ async function enter(code) {
 function logout() {
   saveCode('');
   $('#tab-teacher').hidden = true;
-  dailyWord = null;   // 다른 과정(중국어) 학생이 같은 휴대폰으로 들어올 수 있다
+  dailyWord = null;   // 다른 과정(일본어) 학생이 같은 휴대폰으로 들어올 수 있다
   renderWordCard();
   $('#login-code').value = '';
   $('#login-msg').textContent = '';
@@ -154,7 +154,7 @@ function logout() {
 
 /* ── 챕터 ── */
 
-const COURSE_NAME = { en: '영어', zh: '중국어', ja: '일본어' };
+const COURSE_NAME = { en: '영어', ja: '일본어' };
 
 /* 난이도 탭 (38단계): Beginner / Intermediate / Advanced. 시트 chapters 탭의 level 칸을 서버가 보내면(99단계) c.level로 나뉜다.
    칸이 비어 있으면 Beginner. 학생마다 정해 주지 않고, 기본 탭은 늘 Beginner. */
@@ -307,7 +307,6 @@ async function loadChapters() {
     chapters = list;
     dailyWord = dw;
     renderWordCard();
-    if (chapters.some((c) => c.course === 'zh')) loadPinyin();   // 중국어 챕터가 있을 때만 병음 변환기를 불러온다
     setVersion(server);
     renderList();
   } catch (err) {
@@ -391,8 +390,7 @@ function startClock(t) {
 
 /* 받아쓰기·자막: 말이 글자로 조금씩 도착하면 지금 말하는 사람의 말풍선에 이어 붙인다.
    환자 차례가 끝나면 두 말풍선을 닫아, 다음 말은 새 말풍선에 쓴다. 글자는 화면에만 있고 저장하지 않는다.
-   중국어 과정: 한자 아래에 병음을 바로 보여 주고(휴대폰에서 변환), 상대의 말이 끝나면 서버에서
-   교과서식 병음과 한국어 뜻을 받아 바꿔 넣는다. 뜻은 '뜻 보기'를 눌러야 보인다. */
+   일본어 과정: 상대의 말이 끝나면 서버에서 로마자와 한국어 뜻을 받아 넣는다. 뜻은 '뜻 보기'를 눌러야 보인다. */
 const transcript = { me: null, ai: null, lines: [] };   // lines: [{ who, text, py?, ko? }] — 대화 후 화면에서 쓴다
 
 function addText(who, text) {
@@ -404,7 +402,7 @@ function addText(who, text) {
     line.className = `line ${who}`;
     line.innerHTML = `<span class="who">${who === 'me' ? '나' : partnerWord()}</span>` +
       (who === 'ai' ? '<span class="cover">눌러서 자막 보기</span>' : '') + '<span class="text"></span>' +
-      (courseNow() === 'zh' || (glossCourse() && who === 'ai') ? '<span class="py"></span>' : '') +
+      (glossCourse() && who === 'ai' ? '<span class="py"></span>' : '') +
       (glossCourse() && who === 'ai' ? '<button class="ko-btn" hidden>뜻 보기</button><span class="ko" hidden></span>' : '');
     if (who === 'ai' && currentChapter.ai_captions === 'tap') {
       line.classList.add('covered');
@@ -418,7 +416,6 @@ function addText(who, text) {
   }
   line.querySelector('.text').textContent += text;
   line.entry.text += text;
-  if (courseNow() === 'zh') line.querySelector('.py').textContent = localPinyin(line.entry.text);
 }
 
 function endTurn() {
@@ -428,10 +425,10 @@ function endTurn() {
   if (ai && glossCourse()) glossLine(ai);
 }
 
-/** 상대의 말에 읽기·뜻을 붙이는 과정: 중국어(병음), 일본어(로마자, 94단계). 일본어는 휴대폰에서 읽기를 만들 수 없어 서버 답이 올 때 보인다. */
-const glossCourse = () => ['zh', 'ja'].includes(courseNow());
+/** 상대의 말에 읽기·뜻을 붙이는 과정: 일본어(로마자, 94단계). 휴대폰에서 읽기를 만들 수 없어 서버 답이 올 때 보인다. */
+const glossCourse = () => courseNow() === 'ja';
 
-/** 상대의 말 한 줄: 서버에서 병음(일본어는 로마자)·뜻을 받아 넣고 '뜻 보기' 버튼을 보여 준다. 실패하면 휴대폰 병음을 그대로 둔다. */
+/** 상대의 말 한 줄: 서버에서 로마자·뜻을 받아 넣고 '뜻 보기' 버튼을 보여 준다. 서버 칸 이름은 pinyin(= 그 줄의 읽기). */
 function glossLine(line) {
   const t = talk;
   const e = line.entry;
@@ -447,33 +444,8 @@ function glossLine(line) {
       e.ko = g.ko;
       if (g.pinyin) line.querySelector('.py').textContent = g.pinyin;
     })
-    .catch((err) => { console.warn('병음·뜻 실패', err); e.koFailed = err.message || 'ERROR'; })
+    .catch((err) => { console.warn('로마자·뜻 실패', err); e.koFailed = err.message || 'ERROR'; })
     .finally(showKo);
-}
-
-/* 병음 변환 (pinyin-pro, js/vendor). 중국어 과정 학생에게만 불러온다. 불러오기 전에는 빈칸. */
-let pinyinLoading = false;
-function loadPinyin() {
-  if (window.pinyinPro || pinyinLoading) return;
-  pinyinLoading = true;
-  const el = document.createElement('script');
-  el.src = 'js/vendor/pinyin-pro.js';
-  el.onerror = () => { pinyinLoading = false; };
-  document.head.append(el);
-}
-
-/** 한자 → 병음 (한 글자씩, 성조 표시). 한자가 없으면 빈칸. 영어 낱말은 붙여서 그대로 둔다. */
-function localPinyin(text) {
-  const pp = window.pinyinPro;
-  if (!pp || !/[\u3400-\u9fff]/.test(text)) return '';
-  const out = [];
-  let plain = false;   // 직전이 한자가 아닌 글자(영어 등)였는지
-  pp.pinyin(text, { type: 'all' }).forEach((x) => {
-    if (x.isZh) { out.push(x.pinyin); plain = false; } else if (/\s/.test(x.origin)) plain = false;
-    else if (plain) out[out.length - 1] += x.origin;
-    else { out.push(x.origin); plain = true; }
-  });
-  return out.join(' ').replace(/ ([，。！？、：；…,.!?:;）)」])/g, '$1');
 }
 
 /** 사용 시간 기록을 서버에 보낸다. 한 대화에 한 번만. */
@@ -487,7 +459,7 @@ function reportEnd(t) {
 
 async function beginTalk() {
   if (live || !currentChapter) return;
-  $('#difficulty').placeholder = courseNow() === 'zh' ? '브랜드 소개 문장이 바로 안 떠올랐어요' : '이름 철자를 묻는 게 어려웠어요';
+  $('#difficulty').placeholder = '이름 철자를 묻는 게 어려웠어요';
   const t = { sessionId: null, scenarioId: '', patient: null, readyAt: 0, endReason: '', reported: false, limitSec: 0, limitKind: '' };
   talk = t;
   // 오디오는 버튼을 누른 이 순간에 켜야 한다 (iOS). 그래서 다른 일보다 먼저 만든다.
@@ -504,10 +476,9 @@ async function beginTalk() {
 
   $('#talk-head').hidden = false;
   $('#talk-chapter').textContent = `${currentChapter.order}장 · ${currentChapter.title}`;
-  // 영어 과정: '수검자가 오고 있습니다…'와 걸어오는 수검자 그림 (49단계). 수검자가 준비되면(슬립·연결) 또는 끝나면 숨긴다
-  const en = courseNow() !== 'zh';
-  $('#talk-name').textContent = en ? '수검자가 오고 있습니다…' : `${partnerTitle()} 준비 중…`;
-  $('#talk-calling').hidden = !en;
+  // '수검자가 오고 있습니다…'와 걸어오는 수검자 그림 (49단계, 영어·일본어). 수검자가 준비되면(슬립·연결) 또는 끝나면 숨긴다
+  $('#talk-name').textContent = '수검자가 오고 있습니다…';
+  $('#talk-calling').hidden = false;
   $('#talk-avatar').innerHTML = '';
   $('#talk-meta').textContent = '–';
   $('#talk-meta').hidden = false;
@@ -542,7 +513,7 @@ async function beginTalk() {
     setVersion(server);
     $('#talk-name').textContent = patient.name;
     $('#talk-avatar').innerHTML = patientAvatar(patient.name, scenarioId);
-    // 영어: 생년월일 · 검사 / 중국어: 역할·장소 (생년월일 칸은 비어 있다)
+    // 생년월일 · 검사
     $('#talk-meta').textContent = [patient.dob, patient.exam].filter(Boolean).join(' · ') || '–';
     if (slip) {
       // 검사 결과 슬립 (48단계): 슬립을 먼저 보여 주고, 학생이 '말하기 시작'을 누르면 연결한다.
@@ -693,14 +664,13 @@ function checklistHtml(list, gentle) {
 /** 기다리는 동안 보여 줄 복습 문장: 체크리스트(성별·검사 표시가 없는 항목)가 있으면 그것, 없으면 문장 연습. [{ ko, target, py }] */
 function waitTips(chapter) {
   const course = chapter.course || me.course;
-  const zh = course === 'zh';
   const ja = course === 'ja';   // 일본어: 띄어쓰기가 없어 단어 하나짜리를 가릴 수 없으니 모두, 읽기는 pron 칸의 로마자 (96단계)
   const plain = (s) => s.replace(/\[([^\]]+)\]/g, '$1');
   const fromChecklist = (chapter.checklist || []).filter((c) => !c.sex && !c.when && c.en)
-    .map((c) => ({ ko: c.text, target: c.en, py: c.py || (zh ? localPinyin(c.en) : '') }));
+    .map((c) => ({ ko: c.text, target: c.en, py: c.py || '' }));
   if (fromChecklist.length) return fromChecklist;
-  return (chapter.drills || []).filter((d) => /\s/.test(plain(d.sentence).trim()) || zh || ja)   // 단어 하나짜리는 빼고 문장만
-    .map((d) => ({ ko: d.situation.replace(/^단어:\s*/, ''), target: plain(d.sentence), py: zh || ja ? plain(d.pron || '') : '' }));
+  return (chapter.drills || []).filter((d) => /\s/.test(plain(d.sentence).trim()) || ja)   // 단어 하나짜리는 빼고 문장만
+    .map((d) => ({ ko: d.situation.replace(/^단어:\s*/, ''), target: plain(d.sentence), py: ja ? plain(d.pron || '') : '' }));
 }
 
 /**
@@ -816,9 +786,9 @@ function feedbackHtml(fb) {
     </div>` : ''}`;
 }
 
-/** 대화 한 줄 (대화 후 2/4 고르기와 내 기록 보기가 같이 쓴다). 중국어 과정은 병음, 일본어는 받아 둔 로마자, 받아 둔 뜻이 있으면 뜻도. */
+/** 대화 한 줄 (대화 후 2/4 고르기와 내 기록 보기가 같이 쓴다). 받아 둔 읽기(일본어 로마자, 옛 중국어 기록의 병음)와 뜻이 있으면 함께. */
 function lineInner(l) {
-  const py = courseNow() === 'zh' ? (l.py || localPinyin(l.text)) : (l.py || '');
+  const py = l.py || '';
   return `<span class="who">${l.who === 'me' ? '나' : partnerWord()}</span><span class="text">${escapeHtml(l.text)}</span>
     ${py ? `<span class="py">${escapeHtml(py)}</span>` : ''}
     ${l.ko ? `<span class="ko">${escapeHtml(l.ko)}</span>` : ''}
@@ -889,7 +859,7 @@ function saveLocal(d) {
     sessionId: d.sessionId, scenarioId: d.scenarioId, chapterId: d.chapter.chapter_id, chapterOrder: d.chapter.order, course: d.chapter.course || me.course,
     chapterTitle: d.chapter.title, at: new Date().toISOString(), durationSec: d.durationSec,
     patient: d.patient, confidence: d.confidence, difficulty: d.difficulty, shared: d.shared,
-    // 중국어 과정: 서버에서 받은 병음(py)과 뜻(ko)도 함께 남긴다. hard: 대화 후 2/4에서 고른 어려웠던 부분
+    // 일본어 과정: 서버에서 받은 로마자(py)와 뜻(ko)도 함께 남긴다. hard: 대화 후 2/4에서 고른 어려웠던 부분
     lines: d.lines.map((l) => ({
       who: l.who, text: l.text, ...(l.py ? { py: l.py } : {}), ...(l.ko ? { ko: l.ko } : {}), ...(l.hard ? { hard: true } : {})
     })),
@@ -984,7 +954,8 @@ function cleanRecord(r) {
     ['strengths', 'fixes', 'keywords', 'next_practice'].every((k) => Array.isArray(fb[k]));
   return {
     sessionId: r.sessionId, scenarioId: str(r.scenarioId), chapterId: str(r.chapterId),
-    chapterOrder: Number(r.chapterOrder) || '', course: ['zh', 'ja'].includes(r.course) ? r.course : 'en', chapterTitle: str(r.chapterTitle),
+    chapterOrder: Number(r.chapterOrder) || '', course: ['zh', 'ja'].includes(r.course) ? r.course : 'en',   // zh: 101단계 전에 저장한 옛 중국어 기록 (그대로 둔다)
+    chapterTitle: str(r.chapterTitle),
     at: new Date(r.at).toISOString(), durationSec: Number(r.durationSec) || 0,
     patient: { name: str(r.patient && r.patient.name) }, confidence: [1, 2, 3].includes(r.confidence) ? r.confidence : undefined,
     difficulty: str(r.difficulty), shared: r.shared === true, lines, feedback: fbOk ? fb : null
@@ -1110,13 +1081,13 @@ function initialsHtml(name, size = '') {
    그림이 없으면 머리글자 배지를 쓴다. */
 const avatars = { students: {}, patients: {} };
 const me = { name: '', avatar: '', course: 'en' };
-// 대화 상대를 부르는 말: 영어 과정은 수검자(환자), 중국어 과정은 상대
-// 지금 연 챕터의 과정. 선생님은 영어·중국어 챕터를 모두 쓰므로 학생의 과정이 아니라 챕터를 따른다 (30단계).
+// 지금 연 챕터의 과정. 선생님은 영어·일본어 챕터를 모두 쓰므로 학생의 과정이 아니라 챕터를 따른다 (30단계).
 let viewCourse = '';   // 내 기록을 다시 볼 때 그 기록의 과정
 const courseNow = () => viewCourse || (currentChapter && currentChapter.course) || me.course;
 // 대화 말풍선의 상대 이름 (63단계: 환자 → 수검자). 일본어 과정도 영어 과정과 같은 검진센터 수검자 (93단계)
-const partnerWord = () => (courseNow() === 'zh' ? '상대' : '수검자');
-const partnerTitle = () => (courseNow() === 'zh' ? '상대' : '수검자');
+// 중국어 과정의 '상대'는 101단계에서 과정과 함께 없앴다
+const partnerWord = () => '수검자';
+const partnerTitle = () => '수검자';
 
 async function loadAvatars() {
   try {
@@ -1373,15 +1344,13 @@ function plainChapterNo(e) {
 
 function recordText(e) {
   viewCourse = e.course || me.course;
-  const zh = courseNow() === 'zh';
   const who = (l) => (l.who === 'me' ? '나' : partnerWord());
   const out = ['Tutoreal 대화 기록', `${[plainChapterNo(e), e.chapterTitle].filter(Boolean).join(' · ')} — ${(e.patient && e.patient.name) || ''}`, recordMeta(e)];
   if (e.difficulty) out.push(`어려웠던 점: ${e.difficulty}`);
   out.push('', '[대화]');
   (e.lines || []).forEach((l) => {
     out.push(`${l.hard ? '★ ' : ''}${who(l)}: ${l.text}`);
-    const py = zh ? (l.py || localPinyin(l.text)) : (l.py || '');
-    if (py) out.push(`    ${py}`);
+    if (l.py) out.push(`    ${l.py}`);
     if (l.ko) out.push(`    ${l.ko}`);
   });
   if ((e.lines || []).some((l) => l.hard)) out.push('(★ 어려웠던 부분)');
@@ -1653,27 +1622,23 @@ function renderDrill() {
   } else {
     sentence = '';
   }
-  const zh = courseNow() === 'zh';
   // 일본어 (96단계): pron 칸 = 문장 전체 로마자, 빈칸 자리는 sentence처럼 [대괄호]. 대괄호가 없으면 1단계 로마자·로마자 힌트는 없음
   const ja = courseNow() === 'ja';
   const romaji = ja ? parseSentence(d.pron || '') : [];
   const jaBlanks = romaji.some((p) => p.blank);
-  // 힌트: 영어는 첫 글자(f___ n___), 중국어는 빈칸 단어의 병음, 일본어는 빈칸 단어의 로마자
+  // 힌트: 영어는 첫 글자(f___ n___), 일본어는 빈칸 단어의 로마자
   const hint = ja && jaBlanks ? romaji.filter((p) => p.blank).map((p) => p.blank).join(' · ')
-    : parts.filter((p) => p.blank).map((p) => (zh ? localPinyin(p.blank)
-      : p.blank.split(/\s+/).map((w) => w[0] + '_'.repeat(Math.max(0, w.length - 1))).join(' '))).join(' · ');
-  // 중국어·일본어 1단계: 빈칸이 아닌 부분의 병음·로마자를 문장 아래에 (빈칸 자리는 비워 둔다)
-  const blankPy = !drill.revealed && drill.level === 'blank'
-    ? (zh ? parts.map((p) => (p.blank ? '<span class="blank py-blank" aria-label="빈칸"></span>' : escapeHtml(localPinyin(p.text)))).join(' ')
-      : jaBlanks ? romaji.map((p) => (p.blank ? '<span class="blank py-blank" aria-label="빈칸"></span>' : escapeHtml(p.text))).join('')
-      : '')
+    : parts.filter((p) => p.blank).map((p) => p.blank.split(/\s+/).map((w) => w[0] + '_'.repeat(Math.max(0, w.length - 1))).join(' ')).join(' · ');
+  // 일본어 1단계: 빈칸이 아닌 부분의 로마자를 문장 아래에 (빈칸 자리는 비워 둔다)
+  const blankPy = !drill.revealed && drill.level === 'blank' && jaBlanks
+    ? romaji.map((p) => (p.blank ? '<span class="blank py-blank" aria-label="빈칸"></span>' : escapeHtml(p.text))).join('')
     : '';
 
   const c = drill.coach;
   const coachHtml = c ? `<div class="coach ${c.overall}">
       <p class="coach-title">${COACH_TITLE[c.overall] || COACH_TITLE.retry}</p>
       ${c.message ? `<p class="coach-msg">${escapeHtml(c.message)}</p>` : ''}
-      ${c.heard ? `<p class="coach-heard">${zh || ja ? '들린 발음' : '들린 문장'}: "${escapeHtml(c.heard)}"</p>` : ''}
+      ${c.heard ? `<p class="coach-heard">${ja ? '들린 발음' : '들린 문장'}: "${escapeHtml(c.heard)}"</p>` : ''}
       ${c.words.map((w) => `<p class="coach-word"><b>${escapeHtml(w.word)}</b> → <span class="resp">${escapeHtml(w.respelling)}</span>
         <span class="tip">${escapeHtml(w.tip)}</span></p>`).join('')}
     </div>` : '';
@@ -1684,7 +1649,7 @@ function renderDrill() {
     <p class="situation">${escapeHtml(d.situation)}</p>
     ${sentence ? `<p class="sentence-label">${drill.revealed ? '정답' : `${langName()} 문장`}</p><p class="sentence">${sentence}</p>` : ''}
     ${blankPy ? `<p class="drill-py">${blankPy}</p>` : ''}
-    ${drill.revealed ? (d.pron ? (zh || ja ? `<p class="drill-py">${escapeHtml(plainSentence(d.pron))}</p>` : `<p class="drill-pron">발음: ${escapeHtml(d.pron)}</p>`) : '')
+    ${drill.revealed ? (d.pron ? (ja ? `<p class="drill-py">${escapeHtml(plainSentence(d.pron))}</p>` : `<p class="drill-pron">발음: ${escapeHtml(d.pron)}</p>`) : '')
       : drill.phase === 'recording' ? `<p class="recording">${METER_HTML}<span>듣고 있어요. 문장을 말한 뒤 "다 말했어요"를 눌러 주세요.</span></p>`
       : drill.phase === 'checking' ? '<p class="drill-say">발음을 확인하는 중…</p>'
       : `<p class="drill-say">${drill.level === 'blank' ? '소리 내어 문장 전체를 말해 보세요.' : `${langName()} 문장 전체를 소리 내어 말해 보세요.`}</p>
@@ -1699,7 +1664,7 @@ function renderDrill() {
     actions.innerHTML = '';
   } else if (!drill.revealed) {
     actions.innerHTML = `<button class="primary" id="rec-start">🎤 말하고 확인받기</button>
-      <div class="row">${drill.hintShown ? '' : `<button class="secondary" id="drill-hint">${zh ? '힌트 (병음)' : ja && jaBlanks ? '힌트 (로마자)' : '힌트 (첫 글자)'}</button>`}
+      <div class="row">${drill.hintShown ? '' : `<button class="secondary" id="drill-hint">${ja && jaBlanks ? '힌트 (로마자)' : '힌트 (첫 글자)'}</button>`}
       <button class="secondary" id="drill-reveal">정답 보기</button></div>`;
     $('#rec-start').addEventListener('click', () => withMicIntro(startCoach));
     if ($('#drill-hint')) $('#drill-hint').addEventListener('click', () => { drill.hintShown = true; renderDrill(); });
@@ -1794,7 +1759,7 @@ if ('speechSynthesis' in window) {
   loadVoices();
   if (speechSynthesis.addEventListener) speechSynthesis.addEventListener('voiceschanged', loadVoices);
 }
-/** lang(예: zh-CN)에 맞는 음성. 같은 언어·지역 → 같은 언어(zh-TW 등) 순서로 찾고, 없으면 null. */
+/** lang(예: ja-JP)에 맞는 음성. 같은 언어·지역 → 같은 언어(다른 지역) 순서로 찾고, 없으면 null. */
 function pickVoice(lang) {
   if (!ttsVoices.length) loadVoices();
   const norm = (l) => String(l || '').replace('_', '-').toLowerCase();
@@ -1810,8 +1775,8 @@ function pickVoice(lang) {
 function speak(text, course = courseNow()) {
   if (!('speechSynthesis' in window)) return null;
   const u = new SpeechSynthesisUtterance(text);
-  // 중국어·일본어 과정은 휴대폰의 그 언어 음성으로 조금 더 천천히
-  u.lang = { zh: 'zh-CN', ja: 'ja-JP' }[course] || 'en-US';
+  // 일본어 과정은 휴대폰의 일본어 음성으로 조금 더 천천히
+  u.lang = course === 'ja' ? 'ja-JP' : 'en-US';
   u.rate = course === 'en' ? 0.9 : 0.8;
   const voice = pickVoice(u.lang);
   if (voice) { u.voice = voice; u.lang = voice.lang; }
@@ -1836,7 +1801,7 @@ function setDrillProgress(ratio) {
 // openStudent() 아래에 '공유된 대화' 목록을 붙인다 (모양은 내 기록 보기와 같게).
 
 let teacherData = null;
-let teacherCourse = '';   // 선생님 요약에서 보고 있는 과정 (en/zh). 비우면 서버가 정한다
+let teacherCourse = '';   // 선생님 요약에서 보고 있는 과정 (en/ja). 비우면 서버가 정한다
 
 const chapterLabel = (c) => `${c.order}장 ${c.title}`;
 const confText = (v) => (v === null || v === undefined ? '–' : v);
@@ -1870,7 +1835,7 @@ function renderTeacher() {
   const s = teacherData;
   // 두 줄로 (51단계): 기간 / 만든 시각. 한 줄에 이어 쓰면 휴대폰에서 '기준'이 '기 / 준'처럼 끊겼다
   $('#teacher-period').innerHTML = `${escapeHtml(s.period.label)}<br>${escapeHtml(s.generated_at)} 기준`;
-  // 과정이 둘 이상이면 위에 과정 고르기 (영어 / 중국어)
+  // 과정이 둘 이상이면 위에 과정 고르기 (영어 / 일본어)
   const courses = s.courses || [];
   $('#teacher-body').innerHTML = `
     ${courses.length > 1 ? `<div class="levels" role="group" aria-label="과정">${courses.map((c) => `
@@ -2006,7 +1971,7 @@ async function loadStudentTalks(id, name) {
 
 /** 공유된 대화 하나: 자기 평가·어려웠던 점, 피드백(공유할 때 저장된 그대로), 대화 전체(학생이 고른 줄은 '어려웠어요') */
 function openTSession(t) {
-  viewCourse = t.course || 'en';   // 이 대화의 과정으로 그린다 (중국어면 병음, '상대')
+  viewCourse = t.course || 'en';   // 이 대화의 과정으로 그린다 (일본어면 로마자)
   const hard = t.lines.filter((l) => l.hard).length;
   $('#tsession-body').innerHTML = `
     <div class="card t-card record-head">
@@ -2151,7 +2116,7 @@ function loadWordDict() {
   return wordDictLoading;
 }
 let wordChecking = false;   // 사전을 기다리는 중 (확인을 두 번 눌러도 한 번만)
-// 발음 듣기 버튼: 단어 게임은 늘 영어 음성으로 (선생님이 중국어 챕터를 보던 중이어도)
+// 발음 듣기 버튼: 단어 게임은 늘 영어 음성으로 (선생님이 일본어 챕터를 보던 중이어도)
 const wordSayBtn = (text, label) =>
   `<button type="button" class="say-btn" data-say="${escapeHtml(text)}" data-course="en" aria-label="${escapeHtml(label)}">${SPEAKER_ICON}</button>`;
 

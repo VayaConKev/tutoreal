@@ -31,7 +31,7 @@ async function postServer(action, body = {}, timeoutMs = 15000, keepalive = fals
   }, timeoutMs);
 }
 
-// 챕터 목록은 접속 코드로만 받는다. 서버가 그 학생 과정(영어/중국어)의 챕터만 준다.
+// 챕터 목록은 접속 코드로만 받는다. 서버가 그 학생 과정(영어/일본어)의 챕터만 준다.
 export async function getChapters(code) {
   const data = await postServer('chapters', { code });
   // daily_word: 오늘의 단어 (67단계) { no, date, word, meaning, hint, sentence, sentences, preview, test_account } 또는 null (학생에게 숨긴 동안은 선생님·테스터만)
@@ -63,7 +63,7 @@ export async function shareTalk(code, sessionId, confidence, difficulty, lines) 
 }
 
 // 선생님 요약 (선생님 코드만). refresh면 AI 정리를 새로 만들고 시트 summary 탭도 새로 쓴다 — 오래 걸릴 수 있다.
-// course: 볼 과정 (en/zh). 비우면 선생님 자신의 과정. 새로 정리하기는 모든 과정의 summary 탭을 다시 쓴다.
+// course: 볼 과정 (en/ja). 비우면 선생님 자신의 과정. 새로 정리하기는 모든 과정의 summary 탭을 다시 쓴다.
 export async function getSummary(code, refresh = false, course = '') {
   const data = await postServer('summary', { code, refresh, course }, refresh ? 180000 : 30000);
   return data.summary;
@@ -88,7 +88,7 @@ export async function explainWord(code, text) {
   return { fb: data.fb, left: data.left ?? null };
 }
 
-// 중국어 과정: 상대가 한 말 한 줄의 교과서식 병음과 한국어 뜻. 대화 중에 줄마다 부른다.
+// 일본어 과정: 상대가 한 말 한 줄의 로마자와 한국어 뜻. 서버 칸 이름은 pinyin(= 그 줄의 읽기). 대화 중에 줄마다 부른다.
 export async function getGloss(code, sessionId, text) {
   const data = await postServer('gloss', { code, session_id: sessionId, text }, 30000);
   return { pinyin: data.pinyin || '', ko: data.ko || '' };

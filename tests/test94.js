@@ -1,4 +1,4 @@
-// 94단계: 일본어 자막 도우미 — 일본어 대화의 gloss는 ja-gloss-v1(로마자·뜻), 앱에는 pinyin 칸으로. 중국어는 그대로, 영어는 NO_PROMPT
+// 94단계: 일본어 자막 도우미 — 일본어 대화의 gloss는 ja-gloss-v1(로마자·뜻), 앱에는 pinyin 칸으로. 영어는 NO_PROMPT (중국어는 101단계에서 없앰)
 const { makeWorld, CODE, baseline } = require('./fakesheet.js');
 const assert = require('assert');
 const old = makeWorld(baseline('6c583c7')); old.run('setup'); old.run('addChineseSample');   // 지금 쓰는 시트 (서버 v0.57)
@@ -42,16 +42,15 @@ assert(ja.ok); assert.equal(ja.pinyin, 'Tanaka Yumi desu.'); assert.equal(ja.ko,
 assert.deepEqual(sent.keys, ['romaji', 'ko']);
 assert(sent.body.includes('Hepburn romaji') && sent.body.includes('こう言えます'), 'ja-gloss-v1 지시문');
 
-// ② 중국어는 그대로 (pinyin 칸, zh-gloss)
-const zh = gloss(session('zh01'), '您好！');
-console.log('중국어 gloss:', JSON.stringify(zh), '/ 물은 칸:', sent.keys.join(', '));
-assert(zh.ok); assert.equal(zh.pinyin, 'Nín hǎo!'); assert.deepEqual(sent.keys, ['pinyin', 'ko']);
-assert(sent.body.includes('Hanyu Pinyin'));
+// ② 시트에 남은 중국어 챕터는 대화부터 NO_PROMPT (101단계)
+w.fetchHook = null;
+assert.equal(post({ action: 'talk', code: 'teach', chapter_id: 'zh01' }).error, 'NO_PROMPT');
+console.log('시트에 남은 중국어 zh01: 대화 NO_PROMPT');
 
 // ③ 영어는 지시문이 없어 NO_PROMPT (그대로)
 sent = null;
 assert.equal(gloss(session('ch01'), 'Hello.').error, 'NO_PROMPT'); assert.equal(sent, null);
-// ④ 일본어 지시문을 끄면 NO_PROMPT (중국어 지시문으로 대신하지 않음)
+// ④ 일본어 지시문을 끄면 NO_PROMPT
 w.tabs.prompts.find((r) => r[0] === 'ja-gloss-v1')[2] = false;
 assert.equal(gloss(session('ja01'), 'はい。').error, 'NO_PROMPT');
 console.log('영어: NO_PROMPT / ja-gloss를 끄면: NO_PROMPT');

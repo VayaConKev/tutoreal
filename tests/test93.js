@@ -1,4 +1,4 @@
-// 93단계: 일본어 과정(course 칸 ja) — setup이 ja-partner-v1을 더하고, ja 챕터의 대화는 일본어 받아쓰기 + 일본어 지시문. 영어·중국어는 그대로
+// 93단계: 일본어 과정(course 칸 ja) — setup이 ja-partner-v1을 더하고, ja 챕터의 대화는 일본어 받아쓰기 + 일본어 지시문. 영어는 그대로 (중국어는 101단계에서 없앰)
 const { makeWorld, CODE, baseline } = require('./fakesheet.js');
 const assert = require('assert');
 const old = makeWorld(baseline('6c583c7')); old.run('setup'); old.run('addChineseSample');   // 지금 쓰는 시트 (서버 v0.57)
@@ -53,15 +53,14 @@ assert.deepEqual(list('stu-ja'), ['ja01:ja']);
 assert(!list('stu-en').some((c) => c.startsWith('ja')));
 assert(list('teach').includes('ja01:ja'), '선생님은 모든 과정');
 
-// ③ 영어·중국어는 그대로
+// ③ 영어는 그대로. 시트에 남은 중국어 챕터·지시문(지금 쓰는 시트)은 101단계부터 쓰지 않는다 → NO_PROMPT
 const en = talk('stu-en', 'ch01');
 assert.deepEqual(en.setup.inputAudioTranscription.languageCodes, ['en-US', 'ko-KR']);
 assert(!en.setup.systemInstruction.parts[0].text.includes('Japanese'));
-w.tabs.scenarios.find((r) => r[0] === 'zh01-s02')[w.tabs.scenarios[0].indexOf('active')] = false;   // 대만 시나리오는 꺼서 본토(zh-CN)만
+assert(w.tabs.prompts.some((r) => r[0] === 'zh-partner-v1'), '예전 시트에는 중국어 지시문 줄이 남아 있다');
 const zh = talk('teach', 'zh01');
-assert.deepEqual(zh.setup.inputAudioTranscription.languageCodes, ['zh-CN', 'ko-KR']);
-assert(zh.setup.systemInstruction.parts[0].text.includes('Mandarin'));
-console.log('영어 ch01: en-US + ko-KR / 중국어 zh01: zh-CN + ko-KR (그대로)');
+assert.equal(zh.r.error, 'NO_PROMPT'); assert.equal(zh.setup, null, '토큰을 만들지 않음');
+console.log('영어 ch01: en-US + ko-KR (그대로) / 시트에 남은 중국어 zh01: NO_PROMPT');
 
 // ④ 일본어 지시문을 끄면 영어로 대신하지 않고 NO_PROMPT
 w.tabs.prompts.find((r) => r[0] === 'ja-partner-v1')[2] = false;

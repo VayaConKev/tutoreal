@@ -9,7 +9,6 @@ const s = w.tabs.settings; const set = (k, v) => { const r = s.find((x) => x[0] 
 set('text_model', 'gemini-3.8-flash'); set('live_model', 'x'); set('monthly_budget_usd', 50); set('daily_connect_limit', 100);
 const st = w.tabs.students;
 st.push(st[0].map((k) => ({ student_id: 'S1', display_name: '학생', access_code: 'stu', status: 'active', course: 'en' })[k] ?? ''));
-st.push(st[0].map((k) => ({ student_id: 'S2', display_name: '대표', access_code: 'zhs', status: 'active', course: 'zh' })[k] ?? ''));
 const post = (b) => w.run('doPost', { postData: { contents: JSON.stringify(b) } }).body;
 const H = w.tabs.chapters[0];
 const lines = [{ who: 'me', text: '스틸을 코스프레하고 스틸 카운트를' }, { who: 'ai', text: 'Sorry?' }];
@@ -29,15 +28,5 @@ sys = sysFor('stu', 'ch02');
 assert(!sys.includes('그렇게 설명해도') && !sys.includes('이 부분은') && sys.includes('위염 결과를 쉬운 말로 풀어 설명해서') && sys.includes('수검자가 알아듣기') && sys.includes('아래 추천 표현도 참고해 보세요.'));
 assert(sys.indexOf('GENTLE') < sys.indexOf('Writing rules'), '글 규칙이 맨 끝');
 console.log('영어(gentle): 고정 문장(그렇게 설명해도… / 이 부분은…) 없음, 구체적인 예시 문장, 글 규칙이 맨 끝\n');
-// 중국어: 해요체·지시어 규칙은 있고 받아쓰기 규칙은 없음
-{ const c = w.tabs.chapters.find((r) => r[0] === 'ch01').slice(); c[0] = 'zh01'; c[H.indexOf('course')] = 'zh'; c[H.indexOf('feedback_style')] = ''; w.tabs.chapters.push(c);
-  const SC = w.tabs.scenarios; const sc = SC.find((r) => r[1] === 'ch01').slice(); sc[0] = 'zh01-s01'; sc[1] = 'zh01'; sc[SC[0].indexOf('country')] = 'China'; SC.push(sc); }
-const zhCh = w.tabs.chapters.find((r) => String(r[H.indexOf('course')]) === 'zh');
-if (zhCh) {
-  zhCh[H.indexOf('published')] = true;
-  if (!w.tabs.scenarios.some((r) => r[1] === zhCh[0] && r[w.tabs.scenarios[0].indexOf('active')] !== false)) console.log('(중국어 시나리오 없음)');
-  sys = sysFor('zhs', zhCh[0]);
-  assert(sys.includes('해요체') && !sys.includes('Speech recognition'));
-  console.log('중국어(' + zhCh[0] + '): 해요체·지시어 규칙 O, 받아쓰기 규칙 X');
-} else console.log('(가짜 시트에 중국어 챕터가 없어 건너뜀)');
+// 중국어 과정(받아쓰기 규칙을 붙이지 않던 과정)은 101단계에서 없앴다. 일본어의 글 규칙은 test95가 본다
 console.log('모든 확인 통과');

@@ -1,4 +1,4 @@
-// 95단계: 일본어 피드백 — ja-feedback-v1, 로마자를 better_py·py 칸으로. 영어·중국어 피드백 지시문은 v0.59와 글자 하나까지 같음
+// 95단계: 일본어 피드백 — ja-feedback-v1, 로마자를 better_py·py 칸으로. 영어 피드백 지시문은 v0.59와 글자 하나까지 같음 (중국어는 101단계에서 없앰)
 const { makeWorld, CODE, baseline } = require('./fakesheet.js');
 const assert = require('assert');
 const BASE = '903f50a';   // 서버 v0.59
@@ -18,7 +18,7 @@ function world(code) {
     scene: 'x', published: 'preview', ai_captions: 'show', course: 'ja', checklist: '성함 묻기 | お名前をお願いします。' });
   row('scenarios', { scenario_id: 'ja01-s01', chapter_id: 'ja01', name: '田中 由美', sex: 'female', dob: '1985-03-02', country: 'Japan',
     exam: 'stomach endoscopy', level: 1, active: true });
-  w.tabs.scenarios.filter((r) => /^zh01-s0[2-9]/.test(r[0]) || /^ch01-s0[2-9]/.test(r[0]))
+  w.tabs.scenarios.filter((r) => /^ch01-s0[2-9]/.test(r[0]))
     .forEach((r) => { r[w.tabs.scenarios[0].indexOf('active')] = false; });   // 시나리오 하나씩만 (같은 지시문이 나오게)
   return w;
 }
@@ -61,16 +61,16 @@ assert(ja.sent.user.includes('Nurse: 名前は？') && ja.sent.user.includes('Pa
 assert(!/\{(goal|keywords|name|dob|exam)\}/.test(ja.sent.system), '빈칸이 모두 채워짐');
 console.log('일본어 지시문: ja-feedback-v1 + 받아쓰기 규칙(일본어) + 체크리스트, 빈칸 모두 채움');
 
-// ② 영어·중국어: 보낸 지시문·칸이 v0.59와 똑같다
+// ② 영어: 보낸 지시문·칸이 v0.59와 똑같다
 const EN = () => ({ summary: 's', strengths: [], fixes: [], keywords: [], next_practice: [] });
 const prev = world(baseline(BASE));
-for (const [ch, line] of [['ch01', 'Lucas Martin?'], ['zh01', '您好！']]) {
+for (const [ch, line] of [['ch01', 'Lucas Martin?']]) {
   const a = feedback(w, ch, [{ who: 'me', text: line }], EN).sent;
   const b = feedback(prev, ch, [{ who: 'me', text: line }], EN).sent;
   assert.equal(a.system, b.system, ch + ' 지시문이 같다');
   assert.deepEqual(a.schema, b.schema, ch + ' 칸이 같다');
 }
-console.log('영어 ch01·중국어 zh01: 지시문과 칸이 v0.59와 똑같음');
+console.log('영어 ch01: 지시문과 칸이 v0.59와 똑같음');
 
 // ③ 일본어 지시문을 끄면 NO_PROMPT
 w.tabs.prompts.find((r) => r[0] === 'ja-feedback-v1')[2] = false;

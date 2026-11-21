@@ -40,7 +40,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   line-height: 1.55; -webkit-text-size-adjust: 100%;
   /* 한국어는 띄어쓰기 단위로만 줄을 바꾼다 (51단계). 기본값은 글자 단위라 '기준'이 '기 / 준'처럼 끊겼다.
-     칸보다 긴 낱말(긴 영어 이름, 띄어쓰기 없는 중국어 문장 등)은 넘치지 않게 칸 끝에서 나눈다 */
+     칸보다 긴 낱말(긴 영어 이름, 띄어쓰기 없는 일본어 문장 등)은 넘치지 않게 칸 끝에서 나눈다 */
   word-break: keep-all; overflow-wrap: break-word;
 }
 .wrap { max-width: 560px; margin: 0 auto; padding: 24px max(16px, env(safe-area-inset-right, 0px)) 40px max(16px, env(safe-area-inset-left, 0px)); }   /* 가로로 돌렸을 때 노치 피하기 */
@@ -124,7 +124,7 @@ h2.page-title { font-size: 22px; color: var(--text); font-weight: 800; letter-sp
 
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
 .eyebrow { color: var(--accent); font-weight: 700; font-size: 14px; margin: 0; }
-/* 선생님 챕터 목록: 과정 제목 (영어 과정 / 중국어 과정) */
+/* 선생님 챕터 목록: 과정 제목 (영어 과정 / 일본어 과정) */
 .course-label { margin: 18px 0 8px; }
 .course-label:first-child { margin-top: 0; }
 .card h3 { margin: 2px 0 8px; font-size: 22px; }
@@ -203,7 +203,7 @@ button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline:
 .line.ai.covered .text { display: none; }
 .line .cover { color: var(--muted); }
 .line.ai:not(.covered) .cover { display: none; }
-/* 중국어 과정: 한자 아래 병음, 누르면 보이는 한국어 뜻 */
+/* 일본어 과정: 상대의 말 아래 로마자, 누르면 보이는 한국어 뜻 */
 .line .py { display: block; margin-top: 2px; font-size: 15px; color: var(--teal-ink); }
 .line .py:empty { display: none; }
 .line .ko { display: block; margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--line); font-size: 14px; color: var(--muted); }
@@ -294,7 +294,7 @@ textarea {
 #detail-checklist-box { margin-top: 16px; }
 .checklist { margin: 0 0 16px; padding-left: 22px; }
 .checklist li { margin-bottom: 10px; }
-/* 체크리스트 항목 아래 따라 읽을 영어 (중국어 과정의 병음과 같은 색) */
+/* 체크리스트 항목 아래 따라 읽을 영어 (일본어 과정의 로마자와 같은 색) */
 .ck-ko { display: block; }
 .ck-en { display: block; margin-top: 1px; font-size: 15px; font-weight: 400; color: var(--teal-ink); }
 /* 세 번째 칸의 읽기 (일본어 과정의 로마자, 98단계): 따라 읽을 문장보다 한 단계 흐리게 */
@@ -318,10 +318,10 @@ textarea {
 .fb-check .opt .mark { color: var(--muted); border: 1px dashed var(--line); }
 .fb-check .soft .mark { color: var(--muted); border: 1px solid var(--line); }   /* 너그러운 피드백 챕터의 안 한 항목 (47단계) */
 .fb-next .ko { display: block; color: var(--muted); font-size: 14px; }
-/* 중국어 문장 연습: 문장 아래 병음 (1단계는 빈칸 자리를 비워 둔다) */
+/* 일본어 문장 연습: 문장 아래 로마자 (1단계는 빈칸 자리를 비워 둔다) */
 .drill-py { color: var(--teal-ink); font-size: 16px; margin: 4px 0 0; }
 .drill-py .py-blank { width: 3em; }
-/* 중국어 피드백의 병음 */
+/* 일본어 피드백의 로마자 */
 .fb-py { color: var(--teal-ink); font-size: 15px; margin: 0 0 2px; }
 .fb-next .py { display: block; color: var(--teal-ink); font-size: 15px; }
 .choices { display: flex; flex-direction: column; gap: 8px; }

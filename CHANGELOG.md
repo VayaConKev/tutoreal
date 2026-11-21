@@ -844,3 +844,11 @@
 - 앱: 챕터 화면·피드백·기록에 '수면 수검자만', '대장 검사 수검자만', '위 검사 수검자만' 표시. 피드백 기다림 화면의 복습 문장에서는 표시가 있는 줄을 뺀다 (성별 표시와 같음)
 - docs/content-guide.md: 검사 표시 쓰는 법과 exam 쓰는 법
 - 시험: tests/test100.js
+
+## v1.06 (2026-11-21)
+- 101단계: 중국어 과정 없애기 (의도 문서 intent/2026-11-06-remove-chinese.md). 영어·일본어 과정만 남긴다. 되살리려면 커밋 b5a0e8b
+- 서버 v0.65: 중국어 지시문 5개(zh-partner·gloss·feedback·pron·insight), 예시 챕터와 addChineseSample(), 중국어 피드백 형식, 중국어·대만 받아쓰기 언어, settings 기본값 zh_lang_china·zh_lang_taiwan·last_class_date_zh를 없앤다. 영어·일본어가 아닌 과정은 시트에 지시문 줄이 남아 있어도 쓰지 않는다 (NO_PROMPT). 일본어가 같이 쓰는 칸 이름(pinyin, better_py, py)과 gloss_model은 그대로. 영어·일본어의 대화·피드백·발음 코칭·자막 도우미는 v0.64와 글자 하나까지 같다 (시험으로 확인). setup은 필요 없음
+- 앱: 병음 변환기(js/vendor/pinyin-pro.js)와 중국어 분기 삭제 (자막, 문장 연습 힌트·병음, 기다림 화면, 기록, 읽어 주기 음성, '상대' 호칭). 대화 시작 때 걸어오는 수검자 그림은 영어·일본어 모두 그대로. 선생님 휴대폰의 옛 중국어 기록은 저장된 병음·뜻 그대로 보인다
+- 시트(선생님이 직접): 배포 전에 사본 백업 → 중국어 학생 status를 paused, 중국어 챕터 published를 FALSE → 배포 → chapters·scenarios·drills의 중국어 줄, prompts의 zh- 줄, settings의 zh_lang_china·zh_lang_taiwan·last_class_date_zh 삭제. sessions 등 기록 탭의 줄은 남긴다 (이번 달 사용 금액 계산)
+- 문서: README, CLAUDE.md, docs/content-guide.md에서 중국어 과정 설명 삭제
+- 시험: tests/test101.js (코드에 중국어 부분 없음, 새 시트 setup에 중국어 줄 없음, 영어·일본어가 v0.64와 같음, 시트에 남은 중국어 챕터는 NO_PROMPT). test36(중국어 전용) 삭제, test40·54·67·93·94·95·96에서 중국어 부분을 빼거나 일본어로 바꿈

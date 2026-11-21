@@ -91,16 +91,19 @@
  *                 drills의 pron 칸 = 문장 전체 로마자, 빈칸 부분은 sentence처럼 [대괄호] (AI에는 대괄호를 빼고 준다). setup()이 줄을 추가한다.
  * v0.62 (98단계): 체크리스트 세 번째 칸 — '한국어 | 日本語 | romaji'처럼 | 를 하나 더 쓰면 그 뒤는 읽기(py). 앱이 문장 아래에 보여 주고,
  *                 피드백의 판단 기준(모범 문장)에는 넣지 않는다. 두 칸까지 쓴 줄(영어·중국어)은 그대로.
+ * v0.65 (101단계): 중국어 과정을 없앤다 — 중국어 지시문 5개, 예시(addChineseSample), 중국어 피드백 형식, 받아쓰기 언어,
+ *                 settings의 zh_lang_china·zh_lang_taiwan·last_class_date_zh. 영어·일본어가 아닌 과정은 NO_PROMPT.
+ *                 일본어가 같이 쓰는 칸 이름(pinyin, better_py, py)과 gloss_model은 그대로. 되살리려면 커밋 b5a0e8b.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.64';
+const SERVER_VERSION = 'v0.65';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
-  // course: 과정 (en 영어, zh 중국어, ja 일본어). 빈칸은 en. 학생은 자기 과정의 챕터만 받는다.
+  // course: 과정 (en 영어, ja 일본어). 빈칸은 en. 학생은 자기 과정의 챕터만 받는다.
   // checklist: 이 챕터에서 꼭 해야 할 안내 (한 줄에 하나, '(선택)'으로 시작하면 가끔만 하는 안내). 비우면 체크리스트 없음.
   // feedback_style: 비우면 보통 피드백, gentle이면 '뜻이 통했나'를 기준으로 너그럽게 (예: 쉽게 설명하기 챕터) (v0.44)
   // level: 이 챕터가 보이는 난이도 탭 (beginner / intermediate / advanced). 비우면 beginner (99단계). scenarios 탭의 level은 참고용 메모로, 다른 칸이다.
@@ -243,90 +246,9 @@ const WORD_EXPLAIN_PROMPT_V1 = [
   'Be warm and short. Do not point out style preferences as mistakes.'
 ].join('\n');
 
-// 중국어 과정의 대화 상대 지시문 (24단계). 학생은 중국어 초보(HSK 2 정도)의 한국인 패션 브랜드 대표.
-// {name} {sex} {country} {exam} {scene} {twist} {keywords} 는 서버가 채운다. 중국어 과정에서 exam 칸은 '상대의 역할·장소'.
-const ZH_PARTNER_PROMPT_V1 = [
-  'You are role-playing {name} in a speaking practice. Your role (written in Korean): {exam}. Region: {country}.',
-  'The user is a Korean fashion brand owner who is a beginner in Mandarin Chinese (about HSK 2).',
-  'Scene: {scene} Extra: {twist}',
-  'Key words of this lesson: {keywords}',
-  'Rules:',
-  '- Speak only Mandarin Chinese. Never speak Korean or English.',
-  '- Speak slowly and clearly. Use one short, simple sentence per turn (HSK 1-2 words plus the key words above), then wait.',
-  '- Ask one question at a time, so the learner can practice the key words.',
-  '- If the learner speaks Korean or seems stuck, help: say "你可以说：" and one short Chinese sentence the learner could say, then wait. Do not translate into Korean.',
-  '- If you did not clearly hear or understand (mumbled, cut off, too quiet), say "不好意思，请再说一遍。". Never guess what the learner meant.',
-  '- If the meaning is clear, accept simple or slightly wrong Chinese and keep the talk going. Do not correct grammar during the talk.',
-  '- Be friendly and polite, like a busy shop owner meeting a new brand. Do not make promises (prices, orders) that are not in the scene. Stay in role.'
-].join('\n');
-
-// 중국어 자막 도우미 지시문 (25단계): 상대가 한 말 한 줄 → 교과서식 병음 + 한국어 뜻.
-const ZH_GLOSS_PROMPT_V1 = [
-  'You help a Korean beginner learning Mandarin Chinese (about HSK 2).',
-  'You get one line spoken by a Chinese shop owner in a speaking practice. It comes from speech recognition and may be in simplified or traditional characters.',
-  'Return:',
-  '- pinyin: Hanyu Pinyin of the whole line with tone marks, in textbook style. Group syllables into words (for example "Nín hǎo, qǐngwèn nín shì……?"), capitalize the first letter of each sentence and of names, and keep the punctuation.',
-  '  Use neutral tones where natural speech has them (for example xiānsheng, máfan, yìsi, wǒmen) and the tone changes of 一 and 不 (for example yíxià, búyòng). Keep non-Chinese words (like brand names) as they are.',
-  '- ko: the meaning in natural, simple Korean. If the line contains "你可以说：" with a suggested sentence, write that part as "이렇게 말해 보세요: " followed by the Korean meaning of the suggested sentence.',
-  'Do not add explanations.'
-].join('\n');
-
-// 중국어 피드백 지시문 (26단계). 영어 피드백과 같은 항목에 병음(better_py, py)을 더한다.
-// {goal} {keywords} {name} {exam} 은 서버가 채운다. 대화 글자는 따로 붙는다.
-const ZH_FEEDBACK_PROMPT_V1 = [
-  'You are a Mandarin Chinese speaking coach for a Korean fashion brand owner who is a beginner (about HSK 2).',
-  'You review one practice conversation between the learner and an AI playing a Chinese shop owner.',
-  'Lesson goal (Korean): {goal}',
-  'Key expressions: {keywords}',
-  'Partner: {name} ({exam}).',
-  'The transcript comes from speech recognition, so:',
-  '- Do not comment on punctuation, simplified or traditional characters, or how names are written.',
-  '- Recognition may write a different character with the same sound. If the meaning is clear from context, do not count it as a mistake.',
-  '- Korean sentences mean the learner switched to Korean. Suggest a simple Chinese way to say it.',
-  '- Do not judge pronunciation or tones.',
-  '- Partner lines starting with "你可以说：" are hints. If the learner then repeated the hint, that is good practice, but note that it was with help.',
-  'Write feedback for the learner:',
-  '- summary: one short sentence in Korean.',
-  '- strengths: 1-3 short points in Korean, based on what the learner actually said in Chinese. Praise only what was really done well. Do not praise a line that you also correct.',
-  '- fixes: up to 3 items. "said" = the learner\'s exact words, "better" = a natural, simple, polite Chinese sentence (HSK 1-3 words where possible), "better_py" = its pinyin, "why" = one short reason in Korean. Only include real improvements.',
-  '- keywords: for each key expression, in the same order, whether the learner used it or a clear equivalent.',
-  '- next_practice: 1-2 short, useful Chinese sentences for next time ("zh"), their pinyin ("py"), and the Korean meaning ("ko").',
-  'Pinyin style: textbook style with tone marks, syllables grouped into words, first letter of a sentence capitalized, neutral tones (xiānsheng, wǒmen) and the tone changes of 一 and 不 (yíxià, búyòng).',
-  'Do not add new facts about the learner or the brand (job, products, numbers, names) that are not in the conversation. If a sentence needs such a fact, write it in Korean in brackets, for example [브랜드 이름].',
-  'Be kind and specific. Give feedback only on the learner\'s lines; partner lines are context.'
-].join('\n');
-
-// 중국어 발음(성조) 코칭 지시문 (27단계). {sentence} {pron} {keywords} {mode} 는 서버가 채운다. 학생의 소리는 따로 붙는다.
-const ZH_PRON_PROMPT_V1 = [
-  'You are a friendly Mandarin Chinese pronunciation coach for a Korean beginner (about HSK 2). Focus on tones.',
-  'Listen to the audio of the learner trying to say this target: "{sentence}"',
-  'Pinyin of the target (the reference, with tone marks): {pron}',
-  'Key words to check closely: {keywords}',
-  'Mode: {mode}',
-  'Return:',
-  '- heard: what you heard, written in pinyin with tone marks as the learner actually said it, syllable by syllable. Keep the learner\'s mistakes (wrong tones, wrong sounds). Do not correct them.',
-  '- said_target: true if the learner said the target or a natural sentence with the same meaning.',
-  '- overall: "great" if the tones and sounds are clear and correct, "good" if understandable with 1-2 small tone or sound issues, "retry" if hard to understand, a different sentence, many wrong tones, or not speech.',
-  '- message: one short, kind sentence in Korean.',
-  '- words: up to 3 words that need work, key words first. For each: word (the Chinese characters), respelling (the correct pinyin with tone marks), tip (Korean: what to change, naming the tone with a simple description: 1성(높고 평평하게), 2성(아래에서 위로 올리기), 3성(낮게 눌렀다가 살짝 올리기), 4성(위에서 아래로 뚝 떨어지기), 경성(짧고 가볍게); for example "lǎo는 3성인데 4성처럼 떨어졌어요. 낮게 눌렀다가 살짝 올려 보세요."). Empty list if everything is fine.',
-  'These are normal and correct, never mark them as mistakes: a 3rd tone before another 3rd tone sounds like a 2nd tone (nǐ hǎo → ní hǎo), the tone changes of 一 and 不, and short light neutral tones.',
-  'Only report a tone error when you clearly hear it. Be honest but encouraging. Do not invent problems. If the audio is silent or not speech, overall is "retry" and say so in message.'
-].join('\n');
-
-// 중국어 과정 챕터별 AI 정리 지시문 (29단계). {chapter} {goal} {keywords} 는 서버가 채운다.
-const ZH_INSIGHT_PROMPT_V1 = [
-  'You help a teacher prepare a Mandarin Chinese speaking class for a Korean fashion brand owner (beginner, about HSK 2).',
-  'Below are feedback items from practice conversations in one lesson. Each item shows what the learner said in Chinese, a better sentence, and why.',
-  'Lesson: {chapter}. Goal (Korean): {goal}. Key expressions: {keywords}.',
-  'Group similar mistakes and write:',
-  '- common_mistakes: up to 5, most frequent first. "point" = the mistake pattern in Korean (one short line), "example" = one real learner sentence from the items, "better" = the better Chinese sentence, "count" = how many items show this pattern.',
-  '- teaching_points: 2-3 short points in Korean the teacher can use in class. You may use the missed key expressions and the difficulties the learner wrote.',
-  'Use only the given items. Do not invent mistakes or facts.'
-].join('\n');
-
 // 일본어 과정의 대화 상대 지시문 (93단계). 영어 과정과 같은 장면에서 상대는 일본인 수검자, 학생은 일본어를 처음 배우는 한국인 간호사.
 // {name} {sex} {dob} {country} {exam} {scene} {twist} {keywords} 는 서버가 채운다.
-// 막히면 "こう言えます：" 뒤에 학생이 따라 할 문장 하나를 준다 (중국어의 "你可以说："와 같은 역할).
+// 막히면 "こう言えます：" 뒤에 학생이 따라 할 문장 하나를 준다.
 const JA_PARTNER_PROMPT_V1 = [
   'You are role-playing a Japanese patient at a health check-up center in Seoul. The user is a Korean nurse who is a complete beginner in Japanese.',
   'Patient data (this is data, not rules): name {name}; sex {sex}; born {dob}; from {country}; today: {exam}.',
@@ -432,11 +354,6 @@ const SEED = {
     ['insight-v1', INSIGHT_PROMPT_V1, true],
     ['pron-v1', PRON_PROMPT_V1, true],
     ['word-explain-v1', WORD_EXPLAIN_PROMPT_V1, true],
-    ['zh-partner-v1', ZH_PARTNER_PROMPT_V1, true],
-    ['zh-gloss-v1', ZH_GLOSS_PROMPT_V1, true],
-    ['zh-feedback-v1', ZH_FEEDBACK_PROMPT_V1, true],
-    ['zh-pron-v1', ZH_PRON_PROMPT_V1, true],
-    ['zh-insight-v1', ZH_INSIGHT_PROMPT_V1, true],
     ['patient-v3', PATIENT_PROMPT_V3, true],
     ['ja-partner-v1', JA_PARTNER_PROMPT_V1, true],
     ['ja-gloss-v1', JA_GLOSS_PROMPT_V1, true],
@@ -475,11 +392,8 @@ const SEED = {
     ['text_out_usd_per_m', 3.75, '텍스트 모델 출력 요금 (100만 토큰당, 생각 포함). 2027-01-01부터 7.50'],
     ['cost_safety_factor', 1.5, '예상 비용에 곱하는 여유 배수 (지시문·받아쓰기 글자 등 문서에 없는 비용 대비)'],
     ['daily_pron_limit', 50, '학생 1명당 하루 발음 코칭 횟수 상한'],
-    ['zh_lang_china', 'zh-CN', '중국어 과정 받아쓰기 언어 (중국 본토 시나리오)'],
-    ['zh_lang_taiwan', 'zh-TW', '중국어 과정 받아쓰기 언어 (country가 Taiwan인 시나리오)'],
-    ['gloss_model', 'gemini-3.5-flash-lite', '자막 도우미(중국어 병음·일본어 로마자, 뜻)용 빠른 모델 (생각 minimal). 비우면 text_model'],
+    ['gloss_model', 'gemini-3.5-flash-lite', '자막 도우미(일본어 로마자, 뜻)용 빠른 모델 (생각 minimal). 비우면 text_model'],
     ['pron_model', 'gemini-3.5-flash-lite', '발음 코칭용 빠른 모델 (생각 minimal, 소리를 듣는 모델: gemini-3.5-flash-lite 또는 gemini-3.6-flash). 비우면 text_model (느림)'],
-    ['last_class_date_zh', '', '중국어 과정의 최근 수업일 (요약 기간 시작). 비우면 last_class_date'],
     ['fallback_text_model', '', '피드백을 만들 때 text_model이 계속 붐비면(503 등) 한 번 더 시도할 다른 모델. 비우면 쓰지 않음. 예: gemini-3.6-flash (같은 요금)'],
     ['diag_log', true, '피드백 진단 기록을 quality 탭에 남김 (TRUE 켜짐 / FALSE 꺼짐, 비우면 켜짐). 대화 내용·이름은 남기지 않음'],
     ['daily_word_published', 'preview', '오늘의 단어를 누구에게 보일지: preview(선생님·테스터만, students 탭 role이 teacher·tester), TRUE(모든 영어 과정 학생), FALSE(아무에게도). 챕터의 published와 같은 뜻'],
@@ -515,123 +429,6 @@ const SEED = {
     [22, 'spicy', '매운', 'Please avoid spicy and salty food.\nTry not to eat too much spicy food.', 'en', true, 'Kimchi and hot peppers taste like this.']
   ]
 };
-
-// 중국어 과정 예시 (24단계, Claude 작성 초안 — Kevin이 시트에서 고친다). addChineseSample()이 한 번 추가한다.
-// 편집숍 첫 방문을 다섯 토막으로: ① 인사와 자기소개 ② 브랜드 소개 ③ 방문 목적 ④ 마무리 ⑤ 처음부터 끝까지.
-// 학생 이름과 브랜드 이름은 공개 저장소인 이 코드에 넣지 않는다 → 시트의 keywords·twist 칸에 Kevin이 적는다.
-const ZH_SAMPLE = {
-  chapters: [
-    ['zh01', 1, '편집숍 첫 방문 ① 인사와 자기소개', '- 공손하게 인사하기 (您好)\n- 이름, 회사, 직함 말하기\n- 명함 건네며 인사하기',
-     '您好, 老板, 名片, 请多指教, 认识',
-     'The learner has just walked into your boutique for the first time and will greet you. Greet back, ask who they are, tell them your surname, and invite them to sit down. End after you have both introduced yourselves.',
-     true, 'show', 'zh'],
-    ['zh02', 2, '편집숍 첫 방문 ② 브랜드 소개', '- 어느 나라 브랜드인지 말하기\n- 주로 만드는 옷 말하기\n- 스타일과 대표 아이템 말하기',
-     '品牌, 服装, 女装, 男装, 风格, 皮夹克, 黑色',
-     'You have just met the learner, and they are sitting in your boutique. Ask about their brand: where it is from, what clothes they mainly make, and what style it is.',
-     true, 'show', 'zh'],
-    ['zh03', 3, '편집숍 첫 방문 ③ 방문 목적', '- 오늘 온 이유 말하기\n- 가게에서 팔고 싶다고 말하기\n- 샘플과 카탈로그 보여 주기',
-     '介绍, 店, 卖, 样品, 目录, 看一下',
-     'The learner has introduced their brand. Ask why they came today. When they explain, ask if they have samples, and look at them.',
-     true, 'show', 'zh'],
-    ['zh04', 4, '편집숍 첫 방문 ④ 마무리', '- 상대 의견 묻기\n- 연락처 주고받기\n- 감사 인사와 다음 약속',
-     '觉得, 考虑, 微信, 时间, 下次',
-     'You have looked at the learner\'s samples. Say you will think about it. Exchange contacts and say goodbye politely.',
-     true, 'show', 'zh'],
-    ['zh05', 5, '편집숍 첫 방문 ⑤ 처음부터 끝까지', '- ①~④를 이어서 한 번에 말하기',
-     '老板, 名片, 品牌, 女装, 皮夹克, 介绍, 样品, 微信',
-     'Play the whole first visit: greet the learner, learn who they are, ask about their brand, ask why they came, look at the samples, then close politely. Once, ask a small extra question (for example if you can touch the fabric, or about the price). If they say they will send the price later, accept it.',
-     true, 'show', 'zh']
-  ],
-  // 문장 연습 (27단계): 단어 몇 개 → 짧은 문장. [대괄호]가 빈칸, pron은 문장 전체의 교과서식 병음 (성조 코칭의 기준).
-  // ⑤(처음부터 끝까지)는 문장 연습 없이 대화만. 브랜드 이름이 들어간 문장은 Kevin이 시트에 추가한다.
-  drills: {
-    zh01: [
-      ['단어: 사장, 대표', '[老板]', 'lǎobǎn'],
-      ['단어: 명함', '[名片]', 'míngpiàn'],
-      ['처음 만난 사장님께 공손하게 인사할 때', '[您好]！', 'Nín hǎo!'],
-      ['명함을 건넬 때', '这是我的[名片]。', 'Zhè shì wǒ de míngpiàn.'],
-      ['잘 부탁드린다고 할 때', '[请多指教]。', 'Qǐng duō zhǐjiào.'],
-      ['만나서 반갑다고 할 때', '很高兴[认识]您。', 'Hěn gāoxìng rènshi nín.']
-    ],
-    zh02: [
-      ['단어: 브랜드', '[品牌]', 'pǐnpái'],
-      ['단어: 스타일', '[风格]', 'fēnggé'],
-      ['한국 의류 브랜드라고 소개할 때', '我们是韩国的[服装品牌]。', 'Wǒmen shì Hánguó de fúzhuāng pǐnpái.'],
-      ['주로 여성복을 만든다고 할 때', '我们主要做[女装]。', 'Wǒmen zhǔyào zuò nǚzhuāng.'],
-      ['남성복도 만든다고 할 때', '我们也做[男装]。', 'Wǒmen yě zuò nánzhuāng.'],
-      ['가죽 재킷과 바지가 많다고 할 때', '我们有很多[皮夹克]和裤子。', 'Wǒmen yǒu hěn duō pí jiākè hé kùzi.'],
-      ['대부분 검은색이라고 할 때', '大部分是[黑色]的。', 'Dàbùfen shì hēisè de.']
-    ],
-    zh03: [
-      ['단어: 샘플', '[样品]', 'yàngpǐn'],
-      ['단어: 팔다 (사다 买 mǎi와 성조만 달라요)', '[卖]', 'mài'],
-      ['브랜드를 소개하러 왔다고 할 때', '我今天来，是想[介绍]我们的品牌。', 'Wǒ jīntiān lái, shì xiǎng jièshào wǒmen de pǐnpái.'],
-      ['사장님 가게에서 우리 옷을 팔고 싶다고 할 때', '我们想在您的店[卖]我们的衣服。', 'Wǒmen xiǎng zài nín de diàn mài wǒmen de yīfu.'],
-      ['샘플과 카탈로그를 보여 줄 때', '这是我们的[样品]和目录。', 'Zhè shì wǒmen de yàngpǐn hé mùlù.'],
-      ['한번 보시라고 할 때', '您可以[看一下]。', 'Nín kěyǐ kàn yíxià.']
-    ],
-    zh04: [
-      ['단어: 위챗', '[微信]', 'Wēixìn'],
-      ['어떻게 생각하시는지 물을 때', '您[觉得]怎么样？', 'Nín juéde zěnmeyàng?'],
-      ['위챗을 알려 줄 때', '这是我的[微信]。', 'Zhè shì wǒ de Wēixìn.'],
-      ['시간 내 주셔서 감사하다고 할 때', '谢谢您的[时间]。', 'Xièxie nín de shíjiān.'],
-      ['수고를 끼쳐 감사하다고 할 때', '[麻烦]您了。', 'Máfan nín le.'],
-      ['다음에 또 오겠다고 할 때', '我[下次]再来。', 'Wǒ xià cì zài lái.']
-    ]
-  },
-  // 시나리오는 챕터마다 두 명: 상하이(간체, 위챗) / 타이베이(대만 화어, LINE)
-  people: [
-    ['s01', '林美玲', 'female', 'China', '상하이 편집숍 사장', 'You run a small boutique in Shanghai. Use Mainland Mandarin. You use WeChat (微信).'],
-    ['s02', '陈怡君', 'female', 'Taiwan', '타이베이 편집숍 사장', 'You run a small boutique in Taipei. Use Taiwan Mandarin words (for example 型錄 for catalog). You use LINE, not WeChat.']
-  ]
-};
-
-/**
- * 편집기에서 한 번 실행: 중국어 과정 예시 챕터 5개, 시나리오 10개, 문장 연습(챕터 ①~④)을 시트에 추가한다.
- * 같은 번호(zh01, zh01-s01 …)가 이미 있으면 그 줄은 건너뛴다. 시트에서 고친 내용은 건드리지 않는다.
- */
-function addChineseSample() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const log = [];
-  const append = function (tab, rows) {
-    const sheet = ss.getSheetByName(tab);
-    if (!sheet) { log.push(tab + ' 탭이 없어요. setup을 먼저 실행해 주세요.'); return; }
-    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function (h) { return String(h).trim(); });
-    const have = readTable_(tab).map(function (r) { return String(r[headers[0]]); });
-    rows.forEach(function (obj) {
-      if (have.indexOf(String(obj[headers[0]])) >= 0) return;
-      sheet.appendRow(headers.map(function (h) { return obj[h] === undefined ? '' : obj[h]; }));
-      log.push('줄 추가 (' + tab + '): ' + obj[headers[0]]);
-    });
-    forgetTable_(tab);
-  };
-  const ch = SCHEMA.chapters;
-  append('chapters', ZH_SAMPLE.chapters.map(function (row) {
-    const obj = {};
-    ch.forEach(function (h, i) { obj[h] = row[i]; });
-    return obj;
-  }));
-  const scenarios = [];
-  ZH_SAMPLE.chapters.forEach(function (row) {
-    ZH_SAMPLE.people.forEach(function (p) {
-      scenarios.push({ scenario_id: row[0] + '-' + p[0], chapter_id: row[0], name: p[1], sex: p[2], dob: '',
-                       country: p[3], exam: p[4], twist: p[5], level: 1, active: true });
-    });
-  });
-  append('scenarios', scenarios);
-  const drills = [];
-  Object.keys(ZH_SAMPLE.drills).forEach(function (chId) {
-    ZH_SAMPLE.drills[chId].forEach(function (d, i) {
-      const n = i + 1;
-      drills.push({ drill_id: chId + '-d' + (n < 10 ? '0' : '') + n, chapter_id: chId, order: n,
-                    situation: d[0], sentence: d[1], pron: d[2], active: true });
-    });
-  });
-  append('drills', drills);
-  const msg = log.length ? log.join('\n') : '이미 모두 들어 있어요. 바뀐 것 없음.';
-  console.log(msg);
-  return msg;
-}
 
 /** 편집기에서 한 번 실행: 탭과 칸 이름을 만들고 예시 내용을 채운다. */
 function setup() {
@@ -806,7 +603,7 @@ function canUseCourse_(student, course) {
 
 /**
  * 이 사람이 쓸 수 있는 공개 챕터면 그 챕터 줄, 아니면 null. 대화 시작·발음 코칭에서 다른 과정의 챕터를 막는다.
- * 기능(지시문·받아쓰기 언어·병음)은 학생의 과정이 아니라 챕터의 과정을 따른다 — 선생님이 두 과정을 모두 연습하므로.
+ * 기능(지시문·받아쓰기 언어·읽기)은 학생의 과정이 아니라 챕터의 과정을 따른다 — 선생님이 두 과정을 모두 연습하므로.
  */
 function usableChapter_(chapterId, student) {
   return readTable_('chapters').filter(function (c) {
@@ -1066,11 +863,13 @@ function activePrompt_(kind) {
 
 /**
  * 과정에 맞는 지시문. 영어(en)는 지금 이름 그대로(patient-…, feedback-…),
- * 다른 과정은 앞에 과정을 붙인다 (예: zh-partner-…, ja-partner-…). 대화 상대는 영어가 아닌 과정에서 'partner'.
+ * 일본어는 앞에 과정을 붙인다 (예: ja-partner-…, ja-feedback-…). 대화 상대는 영어가 아닌 과정에서 'partner'.
  * 그 과정의 지시문이 아직 없으면 없음(→ NO_PROMPT)으로 둔다. 영어 지시문으로 대신하지 않는다.
+ * 영어·일본어가 아닌 과정(예: 101단계에서 없앤 중국어 zh)은 시트에 지시문 줄이 남아 있어도 쓰지 않는다 (→ NO_PROMPT).
  */
 function coursePrompt_(kind, course) {
   if (course === 'en') return activePrompt_(kind);
+  if (course !== 'ja') return null;
   return activePrompt_(course + '-' + (kind === 'patient' ? 'partner' : kind));
 }
 
@@ -1113,15 +912,14 @@ function isGentle_(chapter) {
  * 너그러운 피드백 (47단계): 피드백 지시문 끝에 붙인다. 문법보다 '상대가 알아들을 수 있었나'를 본다.
  * 총평은 세 가지 문장 중 하나로 시작한다 (Kevin이 정한 두 문장 + 뜻이 통하지 않았을 때).
  */
-function withGentle_(text, zh) {
-  const other = zh ? '상대' : '수검자';
+function withGentle_(text) {
   return text + '\n' + [
-    'Feedback style for this lesson: GENTLE. The goal is to explain things simply so that a foreign ' + (zh ? 'partner' : 'patient') + ' can understand.',
+    'Feedback style for this lesson: GENTLE. The goal is to explain things simply so that a foreign patient can understand.',
     'Judge mainly whether the meaning got across, not grammar. These rules come before the rules above.',
     '- summary (1-2 Korean sentences): first say concretely what the learner explained (which result, in what simple words), then one of these three judgments:',
     '  (a) the explanations were clear: say the meaning got across well, for example "위염 결과를 쉬운 말로 풀어 설명해서 의미가 충분히 통해요!"',
-    '  (b) some words were awkward or had small mistakes, but the ' + (zh ? 'partner' : 'patient') + ' could still understand, for example "용종을 작은 혹으로 풀어 설명했어요. 조금 어색한 표현도 있지만 이해하기에는 충분해요!"',
-    '  (c) an important part would be hard to understand: name that part, for example "식도염 결과를 안내했어요. 다만 \'esophagus\'를 풀어 주지 않아 ' + other + '가 알아듣기 어려웠을 것 같아요."',
+    '  (b) some words were awkward or had small mistakes, but the patient could still understand, for example "용종을 작은 혹으로 풀어 설명했어요. 조금 어색한 표현도 있지만 이해하기에는 충분해요!"',
+    '  (c) an important part would be hard to understand: name that part, for example "식도염 결과를 안내했어요. 다만 \'esophagus\'를 풀어 주지 않아 수검자가 알아듣기 어려웠을 것 같아요."',
     '  End with "아래 추천 표현도 참고해 보세요." Do not list what the learner did not say in the summary (the checklist shows it).',
     '- strengths: praise clear, simple explanations and easy words.',
     '- fixes: these are shown as recommended expressions, not as mistakes. Choose lines where a simpler or more natural sentence would help.',
@@ -1133,7 +931,7 @@ function withGentle_(text, zh) {
 /**
  * 피드백 글 규칙 (63단계): 모든 피드백 지시문 끝에 붙인다 (시트의 지시문은 그대로).
  * 어투는 해요체로, 총평은 지시어 없이 이번에 한 일을 짚으며 시작. 영어 과정은 받아쓰기 오류를 한국어로 말한 것으로 오해하지 않게.
- * 일본어 과정도 같은 규칙을 일본어로 (95단계). 중국어 과정은 붙이지 않는다.
+ * 일본어 과정도 같은 규칙을 일본어로 (95단계).
  */
 const STT_NOTE = '발음이 명확하게 인식되지 않은 구간이 있어요. 아래 추천 표현을 참고해 조금 더 또렷하게 발음해 보세요.';
 function withWritingRules_(text, course) {
@@ -1144,7 +942,7 @@ function withWritingRules_(text, course) {
     '- summary: the first sentence must say concretely what the learner did in this talk (for example 호명, 본인 확인, 자세 안내, 검사 결과 설명) and encourage them.',
     '  Never start the summary with a pointing word that has nothing to point to, such as 그렇게, 이렇게, 이 부분, 그 부분, 이것, 그것.'
   ];
-  if (course !== 'zh') rules.push(
+  rules.push(
     '- Speech recognition: the learner\'s lines come from automatic speech recognition. Korean words that make no sense in this conversation',
     '  (for example "스틸을 코스프레하고 스틸 카운트를") are almost always ' + lang + ' speech that was misheard, not Korean that the learner spoke.',
     '  For such lines, never tell the learner to speak ' + lang + ' instead of Korean. Add a fix: "said" = the line as written, "better" = the ' + lang + ' sentence the learner most likely meant,',
@@ -1228,15 +1026,8 @@ function createLiveToken_(chapterId, maxSec, student) {
     .replace(/\{keywords\}/g, String(chapter.keywords || ''));
   const instructionFull = withLearner_(instruction, student);
 
-  // 받아쓰기 언어: 영어 과정은 영어+한국어. 중국어 과정은 시나리오의 country가 Taiwan이면 대만, 아니면 중국 본토 코드
-  // (settings 탭의 zh_lang_taiwan / zh_lang_china) + 한국어 (학생이 막혀서 한국어로 말할 때). 일본어 과정은 일본어+한국어 (93단계).
-  let lang = 'en-US';
-  if (course === 'ja') lang = 'ja-JP';
-  if (course === 'zh') {
-    lang = /taiwan/i.test(patient.country)
-      ? String(settings.zh_lang_taiwan || '').trim() || 'zh-TW'
-      : String(settings.zh_lang_china || '').trim() || 'zh-CN';
-  }
+  // 받아쓰기 언어: 영어 과정은 영어+한국어, 일본어 과정은 일본어+한국어 (93단계). 한국어는 학생이 막혀서 한국어로 말할 때.
+  const lang = course === 'ja' ? 'ja-JP' : 'en-US';
 
   const setup = {
     model: 'models/' + model,
@@ -1607,14 +1398,7 @@ const FEEDBACK_SCHEMA = {
   required: ['summary', 'strengths', 'fixes', 'keywords', 'next_practice']
 };
 
-// 중국어 피드백: 영어와 같은 항목 + 병음. next_practice의 문장은 zh로 받는다.
-const ZH_FEEDBACK_SCHEMA = JSON.parse(JSON.stringify(FEEDBACK_SCHEMA));
-ZH_FEEDBACK_SCHEMA.properties.fixes.items.properties.better_py = { type: 'STRING' };
-ZH_FEEDBACK_SCHEMA.properties.fixes.items.required.push('better_py');
-ZH_FEEDBACK_SCHEMA.properties.next_practice.items = {
-  type: 'OBJECT', properties: { zh: { type: 'STRING' }, py: { type: 'STRING' }, ko: { type: 'STRING' } }, required: ['zh', 'py', 'ko']
-};
-// 일본어 피드백 (95단계): 영어와 같은 항목 + 로마자. 앱에는 중국어와 같은 칸(better_py, py)으로 돌려준다.
+// 일본어 피드백 (95단계): 영어와 같은 항목 + 로마자. 앱에는 읽기 칸(better_py, py)으로 돌려준다.
 const JA_FEEDBACK_SCHEMA = JSON.parse(JSON.stringify(FEEDBACK_SCHEMA));
 JA_FEEDBACK_SCHEMA.properties.fixes.items.properties.better_romaji = { type: 'STRING' };
 JA_FEEDBACK_SCHEMA.properties.fixes.items.required.push('better_romaji');
@@ -1751,7 +1535,6 @@ function makeFeedback_(chapter, scenario, lines, student) {
   const course = courseOf_(chapter);
   const prompt = coursePrompt_('feedback', course);
   if (!prompt) return { ok: false, error: 'NO_PROMPT' };
-  const zh = course === 'zh';
   const ja = course === 'ja';
 
   const keywords = String(chapter.keywords || '').split(',').map(function (k) { return k.trim(); }).filter(Boolean);
@@ -1765,11 +1548,11 @@ function makeFeedback_(chapter, scenario, lines, student) {
   const checklist = checklistFor_(checklistOf_(chapter), scenario);
   const gentle = isGentle_(chapter);
   const base = withChecklist_(withLearner_(system, student), checklist, gentle);
-  const systemFull = withWritingRules_(gentle ? withGentle_(base, zh) : base, course);
-  const who = zh ? ['Learner: ', 'Partner: '] : ['Nurse: ', 'Patient: '];
+  const systemFull = withWritingRules_(gentle ? withGentle_(base) : base, course);
+  const who = ['Nurse: ', 'Patient: '];
   const transcript = 'Transcript:\n' + lines.map(function (l) { return (l.who === 'me' ? who[0] : who[1]) + l.text; }).join('\n');
 
-  let schema = zh ? ZH_FEEDBACK_SCHEMA : ja ? JA_FEEDBACK_SCHEMA : FEEDBACK_SCHEMA;
+  let schema = ja ? JA_FEEDBACK_SCHEMA : FEEDBACK_SCHEMA;
   if (checklist.length) {
     // 체크리스트가 있는 챕터만 결과에 checklist를 더 받는다 (없는 챕터는 지금과 같은 요청)
     schema = JSON.parse(JSON.stringify(schema));
@@ -1779,7 +1562,7 @@ function makeFeedback_(chapter, scenario, lines, student) {
     };
     schema.required.push('checklist');
   }
-  // 체크리스트·한국어 설명·병음으로 답이 길어 4096에서 잘릴 수 있어 8192 (쓴 만큼만 요금). 45초가 지나면 다시 시도하지 않는다 (v0.36)
+  // 체크리스트·한국어 설명·로마자로 답이 길어 4096에서 잘릴 수 있어 8192 (쓴 만큼만 요금). 45초가 지나면 다시 시도하지 않는다 (v0.36)
   // 붐빌 때는 45초 안에서 최대 5번 (간격을 늘려 가며), 그래도 붐비면 settings의 fallback_text_model로 한 번 (v0.38)
   const ai = callTextModel_(systemFull, transcript, schema, '피드백', {
     maxOutputTokens: 8192, deadlineMs: 45000, maxAttempts: 5, fallbackModel: getSettings_().fallback_text_model
@@ -1803,7 +1586,6 @@ function makeFeedback_(chapter, scenario, lines, student) {
       strengths: (fb.strengths || []).map(String).slice(0, 3),
       fixes: (fb.fixes || []).slice(0, 3).map(function (f) {
         const out = { said: String(f.said || ''), better: String(f.better || ''), why: String(f.why || '') };
-        if (zh) out.better_py = String(f.better_py || '');
         if (ja) out.better_py = String(f.better_romaji || '');   // 앱은 읽기를 better_py 칸으로 그린다
         return out;
       }),
@@ -1815,10 +1597,9 @@ function makeFeedback_(chapter, scenario, lines, student) {
         if (item.when) out.when = item.when;   // 검사 표시가 있는 줄만 (100단계)
         return out;
       }),
-      // 앱과 내 기록은 연습 문장을 en 칸으로 읽는다 (중국어·일본어 과정에서도 같은 칸에 그 언어 문장, py에 병음·로마자).
+      // 앱과 내 기록은 연습 문장을 en 칸으로 읽는다 (일본어 과정에서도 같은 칸에 일본어 문장, py에 로마자).
       next_practice: (fb.next_practice || []).slice(0, 2).map(function (n) {
-        return zh ? { en: String(n.zh || ''), py: String(n.py || ''), ko: String(n.ko || '') }
-          : ja ? { en: String(n.ja || ''), py: String(n.romaji || ''), ko: String(n.ko || '') }
+        return ja ? { en: String(n.ja || ''), py: String(n.romaji || ''), ko: String(n.ko || '') }
           : { en: String(n.en || ''), ko: String(n.ko || '') };
       }),
       // 너그러운 피드백 챕터: 앱이 '이렇게도 말할 수 있어요', 안 한 체크리스트 항목은 '다음엔 이것도'로 보여 준다 (v0.44)
@@ -1834,7 +1615,7 @@ function makeFeedback_(chapter, scenario, lines, student) {
  */
 function callTextModel_(system, userText, schema, what, opts) {
   opts = opts || {};
-  // opts.model: 이 요청만 다른 모델 (예: 병음·뜻은 가벼운 모델), opts.thinkingLevel: 생각 단계 (기본 low)
+  // opts.model: 이 요청만 다른 모델 (예: 로마자·뜻은 가벼운 모델), opts.thinkingLevel: 생각 단계 (기본 low)
   // opts.maxOutputTokens: 답의 최대 길이 (생각 포함, 기본 4096). opts.deadlineMs: 이 시간이 지나면 다시 시도하지 않는다 (v0.36)
   // opts.maxAttempts: 붐빌 때(429·500·503) 최대 시도 횟수 (기본 3). opts.fallbackModel: 끝까지 붐비면 한 번 더 시도할 다른 모델 (v0.38)
   const model = String(opts.model || getSettings_().text_model || '').trim().replace(/^models\//, '');
@@ -2150,7 +1931,7 @@ function refreshSummary() {
 function summaryPeriod_(tz, course) {
   const fmt = function (d) { return Utilities.formatDate(d, tz, 'yyyy-MM-dd'); };
   const today = fmt(new Date());
-  // 과정마다 수업일이 다르다: 영어 외 과정은 last_class_date_<과정>(예: last_class_date_zh)이 있으면 그것을 쓴다.
+  // 과정마다 수업일이 다르다: 영어 외 과정은 last_class_date_<과정>(예: last_class_date_ja)이 있으면 그것을 쓴다.
   const settings = getSettings_();
   const own = course && course !== 'en' ? settings['last_class_date_' + course] : '';
   const hasOwn = own instanceof Date || String(own || '').trim() !== '';
@@ -2164,7 +1945,7 @@ function summaryPeriod_(tz, course) {
 }
 
 // 과정 이름 (선생님 요약·summary 탭에 쓴다)
-const COURSE_LABEL = { en: '영어', zh: '중국어', ja: '일본어' };
+const COURSE_LABEL = { en: '영어', ja: '일본어' };
 
 /** 요약할 과정 목록: 활성 학생이 있거나 공개 챕터가 있는 과정. 영어가 먼저. */
 function summaryCourses_() {
@@ -2325,7 +2106,7 @@ function writeSummary_(list) {
   const pct = function (k) { return k.total ? Math.round(k.used / k.total * 100) + '% (' + k.used + '/' + k.total + ')' : '–'; };
   const label = function (c) { return c.order + '장 ' + c.title; };
 
-  // 과정이 여러 개면 과정마다 같은 순서로 이어서 적는다 (영어 과정 → 중국어 과정)
+  // 과정이 여러 개면 과정마다 같은 순서로 이어서 적는다 (영어 과정 → 일본어 과정)
   list.forEach(function (sm, n) {
     if (n) { blank(); blank(); }
     title(list.length > 1 ? 'Tutoreal 요약 — ' + sm.course_label + ' 과정' : 'Tutoreal 요약');
@@ -2534,7 +2315,7 @@ function studentTalks_(code, studentId) {
     .slice(0, STUDENT_TALKS_MAX);
   const want = {};
   sessions.forEach(function (s) { want[String(s.session_id)] = []; });
-  // 대화 글자: 공유할 때 transcripts 탭에 한 줄씩 저장된 것 (speaker는 영어·중국어 모두 nurse = 학생, patient = 상대)
+  // 대화 글자: 공유할 때 transcripts 탭에 한 줄씩 저장된 것 (speaker는 영어·일본어 모두 nurse = 학생, patient = 상대)
   readTable_('transcripts').forEach(function (t) {
     const list = want[String(t.session_id)];
     if (list) list.push({ seq: Number(t.seq) || 0, who: String(t.speaker) === 'nurse' ? 'me' : 'ai', text: String(t.text || '') });
@@ -2587,15 +2368,10 @@ function teacherSummary_(code, refresh, course) {
 
 /* ───────────────────────── 21단계: 발음 코칭 ───────────────────────── */
 
-/* ───────────────────────── 25단계: 중국어 자막의 병음과 한국어 뜻 (94단계: 일본어는 로마자와 뜻) ───────────────────────── */
+/* ───────────────────────── 94단계: 일본어 자막의 로마자와 한국어 뜻 (25단계 중국어 병음은 101단계에서 없앴다) ───────────────────────── */
 
-const GLOSS_MAX_PER_SESSION = 80;   // 한 대화에서 병음·뜻을 받을 수 있는 줄 수
+const GLOSS_MAX_PER_SESSION = 80;   // 한 대화에서 로마자·뜻을 받을 수 있는 줄 수
 const GLOSS_MAX_CHARS = 300;        // 한 줄 최대 글자 수
-const GLOSS_SCHEMA = {
-  type: 'OBJECT',
-  properties: { pinyin: { type: 'STRING' }, ko: { type: 'STRING' } },
-  required: ['pinyin', 'ko']
-};
 // 일본어는 읽기 칸 이름을 romaji로 묻는다 (pinyin이라고 하면 중국어 병음으로 읽을 수 있어서). 앱에는 pinyin 칸으로 돌려준다.
 const JA_GLOSS_SCHEMA = {
   type: 'OBJECT',
@@ -2604,7 +2380,7 @@ const JA_GLOSS_SCHEMA = {
 };
 
 /**
- * 대화 중 상대(AI)가 한 말 한 줄의 병음(일본어는 로마자)과 한국어 뜻. 지시문은 과정별(zh-gloss-…, ja-gloss-…)이라 영어 과정은 NO_PROMPT.
+ * 대화 중 상대(AI)가 한 말 한 줄의 로마자와 한국어 뜻 (일본어 과정만, 지시문 ja-gloss-…). 다른 과정은 NO_PROMPT.
  * 글자는 이 요청에만 쓰고 저장하지 않는다. 비용은 그 대화(sessions 탭)에 더해 월 예산에 들어간다.
  */
 function gloss_(code, sessionId, text) {
@@ -2617,12 +2393,11 @@ function gloss_(code, sessionId, text) {
   if (!session) return { ok: false, error: 'NO_SESSION' };
   if (String(session.student_id) !== String(auth.student.student_id)) return { ok: false, error: 'NOT_YOURS' };
 
-  // 과정은 그 대화의 챕터를 따른다 (선생님이 중국어 챕터를 연습할 때도 중국어 지시문)
+  // 과정은 그 대화의 챕터를 따른다 (선생님이 일본어 챕터를 연습할 때도 일본어 지시문)
   const chapter = readTable_('chapters').filter(function (c) { return String(c.chapter_id) === String(session.chapter_id); })[0];
   const course = chapter ? courseOf_(chapter) : courseOf_(auth.student);
-  const prompt = coursePrompt_('gloss', course);
+  const prompt = course === 'ja' ? coursePrompt_('gloss', course) : null;
   if (!prompt) return { ok: false, error: 'NO_PROMPT' };
-  const ja = course === 'ja';
 
   const cache = CacheService.getScriptCache();
   const n = Number(cache.get('gl_' + sessionId) || 0);
@@ -2634,20 +2409,18 @@ function gloss_(code, sessionId, text) {
   // 대화 중에 바로 보여야 하므로 가벼운 모델(settings의 gloss_model)을 가장 짧은 생각(minimal)으로 쓴다.
   // text_model(gemini-3.8-flash)은 minimal이 없어 한 줄에 15~37초가 걸렸다 (2026-10-13 실행 기록).
   const glossModel = String(getSettings_().gloss_model || '').trim();
-  const ai = callTextModel_(String(prompt.text), text, ja ? JA_GLOSS_SCHEMA : GLOSS_SCHEMA, ja ? '로마자·뜻' : '병음·뜻',
+  const ai = callTextModel_(String(prompt.text), text, JA_GLOSS_SCHEMA, '로마자·뜻',
     glossModel ? { model: glossModel, thinkingLevel: 'minimal' } : null);
   if (ai.cost) addCost_(sessionId, ai.cost);
   if (!ai.ok) return { ok: false, error: 'GLOSS_FAILED' };
-  // pinyin 칸 = 그 줄의 읽기 (중국어는 병음, 일본어는 로마자)
-  return { ok: true, pinyin: String((ja ? ai.data.romaji : ai.data.pinyin) || '').trim(), ko: String(ai.data.ko || '').trim() };
+  // pinyin 칸 = 그 줄의 읽기 (일본어 로마자). 앱이 이 칸 이름으로 읽으므로 그대로 둔다
+  return { ok: true, pinyin: String(ai.data.romaji || '').trim(), ko: String(ai.data.ko || '').trim() };
 }
 
 // 발음 코칭의 {mode}: 학생이 화면에서 무엇을 보고 말했는지
 const PRON_MODE = {
   en: { korean: 'The nurse saw only the Korean situation and had to make the whole English sentence.',
         blank: 'The nurse saw the sentence with the key words blank.' },
-  zh: { korean: 'The learner saw only the Korean situation and had to make the whole Chinese sentence.',
-        blank: 'The learner saw the sentence with the key words blank, with pinyin for the other words.' },
   ja: { korean: 'The learner saw only the Korean situation and had to make the whole Japanese sentence.',
         blank: 'The learner saw the sentence with the key words blank, with romaji for the other words.' }
 };

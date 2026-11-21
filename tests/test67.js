@@ -19,7 +19,7 @@ assert.equal(s.find((r) => r[0] === 'daily_word_published')[1], 'preview', '처�
 
 const st = w.tabs.students;
 const add = (id, code, course, role) => st.push(st[0].map((k) => ({ student_id: id, display_name: id, access_code: code, status: 'active', course, role })[k] ?? ''));
-add('S1', 'stu', 'en', ''); add('S2', 'zhs', 'zh', ''); add('T1', 'tch', '', 'teacher'); add('Q1', 'tst', 'en', 'tester');
+add('S1', 'stu', 'en', ''); add('S2', 'jas', 'ja', ''); add('T1', 'tch', '', 'teacher'); add('Q1', 'tst', 'en', 'tester');
 const post = (b) => w.run('doPost', { postData: { contents: JSON.stringify(b) } }).body;
 const today = (code) => { const r = post({ action: 'chapters', code }); assert(r.ok, JSON.stringify(r)); return r.daily_word; };
 
@@ -38,13 +38,13 @@ assert.equal(d.no, 1); assert.equal(d.preview, false); assert.equal(d.word, 'kne
 set('daily_word_start', kst(-2)); d = today('stu'); assert.equal(d.no, 3); assert.equal(d.word, 'sting');
 set('daily_word_start', kst(-N)); d = today('stu'); assert.equal(d.no, N + 1); assert.equal(d.word, 'knees');
 console.log('#3:', 'sting', `/ #${N + 1}: 처음으로 돌아가 knees`);
-// 선생님도 받고, 중국어 과정 학생은 받지 않는다
+// 선생님도 받고, 일본어 과정 학생은 받지 않는다 (101단계: 중국어 과정 대신 일본어 과정으로)
 set('daily_word_start', kst(0));
-assert.equal(today('tch').word, 'knees'); assert.equal(today('zhs'), null);
+assert.equal(today('tch').word, 'knees'); assert.equal(today('jas'), null);
 // 아직 #1 날짜 전이거나 비우면 없음
 set('daily_word_start', kst(1)); assert.equal(today('stu'), null);
 set('daily_word_start', ''); assert.equal(today('stu'), null);
-console.log('선생님 받음 / 중국어 과정·시작 전·빈칸: 없음');
+console.log('선생님 받음 / 일본어 과정·시작 전·빈칸: 없음');
 // 5글자가 아닌 단어, 꺼진 단어는 건너뛰고 setup이 알려 준다
 const W = w.tabs.words;
 W[1][1] = 'stomach'; W[2][5] = false;            // knees → stomach(7글자), smile 끄기
