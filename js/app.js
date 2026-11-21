@@ -13,6 +13,8 @@ const views = {
   drill: $('#view-drill'), avatar: $('#view-avatar'), word: $('#view-word')
 };
 let chapters = [];
+// 학습 단계 유도 (102단계): 서버 settings learning_path_published로 켜진 사람만 on. 화면은 103단계부터 이 값을 본다
+let learningPath = { on: false, preview: false };
 let currentChapter = null;
 let live = null;        // 진행 중인 음성 대화
 let talk = null;        // 진행 중인 대화의 정보 { sessionId, scenarioId, patient, readyAt, endReason, reported, limitSec, limitKind, aiSec }
@@ -303,8 +305,9 @@ async function loadChapters() {
   const box = $('#chapter-list');
   box.innerHTML = skeleton('chapters', '챕터를 불러오는 중…');
   try {
-    const { chapters: list, server, dailyWord: dw } = await getChapters(loadCode());
+    const { chapters: list, server, dailyWord: dw, learningPath: lp } = await getChapters(loadCode());
     chapters = list;
+    learningPath = lp;
     dailyWord = dw;
     renderWordCard();
     setVersion(server);

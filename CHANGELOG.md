@@ -852,3 +852,11 @@
 - 시트(선생님이 직접): 배포 전에 사본 백업 → 중국어 학생 status를 paused, 중국어 챕터 published를 FALSE → 배포 → chapters·scenarios·drills의 중국어 줄, prompts의 zh- 줄, settings의 zh_lang_china·zh_lang_taiwan·last_class_date_zh 삭제. sessions 등 기록 탭의 줄은 남긴다 (이번 달 사용 금액 계산)
 - 문서: README, CLAUDE.md, docs/content-guide.md에서 중국어 과정 설명 삭제
 - 시험: tests/test101.js (코드에 중국어 부분 없음, 새 시트 setup에 중국어 줄 없음, 영어·일본어가 v0.64와 같음, 시트에 남은 중국어 챕터는 NO_PROMPT). test36(중국어 전용) 삭제, test40·54·67·93·94·95·96에서 중국어 부분을 빼거나 일본어로 바꿈
+
+## v1.07 (2026-11-21)
+- 102단계: 학습 단계 유도 준비 — 시트 칸과 미리 보기 스위치 (의도 문서 intent/2026-11-21-learning-path.md). 학생 화면은 그대로
+- 서버 v0.66: drills 탭에 group(묶음 이름, 비우면 한 묶음)·kind(word / sentence, 비우면 자동: 문장 전체가 [대괄호] 하나이거나 situation이 '단어:'로 시작하면 word)·cue(한국어 큐, 비우면 situation) 칸. settings에 learning_path_published (처음 값 preview: 선생님·테스터만, TRUE 모두, FALSE 아무에게도). 챕터 목록에 문장마다 세 값과 learning_path { on, preview }를 더 보낸다. 기존 칸과 값은 그대로. **setup 필요** (칸과 설정 줄을 더한다)
+- 앱: 챕터 목록에서 learning_path를 받아 기억만 한다 (103단계부터 화면이 이 값을 본다)
+- 중국어 과정 없애기(101단계)는 서버 v0.65 배포, 시트 정리, 휴대폰 확인까지 끝나 의도 문서 상태를 완료로
+- docs/content-guide.md: drills 칸 group·kind·cue, learning_path_published
+- 시험: tests/test102.js (setup이 칸 3개·설정 1줄을 더하고 두 번 돌려도 그대로, 빈 칸이면 기존 문장 값이 v0.64와 같음, 자동 kind, 시트 값 그대로, preview·TRUE·FALSE별 선생님·테스터·학생). test101은 setup이 새 설정 줄을 더해도 되게 고침

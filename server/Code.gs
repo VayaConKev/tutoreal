@@ -94,12 +94,14 @@
  * v0.65 (101단계): 중국어 과정을 없앤다 — 중국어 지시문 5개, 예시(addChineseSample), 중국어 피드백 형식, 받아쓰기 언어,
  *                 settings의 zh_lang_china·zh_lang_taiwan·last_class_date_zh. 영어·일본어가 아닌 과정은 NO_PROMPT.
  *                 일본어가 같이 쓰는 칸 이름(pinyin, better_py, py)과 gloss_model은 그대로. 되살리려면 커밋 b5a0e8b.
+ * v0.66 (102단계): 학습 단계 유도 준비 — drills 탭 group(묶음)·kind(word/sentence, 비우면 자동)·cue(한국어 큐, 비우면 situation) 칸,
+ *                 settings의 learning_path_published(preview/TRUE/FALSE). 챕터 목록에 문장마다 세 값과 learning_path { on, preview }를 더 보낸다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.65';
+const SERVER_VERSION = 'v0.66';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -124,7 +126,9 @@ const SCHEMA = {
   settings:       ['key', 'value', 'note'],
   summary:        ['item', 'value'],
   // 문장 연습: sentence의 [대괄호] 부분이 빈칸. pron은 어려운 단어의 발음 안내 (21단계 발음 코칭에서 기준으로 쓴다)
-  drills:         ['drill_id', 'chapter_id', 'order', 'situation', 'sentence', 'pron', 'active'],
+  // 학습 단계 유도 (102단계): group 묶음 이름 (비우면 한 묶음), kind 문항 유형 word / sentence (비우면 자동),
+  //   cue 한국어 큐 (비우면 situation). 이미 쓰던 시트에는 setup이 맨 오른쪽에 칸을 더한다.
+  drills:         ['drill_id', 'chapter_id', 'order', 'situation', 'sentence', 'pron', 'active', 'group', 'kind', 'cue'],
   // 발음 코칭 기록: 소리와 들린 글자는 저장하지 않는다. 하루 횟수 한도와 월 예산 계산에 쓴다.
   pron_checks:    ['at', 'student_id', 'chapter_id', 'drill_id', 'level', 'overall', 'cost_usd'],
   // 오늘의 단어 (67단계): 5글자 영어 단어를 order 순서대로 하루에 하나. meaning은 3번 틀리면 보는 한국어 힌트,
@@ -400,6 +404,7 @@ const SEED = {
     ['daily_explain_limit', 3, '오늘의 단어 설명하기: 학생 1명이 하루에 받을 수 있는 피드백 횟수 (선생님·테스터는 제한 없음)'],
     ['explain_model', 'gemini-3.5-flash-lite', '오늘의 단어 설명하기 피드백용 빠른 모델 (생각 minimal). 비우면 text_model'],
     ['daily_word_start', '2026-10-22', '오늘의 단어 #1 날짜 (yyyy-mm-dd). 이 날부터 words 탭의 order 순서대로 하루에 한 단어 (한국 시간 자정에 바뀜, 끝까지 가면 처음부터). 비우면 오늘의 단어를 보여 주지 않음'],
+    ['learning_path_published', 'preview', '학습 단계 유도(문장 연습 3단계 → AI 대화 3단계 흐름)를 누구에게 보일지: preview(선생님·테스터만, students 탭 role이 teacher·tester), TRUE(모든 학생), FALSE(아무에게도). 챕터의 published와 같은 뜻'],
     ['slip_legend', SLIP_LEGEND_DEFAULT, '검사 결과 슬립 아래에 보이는 결과 약어 풀이 (· 로 구분, \'약어 뜻\'). 챕터마다 그 챕터 슬립에 나오는 약어만 보인다. 비우면 보이지 않음 (실전처럼 글자만)']
   ],
   // 오늘의 단어 예시 (67단계): 수업 단어와 일상 단어를 섞었다. Kevin이 시트에서 고치고 아래에 더 붙인다.
@@ -641,7 +646,9 @@ function listChapters_(student) {
     .forEach(function (d) {
       const id = String(d.chapter_id);
       (drills[id] = drills[id] || []).push({
-        drill_id: String(d.drill_id), situation: String(d.situation || ''), sentence: String(d.sentence), pron: String(d.pron || '')
+        drill_id: String(d.drill_id), situation: String(d.situation || ''), sentence: String(d.sentence), pron: String(d.pron || ''),
+        // 학습 단계 유도 (102단계): 묶음, 문항 유형, 한국어 큐
+        group: String(d.group || '').trim(), kind: drillKind_(d), cue: String(d.cue || '').trim() || String(d.situation || '')
       });
     });
   return readTable_('chapters')
@@ -667,6 +674,27 @@ function listChapters_(student) {
     });
 }
 
+
+/**
+ * 문항 유형 (102단계): drills 탭 kind 칸이 word·sentence면 그대로. 비어 있으면 자동 —
+ * 문장 전체가 [대괄호] 하나(예: [glaucoma])이거나 situation이 '단어:'로 시작하면 word, 그 밖은 sentence.
+ * word는 문장 틀 없이 전체가 빈칸인 단어 문항이다.
+ */
+function drillKind_(d) {
+  const v = String(d.kind || '').trim().toLowerCase();
+  if (v === 'word' || v === 'sentence') return v;
+  return /^\[[^\]]+\]$/.test(String(d.sentence || '').trim()) || /^단어\s*:/.test(String(d.situation || '').trim()) ? 'word' : 'sentence';
+}
+
+/**
+ * 학습 단계 유도 (102단계)를 이 사람에게 보여 줄지. settings learning_path_published가 preview면 선생님·테스터만,
+ * TRUE면 모두, 그 밖(FALSE·빈칸)이면 아무에게도. 오늘의 단어(daily_word_published)와 같은 방식.
+ */
+function learningPath_(student) {
+  const v = getSettings_().learning_path_published;
+  const preview = isPreview_({ published: v });
+  return { on: preview ? canPreview_(student) : isTrue_(v), preview: preview };
+}
 
 /** chapters 탭 level 칸 (99단계): intermediate·advanced가 아니면(빈칸 포함) 모두 beginner. */
 function chapterLevel_(chapter) {
@@ -770,7 +798,8 @@ function handlePost_(body) {
     if (body.action === 'chapters') {
       const auth = auth_(body.code);
       if (!auth.ok) return json_(auth);
-      return json_({ ok: true, server: SERVER_VERSION, chapters: listChapters_(auth.student), daily_word: dailyWord_(auth.student) });
+      return json_({ ok: true, server: SERVER_VERSION, chapters: listChapters_(auth.student), daily_word: dailyWord_(auth.student),
+        learning_path: learningPath_(auth.student) });
     }
     if (body.action === 'talk') {
       const result = startTalk_(body.code, String(body.chapter_id || ''));

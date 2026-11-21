@@ -45,7 +45,10 @@ const now = world(CODE);
 const prev = world(baseline(BASE));
 // 배포 뒤 setup을 다시 돌려도 남은 중국어 줄은 그대로 (선생님이 직접 지운다), 새로 더하지도 않는다
 assert.equal(now.tabs.prompts.length, old.tabs.prompts.length, 'setup이 지시문 줄을 더하거나 빼지 않음');
-assert.equal(now.tabs.settings.length, old.tabs.settings.length, 'setup이 설정 줄을 더하거나 빼지 않음');
+// 설정 줄: 중국어 줄은 그대로 남고, 새로 더해지는 줄(102단계 learning_path_published 등)에 중국어 설정은 없다
+const addedSettings = now.tabs.settings.slice(old.tabs.settings.length).map((r) => String(r[0]));
+assert.deepEqual(now.tabs.settings.slice(0, old.tabs.settings.length), old.tabs.settings, '있던 설정 줄은 그대로');
+assert(!addedSettings.some((k) => /^zh_|_zh$/.test(k)), '중국어 설정을 더하지 않음');
 
 const post = (w, b) => w.run('doPost', { postData: { contents: JSON.stringify(b) } }).body;
 const AI = (data) => [200, { candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(data) }] } }],
