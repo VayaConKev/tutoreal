@@ -37,7 +37,9 @@ export async function getChapters(code) {
   // daily_word: 오늘의 단어 (67단계) { no, date, word, meaning, hint, sentence, sentences, preview, test_account } 또는 null (학생에게 숨긴 동안은 선생님·테스터만)
   // learning_path: 학습 단계 유도(102단계)를 이 사람에게 보여 줄지 { on, preview }. 예전 서버는 없음 → 꺼짐
   return { chapters: data.chapters || [], server: data.server, dailyWord: data.daily_word || null,
-    learningPath: data.learning_path || { on: false, preview: false } };
+    learningPath: data.learning_path || { on: false, preview: false },
+    // current_chapter (112단계): 지금 수업 중인 챕터 (settings). 기록이 없는 학생의 홈 카드가 이 챕터로. 예전 서버는 없음 → ''
+    currentChapter: String(data.current_chapter || '') };
 }
 
 export async function login(code) {

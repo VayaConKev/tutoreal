@@ -15,6 +15,7 @@ const views = {
 let chapters = [];
 // 학습 단계 유도 (102단계): 서버 settings learning_path_published로 켜진 사람만 on. 화면은 103단계부터 이 값을 본다
 let learningPath = { on: false, preview: false };
+let classChapterId = '';   // 지금 수업 중인 챕터 (112단계, settings current_chapter). 비면 Beginner 첫 장
 let currentChapter = null;
 let live = null;        // 진행 중인 음성 대화
 let talk = null;        // 진행 중인 대화의 정보 { sessionId, scenarioId, patient, readyAt, endReason, reported, limitSec, limitKind, aiSec }
@@ -149,6 +150,7 @@ function logout() {
   $('#tab-teacher').hidden = true;
   dailyWord = null;   // 다른 과정(일본어) 학생이 같은 휴대폰으로 들어올 수 있다
   renderWordCard();
+  classChapterId = '';
   $('#continue-box').innerHTML = '';   // 이어서 하기 카드도 다음 사람의 챕터를 받은 뒤 다시 그린다 (109단계)
   $('#login-code').value = '';
   $('#login-msg').textContent = '';
@@ -165,6 +167,15 @@ const COURSE_NAME = { en: '영어', ja: '일본어' };
 const DIFF_NAME = { beginner: 'Beginner', intermediate: 'Intermediate', advanced: 'Advanced' };
 let difficulty = 'beginner';
 const levelOf = (c) => (String(c.level || '').trim().toLowerCase() || 'beginner');
+
+/** 화면에 보이는 챕터 번호 (111단계): 같은 과정·같은 난이도에서 order가 겹치면 받은 순서(시트 순서)대로 '3-1', '3-2'.
+    시트의 order 값은 그대로. 지금 챕터 목록에 없으면(옛 기록의 지워진 챕터 등) 받은 order 그대로, 그것도 없으면 빈 글 */
+function chapterNum(id, order) {
+  const c = chapters.find((x) => x.chapter_id === id);
+  if (!c) return order === undefined || order === null ? '' : String(order);
+  const same = chapters.filter((x) => (x.course || 'en') === (c.course || 'en') && levelOf(x) === levelOf(c) && Number(x.order) === Number(c.order));
+  return same.length > 1 ? `${c.order}-${same.indexOf(c) + 1}` : String(c.order);
+}
 
 function setDifficulty(d) {
   difficulty = d;
@@ -250,8 +261,8 @@ function renderList() {
     if (lp) { const rows = chapterPath(c).rows; p.stages = rows.filter((r) => r.done).length; p.stageTotal = rows.length; p.last = lastPracticeAt(c, history, practice, steps, marks); }
     // 완료한 챕터는 번호 대신 ✓ (화면 읽기에는 'N장 완료')
     const no = p.complete
-      ? `<span class="chapter-no done"><span aria-hidden="true">✓</span><span class="visually-hidden">${escapeHtml(c.order)}장 완료</span></span>`
-      : `<span class="chapter-no">${escapeHtml(c.order)}</span>`;
+      ? `<span class="chapter-no done"><span aria-hidden="true">✓</span><span class="visually-hidden">${escapeHtml(chapterNum(c.chapter_id, c.order))}장 완료</span></span>`
+      : `<span class="chapter-no">${escapeHtml(chapterNum(c.chapter_id, c.order))}</span>`;
     return `
     ${many && (i === 0 || list[i - 1].course !== c.course) ? `<p class="eyebrow course-label">${COURSE_NAME[c.course] || c.course} 과정</p>` : ''}
     <button class="chapter" data-id="${escapeHtml(c.chapter_id)}">
@@ -272,7 +283,7 @@ function renderList() {
 function openChapter(id) {
   const c = chapters.find((x) => x.chapter_id === id);
   if (!c) return;
-  $('#detail-no').textContent = `${c.order}장`;
+  $('#detail-no').textContent = `${chapterNum(c.chapter_id, c.order)}장`;
   // 미리 보기 챕터 (43단계): 선생님·테스터에게만 보이고 학생에게는 아직 열리지 않았다
   $('#detail-title').innerHTML = escapeHtml(c.title) + (c.preview ? ' <span class="opt-tag preview-tag">미리 보기 · 학생에게는 안 보여요</span>' : '');
   $('#detail-goal').innerHTML = goalHtml(c.goal);
@@ -375,7 +386,7 @@ function chapterPath(c) {
 
 /* ── 홈 '이어서 하기' 카드 (109단계, UI 예시 ①, learningPath.on인 사람만) ──
    챕터: 이 휴대폰에서 가장 최근에 연습한 챕터. 6단계를 모두 마쳤으면 같은 과정·난이도의 다음 장 (없으면 그 챕터에서 자유 대화 한 번 더).
-   기록이 없으면 Beginner 첫 장. 단계·묶음은 챕터 화면 '다음 단계' 버튼과 같은 계산 (chapterPath) */
+   기록이 없으면 지금 수업 중인 챕터 (112단계, settings current_chapter), 비었으면 Beginner 첫 장. 단계·묶음은 챕터 화면 '다음 단계' 버튼과 같은 계산 (chapterPath) */
 const CONTINUE_SEEN_KEY = 'tutoreal.continueSeen';   // '새 기능' 표시: 카드를 한 번 누르면 이 휴대폰에서는 숨긴다
 const toMs = (x) => (typeof x === 'number' ? x : Date.parse(x)) || 0;
 
@@ -401,7 +412,8 @@ function continueTarget() {
   let at = 0;
   chapters.forEach((x) => { const t = lastPracticeAt(x, history, practice, steps, marks); if (t > at) { c = x; at = t; } });
   if (!c) {
-    const first = chapters.find((x) => levelOf(x) === 'beginner') || chapters[0];
+    // 기록이 없으면 지금 수업 중인 챕터 (112단계), 없으면 Beginner 첫 장
+    const first = chapters.find((x) => x.chapter_id === classChapterId) || chapters.find((x) => levelOf(x) === 'beginner') || chapters[0];
     return first ? { c: first, path: chapterPath(first), first: true } : null;
   }
   let path = chapterPath(c);
@@ -443,10 +455,10 @@ function renderContinue() {
   const pct = Math.round(ratio * 100);
   box.innerHTML = `<section class="continue-card" aria-labelledby="continue-title">
       <div class="continue-top"><span class="continue-label">이어서 하기</span>${seen ? '' : '<span class="continue-new">새 기능</span>'}</div>
-      <p class="continue-title" id="continue-title">${escapeHtml(`${c.order}장 · ${drillStage && many && !first ? `${groupLabel(next.group)} 묶음` : c.title}`)}</p>
+      <p class="continue-title" id="continue-title">${escapeHtml(`${chapterNum(c.chapter_id, c.order)}장 · ${drillStage && many && !first ? `${groupLabel(next.group)} 묶음` : c.title}`)}</p>
       <p class="continue-sub">${escapeHtml(sub)}</p>
       <div class="continue-bar" role="progressbar" aria-label="진행" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
-      <button type="button" class="continue-go" id="continue-go">${first ? `${escapeHtml(c.order)}장 시작하기` : '이어서 하기'} · 약 ${next.min}분</button>
+      <button type="button" class="continue-go" id="continue-go">${first ? `${escapeHtml(chapterNum(c.chapter_id, c.order))}장 시작하기` : '이어서 하기'} · 약 ${next.min}분</button>
     </section>`;
   $('#continue-go').addEventListener('click', () => {
     try { localStorage.setItem(CONTINUE_SEEN_KEY, '1'); } catch { /* 저장 못 해도 진행 */ }
@@ -520,9 +532,10 @@ async function loadChapters() {
   const box = $('#chapter-list');
   box.innerHTML = skeleton('chapters', '챕터를 불러오는 중…');
   try {
-    const { chapters: list, server, dailyWord: dw, learningPath: lp } = await getChapters(loadCode());
+    const { chapters: list, server, dailyWord: dw, learningPath: lp, currentChapter: cur } = await getChapters(loadCode());
     chapters = list;
     learningPath = lp;
+    classChapterId = cur;
     dailyWord = dw;
     renderWordCard();
     setVersion(server);
@@ -715,7 +728,7 @@ function openTalk(pick, group) {
   $('#talk-begin').hidden = false;
   $('#talk-back').hidden = false;
   $('#talk-card').hidden = true;
-  setTalkStatus(`${currentChapter.order}장 · ${currentChapter.title}`);
+  setTalkStatus(`${chapterNum(currentChapter.chapter_id, currentChapter.order)}장 · ${currentChapter.title}`);
   renderTalkModes();
   show('talk');
 }
@@ -819,7 +832,7 @@ async function beginTalk(mode = '') {
 
   $('#talk-head').hidden = false;
   $('#talk-head').classList.toggle('emr', !!mode);   // 106단계: 한 줄 EMR
-  $('#talk-chapter').textContent = `${currentChapter.order}장 · ${currentChapter.title}`;
+  $('#talk-chapter').textContent = `${chapterNum(currentChapter.chapter_id, currentChapter.order)}장 · ${currentChapter.title}`;
   // '수검자가 오고 있습니다…'와 걸어오는 수검자 그림 (49단계, 영어·일본어). 수검자가 준비되면(슬립·연결) 또는 끝나면 숨긴다
   $('#talk-name').textContent = '수검자가 오고 있습니다…';
   $('#talk-calling').hidden = false;
@@ -1644,8 +1657,8 @@ async function saveAvatar(id) {
 }
 
 function chapterNo(entry) {
-  const order = entry.chapterOrder || (chapters.find((c) => c.chapter_id === entry.chapterId) || {}).order;
-  return order ? `${order}장` : escapeHtml(entry.chapterTitle || '');
+  const no = chapterNum(entry.chapterId, entry.chapterOrder);
+  return no ? `${no}장` : escapeHtml(entry.chapterTitle || '');
 }
 
 function recordMeta(entry) {
@@ -1661,7 +1674,8 @@ function recordMeta(entry) {
 /* 내 기록의 문장 연습 (104단계, 스위치가 켜진 사람만 보임): 대화 기록과 날짜순으로 섞는다 */
 const PRACTICE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5V6a2 2 0 0 1 2-2h12v15H6a2 2 0 0 0-2 2"/><path d="M8 8h6M8 11.5h5"/></svg>';
 function practiceTitle(p) {
-  const no = p.chapterOrder ? `${p.chapterOrder}장` : escapeHtml(p.chapterTitle || '');
+  const n = chapterNum(p.chapterId, p.chapterOrder);
+  const no = n ? `${n}장` : escapeHtml(p.chapterTitle || '');
   return `${no} · ${p.group ? `${escapeHtml(p.group)} 묶음 · ` : ''}${STAGE_NAME[p.stage] || ''}`;
 }
 function practiceMeta(p) {
@@ -1786,8 +1800,8 @@ let recordEntry = null;   // 지금 열려 있는 기록
 
 /** 기록의 챕터 번호를 글자로 ('2장'). 화면용 chapterNo()는 HTML이라 글에는 쓰지 않는다. */
 function plainChapterNo(e) {
-  const order = e.chapterOrder || (chapters.find((c) => c.chapter_id === e.chapterId) || {}).order;
-  return order ? `${order}장` : '';
+  const no = chapterNum(e.chapterId, e.chapterOrder);
+  return no ? `${no}장` : '';
 }
 
 function recordText(e) {
@@ -2134,7 +2148,7 @@ function startDrill() {
   drill.coach = null;
   drill.coachError = '';
   cancelRecording();
-  $('#drill-back').textContent = `‹ ${currentChapter.order}장`;
+  $('#drill-back').textContent = `‹ ${chapterNum(currentChapter.chapter_id, currentChapter.order)}장`;
   renderDrill();
   show('drill');
 }
@@ -2480,7 +2494,7 @@ function setDrillProgress(ratio) {
 let teacherData = null;
 let teacherCourse = '';   // 선생님 요약에서 보고 있는 과정 (en/ja). 비우면 서버가 정한다
 
-const chapterLabel = (c) => `${c.order}장 ${c.title}`;
+const chapterLabel = (c) => `${chapterNum(c.chapter_id, c.order)}장 ${c.title}`;
 const confText = (v) => (v === null || v === undefined ? '–' : v);
 
 async function openTeacher(refresh = false) {
@@ -2562,7 +2576,7 @@ function openTChapter(id) {
   const ins = c.insight;
   $('#tchapter-body').innerHTML = `
     <div class="card t-card">
-      <p class="eyebrow">${c.order}장</p>
+      <p class="eyebrow">${escapeHtml(chapterNum(c.chapter_id, c.order))}장</p>
       <h3>${escapeHtml(c.title)}</h3>
       <p class="talk-meta">학생 ${c.students}명 · ${c.count}회 · ${c.minutes}분 · 공유 ${c.shared}개 · 자기 평가 ${confText(c.confidence)}</p>
     </div>
@@ -2593,7 +2607,7 @@ function openStudent(id) {
   const row = s.matrix[id] || {};
   const notes = [];
   s.chapterStats.forEach((c) => c.difficulties.filter((d) => d.student_id === id)
-    .forEach((d) => notes.push(`${c.order}장: ${d.text}`)));
+    .forEach((d) => notes.push(`${chapterNum(c.chapter_id, c.order)}장: ${d.text}`)));
   $('#tstudent-body').innerHTML = `
     <div class="card t-card t-head">
       ${studentAvatar(st.name, st.avatar, 'lg')}

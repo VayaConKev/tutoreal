@@ -24,9 +24,12 @@ assert.deepEqual(H.slice(0, drillHead.length), drillHead, '기존 칸 순서 그
 assert.deepEqual(H.slice(drillHead.length), ['group', 'kind', 'cue']);
 const lp = w.tabs.settings.find((r) => r[0] === 'learning_path_published');
 assert(lp && lp[1] === 'preview', 'learning_path_published = preview');
-assert.equal(w.tabs.settings.length, settingsCount + 1);
+// 더해진 설정 줄은 learning_path_published와 그 뒤 단계에서 더한 줄만 (112단계 current_chapter)
+const added = () => w.tabs.settings.slice(settingsCount).map((r) => r[0]);
+assert(added().includes('learning_path_published') && added().every((k) => ['learning_path_published', 'current_chapter'].includes(k)), added().join(', '));
+const settingsNow = w.tabs.settings.length;
 w.run('setup');
-assert.equal(w.tabs.drills[0].length, H.length); assert.equal(w.tabs.settings.length, settingsCount + 1);
+assert.equal(w.tabs.drills[0].length, H.length); assert.equal(w.tabs.settings.length, settingsNow);
 console.log('setup: drills에', H.slice(drillHead.length).join(', '), '/ settings에 learning_path_published = preview (두 번 돌려도 그대로)');
 
 const post = (world, b) => world.run('doPost', { postData: { contents: JSON.stringify(b) } }).body;

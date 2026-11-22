@@ -100,12 +100,14 @@
  *                 scenarios 탭 answers(기본 답, 'd04: …')·variants(변형), sessions 탭 mode 칸 (setup이 더한다). 모드가 없거나 answers가 비면 지금과 같다.
  *                 앱에 대본 줄(script)과 수검자 성별을 더 보낸다. 편집기 함수 showModePrompt()로 세 모드의 지시문을 볼 수 있다.
  * v0.68 (105단계 수정): 대본·큐카드 모드 지시에 '이 모드 규칙이 우선' 한 줄 (시트 지시문의 '가끔 질문 하나 하기'와 부딪히지 않게. 대본은 자기 질문 하지 않기).
+ * v0.69 (112단계): settings current_chapter(지금 수업 중인 챕터, 쉼표로 여러 개). 챕터 목록에 current_chapter를 더 보낸다 —
+ *                 적힌 것 중 그 사람이 볼 수 있는 첫 챕터, 없으면 빈 글. 앱은 기록이 없는 학생의 홈 카드를 이 챕터로 연다.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.68';
+const SERVER_VERSION = 'v0.69';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -414,6 +416,7 @@ const SEED = {
     ['explain_model', 'gemini-3.5-flash-lite', '오늘의 단어 설명하기 피드백용 빠른 모델 (생각 minimal). 비우면 text_model'],
     ['daily_word_start', '2026-10-22', '오늘의 단어 #1 날짜 (yyyy-mm-dd). 이 날부터 words 탭의 order 순서대로 하루에 한 단어 (한국 시간 자정에 바뀜, 끝까지 가면 처음부터). 비우면 오늘의 단어를 보여 주지 않음'],
     ['learning_path_published', 'preview', '학습 단계 유도(문장 연습 3단계 → AI 대화 3단계 흐름)를 누구에게 보일지: preview(선생님·테스터만, students 탭 role이 teacher·tester), TRUE(모든 학생), FALSE(아무에게도). 챕터의 published와 같은 뜻'],
+    ['current_chapter', '', '지금 수업 중인 챕터의 chapter_id (예: ci01). 학습 기록이 없는 학생의 홈 카드가 이 챕터의 1단계를 가리킨다. 과정마다 다르면 쉼표로 여러 개 (예: ci01, ja01) — 그 학생에게 보이는 첫 챕터를 쓴다. 비우면 Beginner 첫 장'],
     ['slip_legend', SLIP_LEGEND_DEFAULT, '검사 결과 슬립 아래에 보이는 결과 약어 풀이 (· 로 구분, \'약어 뜻\'). 챕터마다 그 챕터 슬립에 나오는 약어만 보인다. 비우면 보이지 않음 (실전처럼 글자만)']
   ],
   // 오늘의 단어 예시 (67단계): 수업 단어와 일상 단어를 섞었다. Kevin이 시트에서 고치고 아래에 더 붙인다.
@@ -705,6 +708,18 @@ function learningPath_(student) {
   return { on: preview ? canPreview_(student) : isTrue_(v), preview: preview };
 }
 
+/**
+ * 지금 수업 중인 챕터 (112단계): settings current_chapter에 적힌 chapter_id(쉼표로 여러 개) 중
+ * 이 사람의 챕터 목록(list)에 있는 첫 챕터. 비었거나 볼 수 있는 챕터가 없으면 빈 글 (앱은 Beginner 첫 장).
+ */
+function currentChapter_(list) {
+  const ids = String(getSettings_().current_chapter || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+  for (let i = 0; i < ids.length; i++) {
+    if (list.some(function (c) { return c.chapter_id === ids[i]; })) return ids[i];
+  }
+  return '';
+}
+
 /** chapters 탭 level 칸 (99단계): intermediate·advanced가 아니면(빈칸 포함) 모두 beginner. */
 function chapterLevel_(chapter) {
   const v = String((chapter && chapter.level) || '').trim().toLowerCase();
@@ -807,8 +822,9 @@ function handlePost_(body) {
     if (body.action === 'chapters') {
       const auth = auth_(body.code);
       if (!auth.ok) return json_(auth);
-      return json_({ ok: true, server: SERVER_VERSION, chapters: listChapters_(auth.student), daily_word: dailyWord_(auth.student),
-        learning_path: learningPath_(auth.student) });
+      const list = listChapters_(auth.student);
+      return json_({ ok: true, server: SERVER_VERSION, chapters: list, daily_word: dailyWord_(auth.student),
+        learning_path: learningPath_(auth.student), current_chapter: currentChapter_(list) });
     }
     if (body.action === 'talk') {
       const result = startTalk_(body.code, String(body.chapter_id || ''), talkMode_(body.mode));
