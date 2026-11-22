@@ -591,14 +591,16 @@ const TALK_DESC = {
   cue: '한국어 키워드만 보고 말해요. 수검자가 가끔 다르게 대답해요.',
   free: '대본 없이 말해요. 막히면 힌트 버튼을 눌러요.'
 };
-const talkUi = { mode: 'script', view: 'script', active: false, started: false, script: [], offset: 0, expanded: false, hints: 0, hintShown: [] };
+const talkUi = { mode: 'script', view: 'script', active: false, started: false, script: [], offset: 0, startGroup: null, expanded: false, hints: 0, hintShown: [] };
 /** 이 챕터에서 그 모드로 대화한 적이 있나 (이 휴대폰의 기록) */
 const talkModeDone = (chapterId, mode) => loadHistory().some((e) => e.chapterId === chapterId && e.mode === mode);
 
-/** 챕터의 '대화 시작'·문장 연습의 '대화 시작하기'·기록의 '이어서 연습하기': 켜졌으면 모드를 고르는 시작 전 화면, 아니면 예전처럼 바로 */
-function openTalk(pick) {
+/** 챕터의 '대화 시작'·문장 연습의 '대화 시작하기'·기록의 '이어서 연습하기': 켜졌으면 모드를 고르는 시작 전 화면, 아니면 예전처럼 바로.
+    group: 묶음 완료 화면에서 들어오면 그 묶음 (대본 카드를 그 묶음 첫 줄부터, 108단계) */
+function openTalk(pick, group) {
   if (!lpOn()) return withMicIntro(() => beginTalk());
   if (live || !currentChapter) return;
+  talkUi.startGroup = typeof group === 'string' ? group : null;
   // 챕터의 단계 줄에서 고른 모드, 아니면 아직 안 해 본 가장 쉬운 모드 (107단계)
   talkUi.mode = TALK_MODES.includes(pick) ? pick : (TALK_MODES.find((m) => !talkModeDone(currentChapter.chapter_id, m)) || 'script');
   talkUi.view = talkUi.mode;
@@ -620,6 +622,15 @@ function openTalk(pick) {
   setTalkStatus(`${currentChapter.order}장 · ${currentChapter.title}`);
   renderTalkModes();
   show('talk');
+}
+
+/** 대본 카드의 첫 줄: 묶음 완료 화면에서 들어왔으면 그 묶음의 첫 문장 (서버 대본 줄의 번호 d04와 drill_id 끝을 맞춘다), 아니면 첫 줄 */
+function scriptStart(lines, group) {
+  if (group === null || group === undefined || !currentChapter) return 0;
+  const d = groupDrills(currentChapter, group)[0];
+  const m = d && String(d.drill_id).match(/-(d\d+)$/i);
+  const i = m ? lines.findIndex((l) => l.n === m[1].toLowerCase()) : -1;
+  return i > 0 ? i : 0;
 }
 
 /** 대화 모드 탭: 4 대본 / 5 큐카드 / 6 자유 (해 본 모드는 ✓). 시작 전에는 모드를, 대화 중에는 카드 모양만 고른다 */
@@ -755,6 +766,7 @@ async function beginTalk(mode = '') {
     $('#talk-meta').textContent = (mode ? [sexKo, patient.dob, patient.exam] : [patient.dob, patient.exam]).filter(Boolean).join(' · ') || '–';
     if (mode) {   // 대본·큐카드·자유 카드: 입장권을 받으면 바로 보여 준다 (연결되는 동안 첫 대사를 미리 볼 수 있게)
       talkUi.script = Array.isArray(script) ? script : [];
+      talkUi.offset = scriptStart(talkUi.script, talkUi.startGroup);
       talkUi.active = true;
       renderTalkCard();
     }
@@ -2061,6 +2073,37 @@ function renderDrillGroups(lp) {
   }));
 }
 
+/** 묶음 완료 화면 (108단계, UI 예시 ④): 주 버튼은 대본 대화(대본 카드는 이 묶음 첫 줄부터),
+    그 아래는 챕터 '다음 단계'와 같은 순서의 다음 문장 단계 (모든 묶음을 마쳤으면 없음), 글자 버튼은 홈으로 */
+function renderChunkDone(groups) {
+  const c = currentChapter;
+  const g = drill.group;
+  $('#view-drill').classList.add('chunk-done');
+  const { next } = chapterPath(c);
+  let more = '';
+  if (DRILL_STAGES.includes(next.stage)) {
+    more = next.stage === 'read' ? `다음 묶음: ${groupLabel(next.group)}`
+      : `다음: ${STAGE_NAME[next.stage]}${groups.length > 1 ? ` · ${groupLabel(next.group)} 묶음` : ''}`;
+  }
+  const added = drill.run ? drill.run.done : 0;
+  $('#drill-card').innerHTML = `<span class="chunk-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+    <h3 class="chunk-title">${groups.length > 1 ? `${escapeHtml(groupLabel(g))} 묶음 완료!` : '문장 연습 완료!'}</h3>
+    <p class="chunk-sub">${drill.total}문장을 모두 말했어요.${added ? `<br>내 기록에 ${added}문장이 더해졌어요.` : ''}
+      ${drill.hard ? `<br>어려웠던 문장 ${drill.hard}개는 다음 연습 때 먼저 나와요.` : ''}</p>`;
+  $('#drill-actions').innerHTML = `<div class="chunk-rec">
+      <p class="chunk-rec-label">다음 단계 추천</p>
+      <p class="chunk-rec-title">방금 연습한 문장으로<br>AI 수검자와 대화해 볼까요?</p>
+      <p class="chunk-rec-desc">화면에 대사가 보여요. 읽기만 해도 괜찮아요.</p>
+      <button class="primary" id="chunk-talk">대본 보며 대화하기</button>
+    </div>
+    ${more ? `<button class="secondary" id="chunk-next">${escapeHtml(more)}</button>` : ''}
+    <button class="link chunk-stop" id="chunk-stop">오늘은 여기까지</button>`;
+  $('#chunk-talk').addEventListener('click', () => { show('detail'); openTalk('script', g); });
+  if ($('#chunk-next')) $('#chunk-next').addEventListener('click', () => goPathStage(next.stage, next.group));
+  $('#chunk-stop').addEventListener('click', () => show('list'));
+  window.scrollTo(0, 0);
+}
+
 function renderDrill() {
   const lp = lpOn();
   if (!lp && drill.level === 'read') drill.level = 'blank';
@@ -2085,8 +2128,14 @@ function renderDrill() {
   const groupName = groups.length > 1 ? `${groupLabel(drill.group)} 묶음` : '전체 문장';
   const card = $('#drill-card');
   const actions = $('#drill-actions');
+  $('#view-drill').classList.remove('chunk-done');
+  if (drill.pos >= drill.queue.length && lp && drill.level === 'korean'
+    && DRILL_STAGES.every((st) => groupStageDone(currentChapter, drill.group, st, steps, marks))) {
+    renderChunkDone(groups);   // 묶음의 1→2→3을 모두 마쳤으면 묶음 완료 화면 (108단계)
+    return;
+  }
   if (drill.pos >= drill.queue.length && lp) {
-    // 다 했어요 (103단계): 다음 단계가 주 버튼. 3단계까지 끝나면 대화 시작과 다음 묶음 (정식 묶음 완료 화면은 108단계)
+    // 다 했어요 (103단계): 다음 단계가 주 버튼. 1·2단계 뒤, 또는 앞 단계를 건너뛰고 3단계만 마쳤을 때
     $('#drill-count').innerHTML = `<span>${escapeHtml(groupName)}</span><b>${drill.total} / ${drill.total}</b>`;
     setDrillProgress(1);
     const nextStage = DRILL_STAGES[DRILL_STAGES.indexOf(drill.level) + 1];

@@ -510,6 +510,24 @@ textarea {
 .coach-word .tip { display: block; color: var(--muted); font-size: 14px; }
 .drill-actions .row { display: flex; gap: 8px; }
 .drill-actions button { margin-top: 0; }
+/* 묶음 완료 화면 (108단계, UI 예시 ④): 탭·칩·진행 줄을 숨기고 청록 ✓, 제목, '다음 단계 추천' 카드, 다음 묶음, 오늘은 여기까지 */
+#view-drill.chunk-done #drill-levels, #view-drill.chunk-done #drill-groups, #view-drill.chunk-done #level-desc,
+#view-drill.chunk-done #drill-count, #view-drill.chunk-done #drill-progress { display: none; }
+#view-drill.chunk-done .drill-card { background: none; border: 0; padding: 28px 0 0; min-height: 0; text-align: center; }
+.chunk-check { display: flex; align-items: center; justify-content: center; width: 84px; height: 84px; margin: 0 auto 14px;
+  border-radius: 50%; background: var(--teal); }
+.chunk-check svg { width: 44px; height: 44px; fill: none; stroke: var(--on-accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.chunk-title { font-size: 24px; font-weight: 800; margin: 0 0 8px; }
+.chunk-sub { color: var(--muted); font-size: 15px; line-height: 1.6; margin: 0; }
+.chunk-rec { margin: 22px 0 6px; background: var(--card); border: 2px solid var(--accent); border-radius: 20px; padding: 20px;
+  display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.chunk-rec p { margin: 0; }
+.chunk-rec-label { color: var(--teal-ink); font-size: 13px; font-weight: 700; }
+.chunk-rec-title { font-size: 18px; font-weight: 800; line-height: 1.45; }
+.chunk-rec-desc { color: var(--muted); font-size: 14px; line-height: 1.6; }
+.chunk-rec button.primary { margin-top: 6px; min-height: 56px; border-radius: 16px; font-size: 17px; font-weight: 800; }
+.drill-actions button.secondary#chunk-next { min-height: 52px; border-radius: 16px; }
+.drill-actions .link.chunk-stop { display: flex; justify-content: center; width: 100%; margin: 0; color: var(--muted); font-size: 14px; }
 
 /* 선생님 화면 */
 #view-teacher .teacher-period { text-align: left; margin: -4px 0 12px; }
