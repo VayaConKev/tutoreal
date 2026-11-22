@@ -77,6 +77,13 @@
     </section>
 
     <section id="view-talk" hidden>
+      <!-- 대화 모드 (106단계, 학습 단계 유도가 켜진 사람만): 시작 전에는 모드 고르기, 대화 중에는 아래 카드 모양 -->
+      <div class="levels talk-modes" id="talk-modes" role="group" aria-label="대화 모드" hidden>
+        <button class="level" data-mode="script">4 대본</button>
+        <button class="level" data-mode="cue">5 큐카드</button>
+        <button class="level" data-mode="free">6 자유</button>
+      </div>
+      <p class="level-desc" id="talk-mode-desc" hidden></p>
       <div class="card talk-head" id="talk-head">
         <div class="talk-head-row">
           <p class="eyebrow" id="talk-chapter"></p>
@@ -108,7 +115,9 @@
       <p class="talk-info" id="talk-info" hidden></p>
       <div class="talk-actions">
         <!-- 내 목소리 막대 (55단계): 연결된 동안 마이크 소리 크기에 따라 움직인다 -->
+        <div class="talk-card" id="talk-card" hidden></div>
         <p class="talk-meter" id="talk-meter" hidden><span class="voice-meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span>내 목소리</span></p>
+        <button class="primary" id="talk-begin" hidden>대화 시작</button>
         <button class="primary" id="talk-go" hidden>말하기 시작</button>
         <button class="primary" id="talk-end">대화 끝내기</button>
         <button class="primary" id="talk-next" hidden>다음</button>

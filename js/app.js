@@ -426,6 +426,7 @@ function endTurn() {
   transcript.me = null;
   transcript.ai = null;
   if (ai && glossCourse()) glossLine(ai);
+  if (talkUi.active) renderTalkCard();   // 대본·큐카드: 내 차례가 끝날 때마다 다음 줄로 (106단계)
 }
 
 /** 상대의 말에 읽기·뜻을 붙이는 과정: 일본어(로마자, 94단계). 휴대폰에서 읽기를 만들 수 없어 서버 답이 올 때 보인다. */
@@ -460,10 +461,122 @@ function reportEnd(t) {
   endTalk(loadCode(), t.sessionId, sec, reason, Math.round(t.aiSec || 0));
 }
 
-async function beginTalk() {
+/* ── 대화 모드 (106단계, learningPath.on인 사람만): 대본 / 큐카드 / 자유 ──
+   모드는 연결 전에 고른다 (서버가 지시문을 입장권에 고정). 대화 중 탭은 아래 카드 모양만 바꾼다.
+   대본 카드: 다음 간호사 대사 + 한국어 큐, '대본 전체 보기'로 수검자 기본 답까지. 다음 줄은 내가 말한 횟수로 대략 (턴별 추적 없음)
+   큐카드: 한국어 큐만 / 자유: 힌트 버튼 (챕터 핵심 단어 중 아직 내 자막에 없는 것 하나, AI 비용 없음) */
+const TALK_MODES = ['script', 'cue', 'free'];
+const TALK_TAB = { script: '대본', cue: '큐카드', free: '자유' };
+const TALK_DESC = {
+  script: '화면의 대사를 읽기만 해도 돼요. 수검자는 정해진 대답을 해요.',
+  cue: '한국어 키워드만 보고 말해요. 수검자가 가끔 다르게 대답해요.',
+  free: '대본 없이 말해요. 막히면 힌트 버튼을 눌러요.'
+};
+const talkUi = { mode: 'script', view: 'script', active: false, started: false, script: [], offset: 0, expanded: false, hints: 0, hintShown: [] };
+/** 이 챕터에서 그 모드로 대화한 적이 있나 (이 휴대폰의 기록) */
+const talkModeDone = (chapterId, mode) => loadHistory().some((e) => e.chapterId === chapterId && e.mode === mode);
+
+/** 챕터의 '대화 시작'·문장 연습의 '대화 시작하기'·기록의 '이어서 연습하기': 켜졌으면 모드를 고르는 시작 전 화면, 아니면 예전처럼 바로 */
+function openTalk() {
+  if (!lpOn()) return withMicIntro(() => beginTalk());
   if (live || !currentChapter) return;
+  talkUi.mode = TALK_MODES.find((m) => !talkModeDone(currentChapter.chapter_id, m)) || 'script';   // 아직 안 해 본 가장 쉬운 모드
+  talkUi.view = talkUi.mode;
+  talkUi.active = false;
+  talkUi.started = false;
+  $('#view-talk').classList.add('lp');
+  $('#talk-head').hidden = true;
+  $('#talk-calling').hidden = true;
+  $('#transcript').innerHTML = '';
+  transcript.lines = [];
+  $('#talk-info').hidden = true;
+  $('#talk-meter').hidden = true;
+  $('#talk-go').hidden = true;
+  $('#talk-end').hidden = true;
+  $('#talk-next').hidden = true;
+  $('#talk-begin').hidden = false;
+  $('#talk-back').hidden = false;
+  $('#talk-card').hidden = true;
+  setTalkStatus(`${currentChapter.order}장 · ${currentChapter.title}`);
+  renderTalkModes();
+  show('talk');
+}
+
+/** 대화 모드 탭: 4 대본 / 5 큐카드 / 6 자유 (해 본 모드는 ✓). 시작 전에는 모드를, 대화 중에는 카드 모양만 고른다 */
+function renderTalkModes() {
+  const box = $('#talk-modes');
+  box.hidden = false;
+  const cid = currentChapter ? currentChapter.chapter_id : '';
+  const pick = talkUi.started ? talkUi.view : talkUi.mode;
+  box.querySelectorAll('.level').forEach((b) => {
+    const m = b.dataset.mode;
+    const done = talkModeDone(cid, m);
+    b.textContent = `${done ? '✓' : TALK_MODES.indexOf(m) + 4} ${TALK_TAB[m]}`;
+    b.classList.toggle('on', m === pick);
+    b.classList.toggle('done', done);
+    b.setAttribute('aria-pressed', String(m === pick));
+  });
+  $('#talk-mode-desc').hidden = talkUi.started;
+  $('#talk-mode-desc').textContent = TALK_DESC[talkUi.mode];
+}
+
+/** 대화 중 아래 카드 (UI 예시의 둥근 시트) */
+function renderTalkCard() {
+  const card = $('#talk-card');
+  if (!talkUi.active) { card.hidden = true; return; }
+  card.hidden = false;
+  const lines = talkUi.script || [];
+  const view = talkUi.view === 'free' || !lines.length ? 'free' : talkUi.view;
+  if (view === 'free') {
+    const word = talkUi.hintShown[talkUi.hintShown.length - 1];
+    card.innerHTML = `${word !== undefined ? `<p class="talk-card-label">힌트</p><p class="talk-card-line">${escapeHtml(word || '핵심 단어를 모두 말했어요!')}</p>` : ''}
+      <button class="secondary" id="talk-hint">힌트</button>`;
+    $('#talk-hint').addEventListener('click', showTalkHint);
+    return;
+  }
+  const said = transcript.lines.filter((l) => l.who === 'me' && l.text.trim()).length;
+  const i = Math.max(0, Math.min(lines.length - 1, said + talkUi.offset));
+  const l = lines[i];
+  const head = `<div class="talk-card-head"><span>${view === 'script' ? '내 차례 · 이 대사를 읽어 보세요' : '내 차례 · 이렇게 말해 보세요'}</span><b>${i + 1} / ${lines.length}</b></div>`;
+  const body = view === 'script'
+    ? `<p class="talk-card-line" lang="${courseNow() === 'ja' ? 'ja' : 'en'}">${escapeHtml(l.nurse)}</p><p class="talk-card-sub">${escapeHtml(l.cue)}</p>`
+    : `<p class="talk-card-line">${escapeHtml(l.cue)}</p>`;
+  const all = view === 'script' ? `<button class="link talk-card-all" id="talk-card-all" aria-expanded="${talkUi.expanded}">${talkUi.expanded ? '대본 접기 ▴' : '대본 전체 보기 ▾'}</button>
+    ${talkUi.expanded ? `<ol class="talk-script">${lines.map((x, k) => `<li><button type="button" class="talk-script-line${k === i ? ' now' : ''}" data-i="${k}">
+      <span class="who">나</span><span lang="${courseNow() === 'ja' ? 'ja' : 'en'}">${escapeHtml(x.nurse)}</span>
+      ${x.answer ? `<span class="who">${partnerWord()}</span><span class="ans">${escapeHtml(x.answer)}</span>` : ''}</button></li>`).join('')}</ol>` : ''}` : '';
+  card.innerHTML = head + body + all;
+  if ($('#talk-card-all')) $('#talk-card-all').addEventListener('click', () => { talkUi.expanded = !talkUi.expanded; renderTalkCard(); });
+  // 펼친 대본에서 줄을 누르면 그 줄로 옮긴다 (턴별 추적 대신)
+  card.querySelectorAll('.talk-script-line').forEach((b) => b.addEventListener('click', () => {
+    talkUi.offset = Number(b.dataset.i) - said;
+    talkUi.expanded = false;
+    renderTalkCard();
+  }));
+}
+
+/** 자유 모드 힌트: 챕터 핵심 단어 중 아직 내 자막에 없는 것 하나 (순서대로). 누른 횟수는 이 휴대폰 기록에만 */
+function showTalkHint() {
+  const mine = transcript.lines.filter((l) => l.who === 'me').map((l) => l.text.toLowerCase()).join(' ');
+  const word = (currentChapter.keywords || []).find((k) => !mine.includes(k.toLowerCase()) && !talkUi.hintShown.includes(k));
+  talkUi.hintShown.push(word || '');
+  talkUi.hints++;
+  renderTalkCard();
+}
+
+async function beginTalk(mode = '') {
+  if (live || !currentChapter) return;
+  if (!TALK_MODES.includes(mode)) mode = '';
+  // 학습 단계 유도 (106단계): 모드를 골라 시작했으면 탭·카드를 쓰고, 아니면 예전 화면
+  $('#view-talk').classList.toggle('lp', !!mode);
+  $('#talk-modes').hidden = !mode;
+  $('#talk-mode-desc').hidden = true;
+  $('#talk-begin').hidden = true;
+  $('#talk-card').hidden = true;
+  Object.assign(talkUi, { mode: mode || 'script', view: mode || 'script', active: false, started: !!mode, script: [], offset: 0, expanded: false, hints: 0, hintShown: [] });
+  if (mode) renderTalkModes();
   $('#difficulty').placeholder = '이름 철자를 묻는 게 어려웠어요';
-  const t = { sessionId: null, scenarioId: '', patient: null, readyAt: 0, endReason: '', reported: false, limitSec: 0, limitKind: '' };
+  const t = { sessionId: null, scenarioId: '', patient: null, readyAt: 0, endReason: '', reported: false, limitSec: 0, limitKind: '', mode };
   talk = t;
   // 오디오는 버튼을 누른 이 순간에 켜야 한다 (iOS). 그래서 다른 일보다 먼저 만든다.
   live = new LiveSession({
@@ -478,6 +591,7 @@ async function beginTalk() {
   });
 
   $('#talk-head').hidden = false;
+  $('#talk-head').classList.toggle('emr', !!mode);   // 106단계: 한 줄 EMR
   $('#talk-chapter').textContent = `${currentChapter.order}장 · ${currentChapter.title}`;
   // '수검자가 오고 있습니다…'와 걸어오는 수검자 그림 (49단계, 영어·일본어). 수검자가 준비되면(슬립·연결) 또는 끝나면 숨긴다
   $('#talk-name').textContent = '수검자가 오고 있습니다…';
@@ -505,7 +619,7 @@ async function beginTalk() {
     await session.openMic();
     if (session.ended) return;   // 준비 중에 '끝내기'를 누른 경우
     setTalkStatus(`${partnerTitle()}를 부르는 중…`);
-    const { token, model, patient, sessionId, scenarioId, server, limitSec, limitKind, slip } = await startTalk(loadCode(), currentChapter.chapter_id);
+    const { token, model, patient, sessionId, scenarioId, server, limitSec, limitKind, slip, script } = await startTalk(loadCode(), currentChapter.chapter_id, mode);
     const gotAt = Date.now();
     t.sessionId = sessionId;
     t.scenarioId = scenarioId || '';
@@ -516,8 +630,14 @@ async function beginTalk() {
     setVersion(server);
     $('#talk-name').textContent = patient.name;
     $('#talk-avatar').innerHTML = patientAvatar(patient.name, scenarioId);
-    // 생년월일 · 검사
-    $('#talk-meta').textContent = [patient.dob, patient.exam].filter(Boolean).join(' · ') || '–';
+    // 생년월일 · 검사. 모드 대화(106단계)는 한 줄 EMR: 성별 · 생년월일 · 검사 (1장 본인 확인에 생년월일이 필요해서 넣는다)
+    const sexKo = { male: '남', female: '여' }[String(patient.sex || '').toLowerCase()] || '';
+    $('#talk-meta').textContent = (mode ? [sexKo, patient.dob, patient.exam] : [patient.dob, patient.exam]).filter(Boolean).join(' · ') || '–';
+    if (mode) {   // 대본·큐카드·자유 카드: 입장권을 받으면 바로 보여 준다 (연결되는 동안 첫 대사를 미리 볼 수 있게)
+      talkUi.script = Array.isArray(script) ? script : [];
+      talkUi.active = true;
+      renderTalkCard();
+    }
     if (slip) {
       // 검사 결과 슬립 (48단계): 슬립을 먼저 보여 주고, 학생이 '말하기 시작'을 누르면 연결한다.
       // 결과(진단명)는 슬립의 글자로만 보이게 차트 줄은 숨긴다. 토큰은 slip.start_within_sec 안에만 연결할 수 있다.
@@ -541,6 +661,9 @@ async function beginTalk() {
 function endedTalk(reason, info, t) {
   clearInterval(clock);
   live = null;
+  talkUi.active = false;
+  $('#talk-card').hidden = true;
+  $('#talk-modes').hidden = true;
   $('#talk-go').hidden = true;
   $('#talk-calling').hidden = true;
   $('#talk-meter').hidden = true;
@@ -554,7 +677,8 @@ function endedTalk(reason, info, t) {
   const spoke = transcript.lines.some((l) => l.who === 'me' && l.text.trim());
   review.data = spoke ? {
     sessionId: t.sessionId, scenarioId: t.scenarioId, chapter: currentChapter, patient: t.patient, lines: transcript.lines.slice(),
-    durationSec: t.readyAt ? Math.round((Date.now() - t.readyAt) / 1000) : 0
+    durationSec: t.readyAt ? Math.round((Date.now() - t.readyAt) / 1000) : 0,
+    mode: t.mode || '', hints: t.mode ? talkUi.hints : 0   // 106단계: 대화 모드와 힌트 누른 횟수 (이 휴대폰 기록)
   } : null;
   // 피드백은 대화가 끝나는 이 순간부터 만든다. 학생이 대화 후 화면 1~3단계를 하는 동안 준비된다 (31단계).
   if (review.data) loadFeedback(review.data);
@@ -862,6 +986,7 @@ function saveLocal(d) {
     sessionId: d.sessionId, scenarioId: d.scenarioId, chapterId: d.chapter.chapter_id, chapterOrder: d.chapter.order, course: d.chapter.course || me.course,
     chapterTitle: d.chapter.title, at: new Date().toISOString(), durationSec: d.durationSec,
     patient: d.patient, confidence: d.confidence, difficulty: d.difficulty, shared: d.shared,
+    ...(d.mode ? { mode: d.mode } : {}), ...(d.hints ? { hints: d.hints } : {}),   // 106단계: 대화 모드(대본·큐카드·자유)와 힌트 횟수
     // 일본어 과정: 서버에서 받은 로마자(py)와 뜻(ko)도 함께 남긴다. hard: 대화 후 2/4에서 고른 어려웠던 부분
     lines: d.lines.map((l) => ({
       who: l.who, text: l.text, ...(l.py ? { py: l.py } : {}), ...(l.ko ? { ko: l.ko } : {}), ...(l.hard ? { hard: true } : {})
@@ -964,7 +1089,8 @@ function cleanRecord(r) {
     chapterTitle: str(r.chapterTitle),
     at: new Date(r.at).toISOString(), durationSec: Number(r.durationSec) || 0,
     patient: { name: str(r.patient && r.patient.name) }, confidence: [1, 2, 3].includes(r.confidence) ? r.confidence : undefined,
-    difficulty: str(r.difficulty), shared: r.shared === true, lines, feedback: fbOk ? fb : null
+    difficulty: str(r.difficulty), shared: r.shared === true, lines, feedback: fbOk ? fb : null,
+    ...(TALK_MODES.includes(r.mode) ? { mode: r.mode } : {}), ...(Number(r.hints) > 0 ? { hints: Number(r.hints) } : {})
   };
 }
 
@@ -1857,7 +1983,7 @@ function renderDrill() {
     if ($('#drill-next-stage')) $('#drill-next-stage').addEventListener('click', () => { drill.level = nextStage; startDrill(); });
     if ($('#drill-next-group')) $('#drill-next-group').addEventListener('click', () => { drill.level = 'read'; drill.group = nextGroup; startDrill(); });
     $('#drill-again').addEventListener('click', () => startDrill());
-    $('#drill-to-talk').addEventListener('click', () => { show('detail'); withMicIntro(beginTalk); });
+    $('#drill-to-talk').addEventListener('click', () => { show('detail'); openTalk(); });
     return;
   }
   if (drill.pos >= drill.queue.length) {
@@ -1870,7 +1996,7 @@ function renderDrill() {
       <button class="primary" id="drill-to-talk">대화 시작하기</button>`;
     $('#drill-again').addEventListener('click', () => startDrill());
     if ($('#drill-level2')) $('#drill-level2').addEventListener('click', () => { drill.level = 'korean'; startDrill(); });
-    $('#drill-to-talk').addEventListener('click', () => { show('detail'); withMicIntro(beginTalk); });
+    $('#drill-to-talk').addEventListener('click', () => { show('detail'); openTalk(); });
     return;
   }
   const d = drill.queue[drill.pos];
@@ -2349,7 +2475,7 @@ $('#tsession-back').addEventListener('click', () => show('tstudent'));
 $('#record-back').addEventListener('click', openHistory);
 // 내 기록에서 이 챕터 이어서 연습하기 (82단계). 다시 대화는 누른 이 순간에 시작한다 (iOS는 버튼을 누를 때만 소리를 켤 수 있다)
 $('#record-drill').addEventListener('click', () => { openChapter(recordChapterId); startDrill(); });
-$('#record-again').addEventListener('click', () => { openChapter(recordChapterId); withMicIntro(beginTalk); });
+$('#record-again').addEventListener('click', () => { openChapter(recordChapterId); openTalk(); });
 $('#record-share').addEventListener('click', shareRecord);
 // 피드백 안의 발음 듣기 버튼 (61단계): 4/4, 내 기록, 선생님 화면 어디서든
 document.addEventListener('click', (ev) => {
@@ -2368,7 +2494,15 @@ $('#backup-nudge-go').addEventListener('click', exportBackup);
 $('#backup-import').addEventListener('click', () => { $('#backup-file').value = ''; $('#backup-file').click(); });
 $('#backup-file').addEventListener('change', (ev) => { const f = ev.target.files && ev.target.files[0]; if (f) importBackup(f); });
 $('#back').addEventListener('click', () => show('list'));
-$('#talk-start').addEventListener('click', () => withMicIntro(beginTalk));
+$('#talk-start').addEventListener('click', () => openTalk());
+// 대화 모드 탭 (106단계): 시작 전에는 모드를, 대화 중에는 아래 카드 모양만 바꾼다
+document.querySelectorAll('#talk-modes .level').forEach((b) => b.addEventListener('click', () => {
+  if (talkUi.started) talkUi.view = b.dataset.mode;
+  else { talkUi.mode = b.dataset.mode; talkUi.view = b.dataset.mode; }
+  renderTalkModes();
+  renderTalkCard();
+}));
+$('#talk-begin').addEventListener('click', () => withMicIntro(() => beginTalk(talkUi.mode)));
 $('#talk-end').addEventListener('click', () => { if (live) { talk.endReason = 'user'; live.stop(''); } });
 $('#talk-back').addEventListener('click', () => show('detail'));
 $('#talk-next').addEventListener('click', openReview);
