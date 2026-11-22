@@ -8,7 +8,7 @@ Object.assign(w.tabs, JSON.parse(JSON.stringify(old.tabs)));
 w.run('setup');
 const SH = w.tabs.scenarios[0];
 console.log('scenarios 마지막 칸:', SH[SH.length - 1], '/ slip_legend:', (w.tabs.settings.find((r) => r[0] === 'slip_legend') || [])[1]);
-assert.equal(SH[SH.length - 1], 'slip'); assert(w.tabs.settings.find((r) => r[0] === 'slip_legend'));
+assert(SH.includes('slip'));   // 105단계부터 slip 뒤에 answers·variants가 더 붙는다 assert(w.tabs.settings.find((r) => r[0] === 'slip_legend'));
 const s = w.tabs.settings; const set = (k, v) => { const r = s.find((x) => x[0] === k); if (r) r[1] = v; else s.push([k, v, '']); };
 set('live_model', 'x'); set('monthly_budget_usd', 50); set('daily_connect_limit', 100);
 const st = w.tabs.students; st.push(st[0].map((k) => ({ student_id: 'S1', display_name: '학생', access_code: 'stu', status: 'active', course: 'en' })[k] ?? ''));

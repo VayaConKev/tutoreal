@@ -45,11 +45,14 @@ export async function login(code) {
   return { name: data.name, role: data.role || 'student', avatar: data.avatar || '', course: data.course || 'en', server: data.server };
 }
 
-export async function startTalk(code, chapterId) {
-  const data = await postServer('talk', { code, chapter_id: chapterId });
+// mode (105단계): 대화 모드 script(대본) / cue(큐카드) / free(자유). 비우면 보내지 않는다 — 서버가 지금과 똑같이 대화를 만든다.
+// 모드를 보낸 대화는 script(대본 줄: n, nurse, cue, answer)를 받는다. patient.sex는 한 줄 EMR용
+export async function startTalk(code, chapterId, mode = '') {
+  const data = await postServer('talk', { code, chapter_id: chapterId, ...(mode ? { mode } : {}) });
   return {
     token: data.token, model: data.model, patient: data.patient, sessionId: data.session_id, scenarioId: data.scenario_id, server: data.server,
-    limitSec: data.limit_sec, limitKind: data.limit_kind, slip: data.slip || null
+    limitSec: data.limit_sec, limitKind: data.limit_kind, slip: data.slip || null,
+    mode: data.mode || '', script: Array.isArray(data.script) ? data.script : null
   };
 }
 

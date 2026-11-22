@@ -96,12 +96,16 @@
  *                 일본어가 같이 쓰는 칸 이름(pinyin, better_py, py)과 gloss_model은 그대로. 되살리려면 커밋 b5a0e8b.
  * v0.66 (102단계): 학습 단계 유도 준비 — drills 탭 group(묶음)·kind(word/sentence, 비우면 자동)·cue(한국어 큐, 비우면 situation) 칸,
  *                 settings의 learning_path_published(preview/TRUE/FALSE). 챕터 목록에 문장마다 세 값과 learning_path { on, preview }를 더 보낸다.
+ * v0.67 (105단계): 대화 모드 — talk 요청의 mode(script 대본 / cue 큐카드 / free 자유)에 맞춰 지시문 끝에 모드 지시를 붙인다.
+ *                 scenarios 탭 answers(기본 답, 'd04: …')·variants(변형), sessions 탭 mode 칸 (setup이 더한다). 모드가 없거나 answers가 비면 지금과 같다.
+ *                 앱에 대본 줄(script)과 수검자 성별을 더 보낸다. 편집기 함수 showModePrompt()로 세 모드의 지시문을 볼 수 있다.
+ * v0.68 (105단계 수정): 대본·큐카드 모드 지시에 '이 모드 규칙이 우선' 한 줄 (시트 지시문의 '가끔 질문 하나 하기'와 부딪히지 않게. 대본은 자기 질문 하지 않기).
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.66';
+const SERVER_VERSION = 'v0.68';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -112,14 +116,19 @@ const SCHEMA = {
   chapters:       ['chapter_id', 'order', 'title', 'goal', 'keywords', 'scene', 'published', 'ai_captions', 'course', 'checklist', 'feedback_style', 'level'],
   // slip: 검사 결과 슬립 (48단계). '검사 수면 결과' 순서로 띄어 쓴다. 예: G + S (위내시경, 수면, 표재성) / GC - P (위대장, 비수면, 용종).
   //       비우면 슬립 없이 지금처럼 바로 대화. 결과 글자는 여러 개 가능 (G + S P)
-  scenarios:      ['scenario_id', 'chapter_id', 'name', 'sex', 'dob', 'country', 'exam', 'twist', 'level', 'active', 'slip'],
+  // answers (105단계): AI 수검자 기본 답, 한 줄에 하나 '문장 번호: 대답' (번호 = drills의 drill_id 끝, 예: d04: No, I don't.).
+  //   대본·큐카드 대화에서 이 답 위주로 말한다. 비우면 어느 모드든 지금과 같다.
+  // variants (105단계): AI 수검자 변형 목록, 한 줄에 하나 (영어 지시). 큐카드 대화에서 한 번쯤, 자유 대화에서 가끔 쓴다. 대본 대화에서는 쓰지 않는다.
+  scenarios:      ['scenario_id', 'chapter_id', 'name', 'sex', 'dob', 'country', 'exam', 'twist', 'level', 'active', 'slip', 'answers', 'variants'],
   prompts:        ['prompt_id', 'text', 'active'],
   // profile: 학생 소개 (이름·회사·하는 일 등 사실). AI 상대의 힌트와 피드백 예문이 이 사실로 문장을 만든다. 시트에만 둔다.
   students:       ['student_id', 'display_name', 'access_code', 'status', 'daily_limit_min', 'created_at', 'role', 'avatar', 'course', 'profile'],
   sessions:       ['session_id', 'student_id', 'started_at', 'duration_sec', 'chapter_id', 'scenario_id', 'shared',
                    'hints_used', 'korean_ratio', 'end_reason', 'est_cost_usd', 'confidence', 'difficulty_note', 'feedback',
                    // hard_lines: 학생이 대화 후 '어려웠던 부분'으로 고른 줄 번호 (transcripts 탭의 seq, 예: 3,5)
-                   'hard_lines'],
+                   'hard_lines',
+                   // mode (105단계): 대화 모드 script(대본) / cue(큐카드) / free(자유). 앱이 모드를 보낸 대화에만 적는다. 빈칸 = 예전 대화(자유)
+                   'mode'],
   keyword_checks: ['session_id', 'student_id', 'chapter_id', 'keyword', 'found'],
   transcripts:    ['session_id', 'seq', 'speaker', 'text', 'at'],
   quality:        ['at', 'session_id', 'kind', 'note'],
@@ -802,7 +811,7 @@ function handlePost_(body) {
         learning_path: learningPath_(auth.student) });
     }
     if (body.action === 'talk') {
-      const result = startTalk_(body.code, String(body.chapter_id || ''));
+      const result = startTalk_(body.code, String(body.chapter_id || ''), talkMode_(body.mode));
       result.server = SERVER_VERSION;
       return json_(result);
     }
@@ -990,7 +999,7 @@ function getSettings_() {
 }
 
 /** 접속 코드를 확인한 뒤 대화 한 번 분량의 임시 토큰을 준다. */
-function startTalk_(code, chapterId) {
+function startTalk_(code, chapterId, mode) {
   const auth = auth_(code);
   if (!auth.ok) return auth;
   if (!usableChapter_(chapterId, auth.student)) return { ok: false, error: 'NO_CHAPTER' };
@@ -999,9 +1008,9 @@ function startTalk_(code, chapterId) {
   const budget = checkBudget_();
   if (!budget.ok) return budget;
   const maxSec = Math.min(limit.remainingSec, budget.remainingSec, LIVE_SESSION_MAX_MIN * 60);
-  const result = createLiveToken_(chapterId, maxSec, auth.student);
+  const result = createLiveToken_(chapterId, maxSec, auth.student, mode);
   if (result.ok) {
-    result.session_id = logSessionStart_(auth.student, chapterId, result.scenario_id);
+    result.session_id = logSessionStart_(auth.student, chapterId, result.scenario_id, mode);
     result.limit_sec = maxSec;                                       // 이 대화에서 쓸 수 있는 최대 시간(초)
     result.limit_kind = maxSec === LIVE_SESSION_MAX_MIN * 60 ? 'session'
       : maxSec === budget.remainingSec ? 'budget' : 'daily';
@@ -1013,7 +1022,7 @@ function startTalk_(code, chapterId) {
  * 챕터의 활성 시나리오 하나를 무작위로 고르고, 지시문을 채워 임시 토큰 안에 고정한다.
  * 지시문과 시나리오의 숨은 설정(twist)은 브라우저로 보내지 않는다. 브라우저는 토큰과 환자 차트만 받는다.
  */
-function createLiveToken_(chapterId, maxSec, student) {
+function createLiveToken_(chapterId, maxSec, student, mode) {
   maxSec = maxSec || LIVE_SESSION_MAX_MIN * 60;
   const chapter = readTable_('chapters').filter(function (c) {
     return String(c.chapter_id) === chapterId && chapterVisible_(c, student);
@@ -1037,23 +1046,9 @@ function createLiveToken_(chapterId, maxSec, student) {
   const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!key) return { ok: false, error: 'NO_API_KEY' };
 
-  const patient = {
-    name: String(sc.name || ''),
-    sex: String(sc.sex || ''),
-    dob: formatDob_(sc.dob),
-    country: String(sc.country || ''),
-    exam: String(sc.exam || '')
-  };
-  const instruction = String(prompt.text)
-    .replace(/\{name\}/g, patient.name)
-    .replace(/\{sex\}/g, patient.sex)
-    .replace(/\{dob\}/g, patient.dob)
-    .replace(/\{country\}/g, patient.country)
-    .replace(/\{exam\}/g, patient.exam)
-    .replace(/\{scene\}/g, String(chapter.scene || ''))
-    .replace(/\{twist\}/g, String(sc.twist || ''))
-    .replace(/\{keywords\}/g, String(chapter.keywords || ''));
-  const instructionFull = withLearner_(instruction, student);
+  const built = patientInstruction_(prompt, chapter, sc, student, mode);
+  const patient = built.patient;
+  const instructionFull = built.text;
 
   // 받아쓰기 언어: 영어 과정은 영어+한국어, 일본어 과정은 일본어+한국어 (93단계). 한국어는 학생이 막혀서 한국어로 말할 때.
   const lang = course === 'ja' ? 'ja-JP' : 'en-US';
@@ -1111,7 +1106,10 @@ function createLiveToken_(chapterId, maxSec, student) {
     token: token,
     model: model,
     scenario_id: String(sc.scenario_id),
-    patient: { name: patient.name, dob: patient.dob, exam: patient.exam },
+    patient: { name: patient.name, dob: patient.dob, exam: patient.exam, sex: patient.sex },   // sex: 대화 화면의 한 줄 EMR (105단계)
+    // 대화 모드 (105단계): 앱이 모드를 보낸 대화에만. 대본·큐카드 카드용 문장 (간호사 대사, 한국어 큐, 짝지은 기본 답). 숨은 설정·변형은 보내지 않는다
+    mode: mode || '',
+    script: mode ? built.script.map(function (l) { return { n: l.n, nurse: l.nurse, cue: l.cue, answer: l.answer }; }) : null,
     // 검사 결과 슬립 (없으면 null). 소지품 번호는 대화마다 1~12 무작위 (병원 수납함이 12칸, 66단계). start_within_sec: 이 안에 '말하기 시작'을 눌러야 연결된다
     slip: slip ? {
       exams: slip.exams, sedation: slip.sedation, results: slip.results,
@@ -1297,6 +1295,128 @@ function formatDob_(v) {
 }
 
 /** 편집기에서 한 번 실행: 1장으로 임시 토큰이 발급되는지 확인한다. 토큰 자체는 출력하지 않는다. */
+/* ───────────────────────── 105단계: 대화 모드 (대본 / 큐카드 / 자유) ───────────────────────── */
+
+// 앱이 보내는 모드. 이 밖의 값이나 빈칸은 '없음' — 지시문이 지금과 글자 하나까지 같다 (학생 앱은 모드를 보내지 않는다)
+const TALK_MODES = ['script', 'cue', 'free'];
+function talkMode_(v) {
+  const m = String(v || '').trim().toLowerCase();
+  return TALK_MODES.indexOf(m) >= 0 ? m : '';
+}
+
+/** 칸 하나의 여러 줄 → 줄 목록 (앞뒤 공백·빈 줄 빼고, 최대 max줄·한 줄 300자) */
+function cellLines_(v, max) {
+  return String(v || '').split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean).slice(0, max)
+    .map(function (l) { return l.slice(0, 300); });
+}
+
+/** scenarios answers 칸: 'd04: No, I don't.' → byNo.d04. 번호 없는 줄은 other (그 밖의 기본 사실) */
+function parseAnswers_(v) {
+  const out = { byNo: {}, other: [] };
+  cellLines_(v, 60).forEach(function (line) {
+    const m = line.match(/^(d\d+)\s*[:：]\s*(.+)$/i);
+    if (m) out.byNo[m[1].toLowerCase()] = m[2].trim();
+    else out.other.push(line);
+  });
+  return out;
+}
+
+/** 대본 줄: 그 챕터의 켜진 문장을 순서대로, 간호사 대사(대괄호 뺌) · 한국어 큐(cue, 비면 situation) · 짝지은 기본 답 */
+function scriptLines_(chapterId, answers) {
+  return readTable_('drills')
+    .filter(function (d) { return String(d.chapter_id) === chapterId && d.drill_id && d.sentence && isTrue_(d.active); })
+    .sort(function (a, b) { return Number(a.order) - Number(b.order); })
+    .map(function (d) {
+      const m = String(d.drill_id).match(/-(d\d+)$/i);
+      const n = m ? m[1].toLowerCase() : '';
+      return {
+        n: n,
+        nurse: String(d.sentence).replace(/\[([^\]]+)\]/g, '$1'),
+        cue: String(d.cue || '').trim() || String(d.situation || ''),
+        answer: (n && answers.byNo[n]) || ''
+      };
+    });
+}
+
+/**
+ * 대화 모드 지시 (105단계): 지시문(prompts 탭) 끝에 붙인다. 시트의 지시문은 그대로.
+ * 대본: 짝지은 기본 답 그대로, 돌발 없음 / 큐카드: 기본 답 위주 + 변형 한 번쯤 / 자유: 지금 그대로 + 변형 가끔 (기본 답은 참고).
+ */
+function withMode_(text, mode, script, answers, variants) {
+  const pairs = script.filter(function (l) { return l.answer; })
+    .map(function (l) { return '- Nurse: "' + l.nurse + '" → You: "' + l.answer + '"'; })
+    .concat(answers.other.map(function (a) { return '- ' + a; }));
+  const list = variants.map(function (v) { return '- ' + v; });
+  if (mode === 'script') {
+    return text + '\n' + [
+      'Practice mode: SCRIPT. The nurse is reading the lines of a script, one by one.',
+      'These practice-mode rules come last and win over the rules above (for example, do not ask your own questions in this mode).',
+      'When the nurse says one of the lines below (or something with the same meaning), reply with the matching default answer, word for word if you can. Keep replies short.',
+      'Do not add new questions, problems, surprises or extra details. If the nurse says something that is not in the list, reply simply and naturally.',
+      'Default answers:'
+    ].concat(pairs).join('\n');
+  }
+  if (mode === 'cue') {
+    return text + '\n' + [
+      'Practice mode: CUE CARD. The nurse speaks from short Korean cue words, so the wording may differ from the lines below.',
+      'These practice-mode rules come last and win over the rules above.',
+      'Mostly reply with the matching default answers. Keep replies short.',
+      'Default answers:'
+    ].concat(pairs).concat(list.length
+      ? ['Once during the talk, you may use ONE of these variations, naturally (never more than one):'].concat(list) : []).join('\n');
+  }
+  // free: 지금 지시 그대로에 변형 가끔. 기본 답은 참고 (같은 사실을 말하도록)
+  const extra = [];
+  if (pairs.length) extra.push('Facts you may use when you answer (default answers):', pairs.join('\n'));
+  if (list.length) extra.push('Variations: during the talk, naturally use one or two of these (not all):', list.join('\n'));
+  return extra.length ? text + '\n' + extra.join('\n') : text;
+}
+
+/**
+ * 수검자 지시문 만들기 (createLiveToken_과 showModePrompt가 같이 쓴다).
+ * 모드가 없거나 시나리오의 answers가 비었으면 지금과 글자 하나까지 같다.
+ * 대본·큐카드는 숨은 설정(twist)을 빼고(intent 결정), 모드 지시를 끝에 붙인다.
+ */
+function patientInstruction_(prompt, chapter, sc, student, mode) {
+  const patient = {
+    name: String(sc.name || ''),
+    sex: String(sc.sex || ''),
+    dob: formatDob_(sc.dob),
+    country: String(sc.country || ''),
+    exam: String(sc.exam || '')
+  };
+  const answers = parseAnswers_(sc.answers);
+  const script = scriptLines_(String(chapter.chapter_id), answers);
+  const useMode = !!mode && (Object.keys(answers.byNo).length > 0 || answers.other.length > 0);
+  const twist = useMode && (mode === 'script' || mode === 'cue') ? '' : String(sc.twist || '');
+  const instruction = String(prompt.text)
+    .replace(/\{name\}/g, patient.name)
+    .replace(/\{sex\}/g, patient.sex)
+    .replace(/\{dob\}/g, patient.dob)
+    .replace(/\{country\}/g, patient.country)
+    .replace(/\{exam\}/g, patient.exam)
+    .replace(/\{scene\}/g, String(chapter.scene || ''))
+    .replace(/\{twist\}/g, twist)
+    .replace(/\{keywords\}/g, String(chapter.keywords || ''));
+  let text = withLearner_(instruction, student);
+  if (useMode) text = withMode_(text, mode, script, answers, cellLines_(sc.variants, 20));
+  return { text: text, patient: patient, script: script };
+}
+
+/** 편집기에서 실행: answers를 채운 첫 시나리오로 대본·큐카드·자유 세 모드의 지시문 전체를 실행 기록에 보여 준다 (AI를 부르지 않음, 비용 없음) */
+function showModePrompt() {
+  const sc = readTable_('scenarios').filter(function (s) { return isTrue_(s.active) && String(s.answers || '').trim(); })[0];
+  if (!sc) { console.log('answers 칸을 채운 켜진 시나리오가 없어요. scenarios 탭의 answers 칸을 먼저 채워 주세요.'); return; }
+  const chapter = readTable_('chapters').filter(function (c) { return String(c.chapter_id) === String(sc.chapter_id); })[0];
+  if (!chapter) { console.log('시나리오 ' + sc.scenario_id + '의 챕터를 찾지 못했어요.'); return; }
+  const prompt = coursePrompt_('patient', courseOf_(chapter));
+  if (!prompt) { console.log('이 과정의 수검자 지시문(prompts 탭)이 없어요.'); return; }
+  TALK_MODES.forEach(function (mode) {
+    console.log('===== ' + sc.scenario_id + ' · ' + { script: '대본', cue: '큐카드', free: '자유' }[mode] + ' (' + mode + ') =====\n' +
+      patientInstruction_(prompt, chapter, sc, null, mode).text);
+  });
+}
+
 function testLiveToken() {
   const r = createLiveToken_('ch01');
   if (r.ok) {
@@ -1321,7 +1441,7 @@ function appendRow_(name, obj) {
 }
 
 /** 토큰을 줄 때 sessions 탭에 시작 기록을 남긴다. 대화 내용은 남기지 않는다. */
-function logSessionStart_(student, chapterId, scenarioId) {
+function logSessionStart_(student, chapterId, scenarioId, mode) {
   const id = Utilities.getUuid();
   appendRow_('sessions', {
     session_id: id,
@@ -1329,7 +1449,8 @@ function logSessionStart_(student, chapterId, scenarioId) {
     started_at: new Date(),
     chapter_id: chapterId,
     scenario_id: scenarioId,
-    shared: false
+    shared: false,
+    mode: mode || ''   // 105단계: 모드를 보낸 대화만
   });
   return id;
 }

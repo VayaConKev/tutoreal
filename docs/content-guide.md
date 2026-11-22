@@ -81,7 +81,7 @@ Tutoreal의 교과서 내용은 **모두 구글 시트(Tutoreal DB)에만** 있�
 
 ## 4. scenarios 탭
 
-칸 순서: `scenario_id` `chapter_id` `name` `sex` `dob` `country` `exam` `twist` `level` `active` `slip`
+칸 순서: `scenario_id` `chapter_id` `name` `sex` `dob` `country` `exam` `twist` `level` `active` `slip` `answers` `variants`
 
 대화를 시작할 때 그 챕터의 active 시나리오 중 하나를 **무작위로** 고른다. 챕터마다 2~3개를 두면 매번 조금씩 다르다.
 
@@ -98,6 +98,8 @@ Tutoreal의 교과서 내용은 **모두 구글 시트(Tutoreal DB)에만** 있�
 | level | 난이도 메모 1~3 (지금은 고를 때 쓰지 않는 참고용) |
 | active | TRUE / FALSE |
 | slip | 검사 결과 슬립 (선택). `검사 수면 결과` 순서로 띄어 쓴다 — 아래 참고. 비우면 슬립 없이 바로 대화 |
+| answers | AI 수검자 기본 답 (105단계, 선택). **한 칸 안에 한 줄에 하나** `문장 번호: 대답`. 번호는 drills의 drill_id 끝 (예: `d02: Lucas Martin.`). 번호 없는 줄은 그 밖의 기본 사실 (예: `I have no allergies.`). 비우면 어느 대화 모드든 지금과 같다 |
+| variants | AI 수검자 변형 목록 (105단계, 선택). 한 칸 안에 한 줄에 하나, **영어로 AI에게 주는 지시** (예: `Say "Sorry?" once when the nurse calls you.`). 큐카드 대화에서 한 번쯤, 자유 대화에서 가끔 쓴다 |
 
 **slip (검사 결과 슬립)**
 - 검사실 간호사가 적어 회복실 간호사에게 주는 결과 종이를 화면에 보여 준다. 슬립이 있는 시나리오는 대화 전에 슬립을 먼저 보여 주고, 학생이 **말하기 시작**을 누를 때 수검자와 연결한다 (10분 안에 누르지 않으면 다시 시작).
@@ -107,6 +109,12 @@ Tutoreal의 교과서 내용은 **모두 구글 시트(Tutoreal DB)에만** 있�
 - 결과 약어 풀이는 settings 탭 `slip_legend`에 병원 약어를 모두 적는다 (`약어 뜻`을 ` · `로 구분, 예: `S 표재성 위염 · IM 장상피화생 · GU Scar 위궤양 반흔`). 챕터마다 **그 챕터 시나리오의 슬립에 나오는 약어만** 슬립 아래에 보인다. 한글로 적는 결과(치질 등)는 풀이가 필요 없다. 비우면 풀이 없이 글자만 (실전처럼).
 
 - twist 예 (영어): `You say your birth year as "two thousand and three".`, `You do not understand "glaucoma" at first.`
+
+**대화 모드와 answers·variants (105단계)**
+- 학습 단계 유도의 AI 대화는 세 모드다. 대본: 간호사가 대본을 읽고 AI는 기본 답만 (twist·변형 없음) / 큐카드: 기본 답 위주 + 변형 한 번쯤 (twist 없음) / 자유: 지금처럼 twist + 변형 가끔.
+- 대본 카드에는 그 챕터의 켜진 문장(drills)이 순서대로 간호사 대사로, answers의 같은 번호 대답이 수검자 대사로 보인다. 그래서 기본 답은 문장 번호에 맞춰 쓴다.
+- 이름·생년월일은 그 시나리오의 name·dob와 맞춘다. 의학 내용이 들어가는 답은 병원 기준을 따른다.
+- 편집기에서 `showModePrompt()`를 실행하면 answers를 채운 첫 시나리오로 세 모드의 AI 지시문을 볼 수 있다 (AI를 부르지 않음).
 - 영어 수검자 캐릭터 그림은 `img/avatars/patients/<scenario_id>.jpg`와 `manifest.json`에 따로 추가해야 보인다 (docs/avatar-prompts.md). 그림이 없으면 이름 첫 글자로 보인다.
 
 ## 5. drills 탭 (문장 연습)
