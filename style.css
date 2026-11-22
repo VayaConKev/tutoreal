@@ -479,6 +479,7 @@ textarea {
 .group-chips[hidden] { display: none; }
 .group-chip { min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--card);
   color: var(--muted); font: inherit; font-size: 14px; cursor: pointer; }
+.group-chip.done { background: var(--teal-soft); border-color: var(--teal); color: var(--teal-ink); font-weight: 700; }   /* 104단계: 지금 단계를 마친 묶음 */
 .group-chip.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 700; }
 .step-count.grouped { display: flex; justify-content: space-between; gap: 8px; text-align: left; margin: 0 0 8px; }
 .step-count.grouped b { color: var(--accent); }
@@ -726,3 +727,10 @@ button.wx-link { display: block; width: auto; margin: 10px auto 0; }
 .record-more { margin-top: 12px; border-top: 0; padding-top: 0; }
 .word-nudge { display: flex; flex-direction: column; gap: 8px; align-items: stretch; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); text-align: center; }
 .word-reset { display: block; margin: 6px auto 0; font-size: 13px; color: var(--muted); }
+
+/* 내 기록의 문장 연습 (104단계): 책 그림 배지, 완료 표시, 맨 위 요약 */
+.practice-icon { background: var(--teal-soft); color: var(--teal-ink); }
+.practice-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tag.done-tag { background: var(--teal-soft); color: var(--teal-ink); }
+.practice-sum { color: var(--teal-ink); font-size: 14px; font-weight: 700; margin: 0 0 10px; }
+.practice-sum[hidden] { display: none; }

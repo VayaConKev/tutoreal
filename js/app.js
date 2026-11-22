@@ -915,15 +915,18 @@ async function exportBackup() {
   const msg = $('#backup-msg');
   msg.textContent = '';
   const list = loadHistory();
-  if (!list.length) { msg.textContent = '아직 백업할 기록이 없어요.'; return; }
+  const practice = loadPractice();
+  const steps = loadSteps();
+  if (!list.length && !practice.length) { msg.textContent = '아직 백업할 기록이 없어요.'; return; }
   const today = new Date().toISOString().slice(0, 10);
-  const json = JSON.stringify({ type: BACKUP_TYPE, version: 1, exported_at: new Date().toISOString(), records: list });
+  // 버전 2 (104단계): 문장 연습 기록(practice)과 단계 기록(steps)을 더한다. 예전 앱은 records만 읽으므로 그대로 불러올 수 있다
+  const json = JSON.stringify({ type: BACKUP_TYPE, version: 2, exported_at: new Date().toISOString(), records: list, practice, steps });
   const name = `tutoreal-backup-${today}.json`;
   const file = new File([json], name, { type: 'application/json' });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title: 'Tutoreal 기록 백업' });
-      msg.textContent = `기록 ${list.length}개를 백업했어요. 이 파일에는 내 대화가 들어 있으니 다른 사람에게 보내지 마세요.`;
+      msg.textContent = `기록 ${list.length}개${practice.length ? `와 문장 연습 ${practice.length}개` : ''}를 백업했어요. 이 파일에는 내 대화가 들어 있으니 다른 사람에게 보내지 마세요.`;
       markBackedUp();
       return;
     } catch (err) {
@@ -940,7 +943,7 @@ async function exportBackup() {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
-  msg.textContent = `기록 ${list.length}개를 '${name}' 파일로 내려받았어요.`;
+  msg.textContent = `기록 ${list.length}개${practice.length ? `와 문장 연습 ${practice.length}개` : ''}를 '${name}' 파일로 내려받았어요.`;
   markBackedUp();
 }
 
@@ -965,6 +968,34 @@ function cleanRecord(r) {
   };
 }
 
+/** 불러온 문장 연습 기록 하나 (104단계). 모양이 맞지 않으면 null */
+function cleanPractice(p) {
+  if (!p || typeof p !== 'object' || typeof p.id !== 'string' || !p.id || !DRILL_STAGES.includes(p.stage) || Number.isNaN(Date.parse(p.at))) return null;
+  const str = (v) => (typeof v === 'string' ? v : '');
+  return { id: p.id, chapterId: str(p.chapterId), chapterOrder: Number(p.chapterOrder) || '', chapterTitle: str(p.chapterTitle),
+    course: p.course === 'ja' ? 'ja' : 'en', stage: p.stage, group: str(p.group), done: Math.max(0, Number(p.done) || 0),
+    total: Math.max(0, Number(p.total) || 0), complete: p.complete === true, at: new Date(p.at).toISOString(), sec: Math.max(0, Number(p.sec) || 0) };
+}
+/** 단계 기록 합치기: 같은 문장·단계는 더 이른 시각을 남긴다. 더한 개수를 돌려준다 */
+function mergeSteps(incoming) {
+  if (!incoming || typeof incoming !== 'object') return 0;
+  const steps = loadSteps();
+  let added = 0;
+  Object.keys(incoming).forEach((id) => {
+    const v = incoming[id];
+    if (!v || typeof v !== 'object') return;
+    DRILL_STAGES.forEach((st) => {
+      const t = Number(v[st]);
+      if (!(t > 0)) return;
+      steps[id] = steps[id] || {};
+      if (!steps[id][st]) added++;
+      if (!steps[id][st] || t < steps[id][st]) steps[id][st] = t;
+    });
+  });
+  saveSteps(steps);
+  return added;
+}
+
 async function importBackup(file) {
   const msg = $('#backup-msg');
   msg.textContent = '';
@@ -980,6 +1011,13 @@ async function importBackup(file) {
     return;
   }
   const incoming = data.records.map(cleanRecord).filter(Boolean);
+  // 문장 연습 (버전 2): 같은 회차는 겹치지 않게, 최근 것부터 300개까지
+  const inPractice = (Array.isArray(data.practice) ? data.practice : []).map(cleanPractice).filter(Boolean);
+  const havePractice = loadPractice();
+  const practiceIds = new Set(havePractice.map((p) => p.id));
+  const newPractice = inPractice.filter((p) => !practiceIds.has(p.id));
+  if (newPractice.length) savePractice(havePractice.concat(newPractice).sort((a, b) => Date.parse(b.at) - Date.parse(a.at)));
+  mergeSteps(data.steps);
   const list = loadHistory();
   const byId = new Map(list.map((e) => [e.sessionId, e]));
   let added = 0;
@@ -991,7 +1029,10 @@ async function importBackup(file) {
   });
   const merged = [...byId.values()].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   const kept = storeHistory(merged);
-  const parts = [added ? `새 기록 ${added}개를 불러왔어요.` : '새로 불러올 기록은 없었어요.'];
+  const parts = [];
+  if (added) parts.push(`새 기록 ${added}개를 불러왔어요.`);
+  if (newPractice.length) parts.push(`문장 연습 ${newPractice.length}개를 불러왔어요.`);
+  if (!parts.length) parts.push('새로 불러올 기록은 없었어요.');
   if (filled) parts.push(`피드백 ${filled}개를 채웠어요.`);
   if (incoming.length - added - filled > 0) parts.push(`이미 있던 기록 ${incoming.length - added - filled}개는 그대로 두었어요.`);
   if (data.records.length > incoming.length) parts.push(`읽을 수 없는 기록 ${data.records.length - incoming.length}개는 건너뛰었어요.`);
@@ -1263,15 +1304,64 @@ function recordMeta(entry) {
   return parts.join(' · ');
 }
 
+/* 내 기록의 문장 연습 (104단계, 스위치가 켜진 사람만 보임): 대화 기록과 날짜순으로 섞는다 */
+const PRACTICE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5V6a2 2 0 0 1 2-2h12v15H6a2 2 0 0 0-2 2"/><path d="M8 8h6M8 11.5h5"/></svg>';
+function practiceTitle(p) {
+  const no = p.chapterOrder ? `${p.chapterOrder}장` : escapeHtml(p.chapterTitle || '');
+  return `${no} · ${p.group ? `${escapeHtml(p.group)} 묶음 · ` : ''}${STAGE_NAME[p.stage] || ''}`;
+}
+function practiceMeta(p) {
+  const d = new Date(p.at);
+  const when = `${d.getMonth() + 1}월 ${d.getDate()}일 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return [when, `${p.done}문장`, `${Math.max(1, Math.round((p.sec || 0) / 60))}분`].join(' · ');
+}
+/** 맨 위 요약: 연습한 문장(어느 단계든 한 번 이상) · 마친 묶음·단계 (지금 받은 챕터 기준) */
+function practiceSummary() {
+  const steps = loadSteps();
+  const marks = loadDrillMarks();
+  let sentences = 0;
+  let units = 0;
+  chapters.forEach((c) => {
+    (c.drills || []).forEach((d) => { if (DRILL_STAGES.some((st) => stageDone(d.drill_id, st, steps, marks))) sentences++; });
+    drillGroups(c).forEach((g) => DRILL_STAGES.forEach((st) => { if (groupStageDone(c, g, st, steps, marks)) units++; }));
+  });
+  return sentences ? `문장 연습: 연습한 문장 ${sentences}개 · 마친 묶음·단계 ${units}개 (이 휴대폰)` : '';
+}
+/** 문장 연습 줄을 누르면 그 묶음·단계로 이어서 연습 */
+function openPractice(p) {
+  if (!chapters.some((c) => c.chapter_id === p.chapterId)) return;
+  openChapter(p.chapterId);
+  drill.level = DRILL_STAGES.includes(p.stage) ? p.stage : 'blank';
+  drill.group = drillGroups(currentChapter).includes(p.group) ? p.group : (drillGroups(currentChapter)[0] || '');
+  startDrill();
+}
+
 function openHistory() {
   $('#backup-msg').textContent = '';
   const list = loadHistory();
   renderBackupNudge(list);
   const box = $('#history-list');
-  if (!list.length) {
+  const practice = lpOn() ? loadPractice() : [];
+  const sum = lpOn() ? practiceSummary() : '';
+  $('#practice-sum').hidden = !sum;
+  $('#practice-sum').textContent = sum;
+  // 대화(t: 'talk', i: 대화 기록 번호)와 문장 연습(t: 'drill', p: 연습 기록)을 최근 것부터 섞는다
+  const rows = list.map((e, i) => ({ t: 'talk', i, at: Date.parse(e.at) }))
+    .concat(practice.map((p) => ({ t: 'drill', p, at: Date.parse(p.at) || 0 })))
+    .sort((a, b) => b.at - a.at);
+  if (!rows.length) {
     box.innerHTML = '<p class="state">아직 기록이 없어요. 챕터를 골라 대화를 시작해 보세요.</p>';
   } else {
-    box.innerHTML = list.map((e, i) => `
+    box.innerHTML = rows.map((r) => (r.t === 'drill' ? `
+      <button class="record practice-record" data-p="${escapeHtml(r.p.id)}">
+        <span class="avatar practice-icon" aria-hidden="true">${PRACTICE_ICON}</span>
+        <span class="record-text">
+          <span class="record-title">${practiceTitle(r.p)}</span>
+          <span class="record-meta">${escapeHtml(practiceMeta(r.p))}</span>
+        </span>
+        ${r.p.complete ? '<span class="tag done-tag">✓ 완료</span>' : ''}
+        <span class="chevron" aria-hidden="true">›</span>
+      </button>` : (() => { const e = list[r.i]; const i = r.i; return `
       <button class="record" data-i="${i}">
         ${avatarHtml(e)}
         <span class="record-text">
@@ -1280,9 +1370,10 @@ function openHistory() {
         </span>
         <span class="tag${e.shared ? '' : ' private'}">${e.shared ? '공유' : '나만'}</span>
         <span class="chevron" aria-hidden="true">›</span>
-      </button>`).join('');
+      </button>`; })())).join('');
     box.querySelectorAll('.record').forEach((btn) => {
-      btn.addEventListener('click', () => openRecord(list[Number(btn.dataset.i)]));
+      btn.addEventListener('click', () => (btn.dataset.p
+        ? openPractice(practice.find((p) => p.id === btn.dataset.p)) : openRecord(list[Number(btn.dataset.i)])));
     });
   }
   show('history');
@@ -1540,7 +1631,7 @@ function hideSwipeHint() {
 
 const DRILL_KEY = 'tutoreal.drills';
 const drill = {
-  level: 'blank', group: '', queue: [], pos: 0, revealed: false, hintShown: false, hard: 0, total: 0, spoken: null,
+  level: 'blank', group: '', queue: [], pos: 0, offset: 0, run: null, revealed: false, hintShown: false, hard: 0, total: 0, spoken: null,
   phase: 'idle', rec: null, timer: null, coach: null, coachError: ''   // 발음 코칭: idle / recording / checking
 };
 const REC_MAX_MS = 12000;   // 12초가 지나면 녹음을 자동으로 멈춘다
@@ -1568,6 +1659,63 @@ function saveDrillMark(id, hard) {
   } catch { /* 저장 못 해도 진행 */ }
 }
 
+/* 단계·묶음 기록 (104단계): 이 휴대폰에만. 스위치가 꺼진 학생도 저장한다 (켜면 그동안 한 연습이 바로 진행으로 이어지게).
+   tutoreal.steps    { drill_id: { read, blank, korean } } — 그 단계를 처음 마친 시각(ms). ✓와 이어서 하기에 쓴다
+   tutoreal.practice [{ id, chapterId, chapterOrder, chapterTitle, course, stage, group, done, total, complete, at, sec }]
+                     — 문장 연습 한 번마다 한 줄 (최근 300개). 문장을 마칠 때마다 고쳐 써서 중간에 나가도 남는다
+   예전 tutoreal.drills 표시는 '빈칸 단계를 했음'으로 읽는다 (intent 결정). */
+const STEPS_KEY = 'tutoreal.steps';
+const PRACTICE_KEY = 'tutoreal.practice';
+const PRACTICE_MAX = 300;
+function loadSteps() {
+  try { const v = JSON.parse(localStorage.getItem(STEPS_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+}
+function saveSteps(steps) {
+  try { localStorage.setItem(STEPS_KEY, JSON.stringify(steps)); } catch { /* 저장 못 해도 진행 */ }
+}
+function loadPractice() {
+  try { const v = JSON.parse(localStorage.getItem(PRACTICE_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+function savePractice(list) {
+  try { localStorage.setItem(PRACTICE_KEY, JSON.stringify(list.slice(0, PRACTICE_MAX))); } catch { /* 저장 못 해도 진행 */ }
+}
+/** 이 문장의 이 단계를 마쳤나 (예전 문장 연습 표시는 빈칸 단계) */
+function stageDone(id, stage, steps, marks) {
+  return !!((steps[id] || {})[stage] || (stage === 'blank' && marks[id]));
+}
+const groupDrills = (c, g) => ((c && c.drills) || []).filter((d) => (d.group || '') === g);
+/** 그 묶음의 그 단계를 모두 마쳤나 */
+function groupStageDone(c, g, stage, steps = loadSteps(), marks = loadDrillMarks()) {
+  const list = groupDrills(c, g);
+  return list.length > 0 && list.every((d) => stageDone(d.drill_id, stage, steps, marks));
+}
+/** 모든 묶음에서 그 단계를 마쳤나 (단계 탭의 ✓) */
+function chapterStageDone(c, stage, steps = loadSteps(), marks = loadDrillMarks()) {
+  const list = (c && c.drills) || [];
+  return list.length > 0 && list.every((d) => stageDone(d.drill_id, stage, steps, marks));
+}
+/** 문장 하나를 마쳤다: 단계 기록 + 이번 회차의 연습 기록을 고쳐 쓴다 */
+function markDrillDone(d) {
+  const steps = loadSteps();
+  steps[d.drill_id] = steps[d.drill_id] || {};
+  if (!steps[d.drill_id][drill.level]) steps[d.drill_id][drill.level] = Date.now();
+  saveSteps(steps);
+  const c = currentChapter;
+  const now = Date.now();
+  if (!drill.run) {
+    drill.run = { id: `p${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`, startedAt: now, done: 0 };
+  }
+  drill.run.done++;
+  const entry = {
+    id: drill.run.id, chapterId: c.chapter_id, chapterOrder: c.order, chapterTitle: c.title, course: c.course || me.course,
+    stage: drill.level, group: drill.group, done: drill.run.done, total: drill.total,
+    complete: groupStageDone(c, drill.group, drill.level, steps),
+    at: new Date(now).toISOString(), sec: Math.min(3600, Math.round((now - drill.run.startedAt) / 1000))
+  };
+  if (!lpOn()) { entry.group = ''; entry.complete = chapterStageDone(c, drill.level, steps); }   // 꺼진 사람은 묶음 없이 챕터 전체
+  savePractice([entry].concat(loadPractice().filter((p) => p.id !== entry.id)));
+}
+
 /** 'Could you tell me your [full name], please?' → [{ text }, { blank: 'full name' }, { text }] */
 function parseSentence(s) {
   return s.split(/\[([^\]]+)\]/).map((part, i) => (i % 2 ? { blank: part } : { text: part })).filter((p) => p.blank || p.text);
@@ -1577,7 +1725,7 @@ const plainSentence = (s) => s.replace(/\[([^\]]+)\]/g, '$1');
 /* 학습 단계 유도 (103단계): 문장 연습 3단계와 묶음. 스위치가 꺼진 사람은 예전처럼 빈칸·통째로 2단계, 묶음 없이 전체 */
 const lpOn = () => !!learningPath.on;
 const DRILL_STAGES = ['read', 'blank', 'korean'];
-const STAGE_TAB = { read: '1 따라 읽기', blank: '2 빈칸', korean: '3 통째로' };   // UI 예시대로 한 줄 짧은 이름
+const STAGE_TAB = { read: '따라 읽기', blank: '빈칸', korean: '통째로' };   // UI 예시대로 한 줄 짧은 이름. 앞에 번호, 마친 단계는 ✓ (104단계)
 const STAGE_NAME = { read: '듣고 따라 읽기', blank: '빈칸 채우기', korean: '통째로 말하기' };
 const OLD_TAB = { blank: '1단계 빈칸 채우기', korean: '2단계 통째로 말하기' };
 const MIC_SVG = '<svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
@@ -1590,11 +1738,19 @@ function drillGroups(c) {
 // 묶음 이름이 빈 문장: 모두 비었으면 묶음 하나(칩 없음), 일부만 비었으면 '기타' 묶음
 const groupLabel = (g) => g || '기타';
 
-/** 챕터 화면의 '문장 연습' 버튼: 스위치가 켜졌으면 1단계 따라 읽기, 첫 묶음부터 (104단계부터는 안 끝난 곳부터) */
+/** 챕터 화면의 '문장 연습' 버튼: 스위치가 켜졌으면 안 끝난 곳부터 (묶음마다 1→2→3, 그다음 묶음). 다 했으면 1단계 첫 묶음 (104단계) */
 function openDrill() {
   if (lpOn()) {
+    const groups = drillGroups(currentChapter);
+    const steps = loadSteps();
+    const marks = loadDrillMarks();
     drill.level = 'read';
-    drill.group = drillGroups(currentChapter)[0] || '';
+    drill.group = groups[0] || '';
+    outer: for (const g of groups) {
+      for (const st of DRILL_STAGES) {
+        if (!groupStageDone(currentChapter, g, st, steps, marks)) { drill.level = st; drill.group = g; break outer; }
+      }
+    }
   } else {
     if (drill.level === 'read') drill.level = 'blank';
     drill.group = '';
@@ -1605,14 +1761,20 @@ function openDrill() {
 function startDrill() {
   const marks = loadDrillMarks();
   const grouped = lpOn();
-  const list = (currentChapter.drills || []).filter((d) => !grouped || (d.group || '') === drill.group);
+  const all = (currentChapter.drills || []).filter((d) => !grouped || (d.group || '') === drill.group);
+  // 켜졌으면 그 단계에서 아직 안 한 문장부터 (104단계). 다 한 묶음은 처음부터 전부
+  const steps = loadSteps();
+  const undone = grouped ? all.filter((d) => !stageDone(d.drill_id, drill.level, steps, marks)) : all;
+  const list = undone.length ? undone : all.slice();
   // 지난번에 '어려웠어요'였던 문장을 먼저 (나머지는 시트 순서). 따라 읽기는 시트 순서 그대로
   if (drill.level !== 'read') list.sort((a, b) => Number(!!(marks[b.drill_id] || {}).hard) - Number(!!(marks[a.drill_id] || {}).hard));
   drill.queue = list.map((d) => ({ ...d, again: false }));
   drill.spoken = null;
+  drill.run = null;   // 새 회차: 첫 문장을 마치면 연습 기록 한 줄이 생긴다
   drill.pos = 0;
+  drill.offset = all.length - list.length;   // 이미 마친 문장 수 (진행 줄 'n / 전체'에 더한다)
   drill.hard = 0;
-  drill.total = list.length;
+  drill.total = all.length;
   drill.revealed = false;   // 지난번에 정답·힌트를 본 채로 나갔어도 첫 문장은 처음 상태로 (97단계)
   drill.hintShown = false;
   drill.coach = null;
@@ -1637,8 +1799,14 @@ function renderDrillGroups(lp) {
   const groups = lp ? drillGroups(currentChapter) : [];
   box.hidden = groups.length < 2;
   if (box.hidden) { box.innerHTML = ''; return; }
-  box.innerHTML = groups.map((g) => `<button type="button" class="group-chip${g === drill.group ? ' on' : ''}" data-group="${escapeHtml(g)}"
-    aria-pressed="${g === drill.group}">${escapeHtml(groupLabel(g))}</button>`).join('');
+  const steps = loadSteps();
+  const marks = loadDrillMarks();
+  // 지금 단계에서 그 묶음을 마쳤으면 ✓ (UI 예시: 청록)
+  box.innerHTML = groups.map((g) => {
+    const done = groupStageDone(currentChapter, g, drill.level, steps, marks);
+    return `<button type="button" class="group-chip${g === drill.group ? ' on' : ''}${done ? ' done' : ''}" data-group="${escapeHtml(g)}"
+    aria-pressed="${g === drill.group}">${done ? '✓ ' : ''}${escapeHtml(groupLabel(g))}</button>`;
+  }).join('');
   box.querySelectorAll('.group-chip').forEach((b) => b.addEventListener('click', () => {
     if (b.dataset.group === drill.group) return;
     if (window.speechSynthesis) speechSynthesis.cancel();
@@ -1651,10 +1819,14 @@ function renderDrill() {
   const lp = lpOn();
   if (!lp && drill.level === 'read') drill.level = 'blank';
   // 단계 탭: 스위치가 켜졌으면 3개(UI 예시의 짧은 이름), 꺼졌으면 예전 2개. 선생님 요약의 과정 버튼(.level)은 건드리지 않는다
+  const steps = loadSteps();
+  const marks = loadDrillMarks();
   document.querySelectorAll('#drill-levels .level').forEach((b) => {
     const lv = b.dataset.level;
     b.hidden = !lp && lv === 'read';
-    b.textContent = lp ? STAGE_TAB[lv] : (OLD_TAB[lv] || '');
+    const done = lp && chapterStageDone(currentChapter, lv, steps, marks);
+    b.textContent = lp ? `${done ? '✓' : DRILL_STAGES.indexOf(lv) + 1} ${STAGE_TAB[lv]}` : (OLD_TAB[lv] || '');
+    b.classList.toggle('done', done);
     b.classList.toggle('on', lv === drill.level);
     b.setAttribute('aria-pressed', String(lv === drill.level));
   });
@@ -1704,11 +1876,12 @@ function renderDrill() {
   const d = drill.queue[drill.pos];
   const parts = parseSentence(d.sentence);
   const firstRound = drill.queue.filter((x) => !x.again).length;
-  const countNow = d.again ? '한 번 더' : `${Math.min(drill.pos + 1, firstRound)} / ${firstRound}`;
+  const countNow = d.again ? '한 번 더' : lp ? `${Math.min(drill.offset + drill.pos + 1, drill.total)} / ${drill.total}`
+    : `${Math.min(drill.pos + 1, firstRound)} / ${firstRound}`;
   // 켜졌으면 '과거력 묶음 · 3 / 7' (UI 예시: 왼쪽 묶음 이름, 오른쪽 번호)
   if (lp) $('#drill-count').innerHTML = `<span>${escapeHtml(groupName)}</span><b>${countNow}</b>`;
   else $('#drill-count').textContent = countNow;
-  setDrillProgress(d.again ? 1 : Math.min(drill.pos + 1, firstRound) / firstRound);
+  setDrillProgress(d.again ? 1 : lp ? Math.min(drill.offset + drill.pos + 1, drill.total) / drill.total : Math.min(drill.pos + 1, firstRound) / firstRound);
 
   let sentence;
   if (drill.revealed || drill.level === 'read') {   // 따라 읽기: 문장 전체, 힌트 단어는 정답처럼 강조
@@ -1761,7 +1934,7 @@ function renderDrill() {
   if (drill.level === 'read') {
     actions.innerHTML = `<button class="primary" id="read-next">따라 읽었어요</button>
       <button class="secondary" id="drill-listen">${SPEAKER_ICON}다시 듣기</button>`;
-    $('#read-next').addEventListener('click', () => { if (window.speechSynthesis) speechSynthesis.cancel(); drill.pos++; renderDrill(); });
+    $('#read-next').addEventListener('click', () => { if (window.speechSynthesis) speechSynthesis.cancel(); markDrillDone(d); drill.pos++; renderDrill(); });
     $('#drill-listen').addEventListener('click', () => speak(plainSentence(d.sentence)));
     if (drill.spoken !== d) { drill.spoken = d; speak(plainSentence(d.sentence)); }
     return;
@@ -1850,6 +2023,7 @@ function nextDrill(hard) {
   const d = drill.queue[drill.pos];
   if (!d.again) {
     saveDrillMark(d.drill_id, hard);
+    markDrillDone(d);   // 단계·묶음 기록 (104단계)
     if (hard) { drill.hard++; drill.queue.push({ ...d, again: true }); }   // 어려웠던 문장은 끝에 한 번 더
   }
   drill.pos++;
