@@ -149,6 +149,7 @@ function logout() {
   $('#tab-teacher').hidden = true;
   dailyWord = null;   // 다른 과정(일본어) 학생이 같은 휴대폰으로 들어올 수 있다
   renderWordCard();
+  $('#continue-box').innerHTML = '';   // 이어서 하기 카드도 다음 사람의 챕터를 받은 뒤 다시 그린다 (109단계)
   $('#login-code').value = '';
   $('#login-msg').textContent = '';
   show('login');
@@ -198,6 +199,13 @@ function dayLabel(ms) {
 }
 /** 💬 대화 2번 · 📝 문장 12/36 · 10월 23일. 한 번도 안 한 챕터는 빈 글 */
 function progressHtml(p) {
+  if (p.stageTotal) {   // 학습 단계 유도가 켜진 사람 (109단계)
+    if (!p.talks && !p.stages && !p.last) return '';
+    const parts = [`📝 단계 ${p.stages} / ${p.stageTotal}`];
+    if (p.talks) parts.push(`💬 대화 ${p.talks}번`);
+    if (p.last) parts.push(dayLabel(p.last));
+    return `<span class="chapter-progress">${parts.map((x) => `<span>${escapeHtml(x)}</span>`).join('')}</span>`;
+  }
   if (!p.talks && !p.drillsDone) return '';
   const parts = [];
   if (p.talks) parts.push(`💬 대화 ${p.talks}번`);
@@ -208,6 +216,7 @@ function progressHtml(p) {
 
 function renderList() {
   const box = $('#chapter-list');
+  renderContinue();
   if (!chapters.length) {
     box.innerHTML = '<p class="state">아직 공개된 챕터가 없어요.</p>';
     return;
@@ -232,8 +241,13 @@ function renderList() {
   const many = new Set(list.map((c) => c.course)).size > 1;
   const history = loadHistory();
   const marks = loadDrillMarks();
+  const lp = lpOn();
+  const practice = lp ? loadPractice() : [];
+  const steps = lp ? loadSteps() : {};
   box.innerHTML = list.map((c, i) => {
     const p = chapterProgress(c, history, marks);
+    // 켜졌으면 '📝 단계 2 / 6 · 💬 대화 2번 · 오늘' (109단계): 문장 수 대신 6단계 중 마친 단계, 날짜는 새 연습 기록까지
+    if (lp) { const rows = chapterPath(c).rows; p.stages = rows.filter((r) => r.done).length; p.stageTotal = rows.length; p.last = lastPracticeAt(c, history, practice, steps, marks); }
     // 완료한 챕터는 번호 대신 ✓ (화면 읽기에는 'N장 완료')
     const no = p.complete
       ? `<span class="chapter-no done"><span aria-hidden="true">✓</span><span class="visually-hidden">${escapeHtml(c.order)}장 완료</span></span>`
@@ -357,6 +371,88 @@ function chapterPath(c) {
     next = m ? { stage: m, min: TALK_MINUTES } : { stage: 'free', min: TALK_MINUTES, again: true };
   }
   return { rows, next, hasDrills: groups.length > 0, many };
+}
+
+/* ── 홈 '이어서 하기' 카드 (109단계, UI 예시 ①, learningPath.on인 사람만) ──
+   챕터: 이 휴대폰에서 가장 최근에 연습한 챕터. 6단계를 모두 마쳤으면 같은 과정·난이도의 다음 장 (없으면 그 챕터에서 자유 대화 한 번 더).
+   기록이 없으면 Beginner 첫 장. 단계·묶음은 챕터 화면 '다음 단계' 버튼과 같은 계산 (chapterPath) */
+const CONTINUE_SEEN_KEY = 'tutoreal.continueSeen';   // '새 기능' 표시: 카드를 한 번 누르면 이 휴대폰에서는 숨긴다
+const toMs = (x) => (typeof x === 'number' ? x : Date.parse(x)) || 0;
+
+/** 이 챕터를 마지막으로 연습한 때 (대화 기록, 문장 연습 기록, 단계 기록, 예전 문장 연습 표시). 없으면 0 */
+function lastPracticeAt(c, history, practice, steps, marks) {
+  const times = history.filter((e) => e.chapterId === c.chapter_id).map((e) => toMs(e.at))
+    .concat(practice.filter((p) => p.chapterId === c.chapter_id).map((p) => toMs(p.at)));
+  (c.drills || []).forEach((d) => {
+    const st = steps[d.drill_id] || {};
+    DRILL_STAGES.forEach((x) => { if (st[x]) times.push(toMs(st[x])); });
+    if (marks[d.drill_id]) times.push(toMs(marks[d.drill_id].at));
+  });
+  return Math.max(0, ...times.filter((t) => t > 0));
+}
+
+/** 이어서 할 곳 { c, path, first } 또는 null (챕터가 없음) */
+function continueTarget() {
+  const history = loadHistory();
+  const practice = loadPractice();
+  const steps = loadSteps();
+  const marks = loadDrillMarks();
+  let c = null;
+  let at = 0;
+  chapters.forEach((x) => { const t = lastPracticeAt(x, history, practice, steps, marks); if (t > at) { c = x; at = t; } });
+  if (!c) {
+    const first = chapters.find((x) => levelOf(x) === 'beginner') || chapters[0];
+    return first ? { c: first, path: chapterPath(first), first: true } : null;
+  }
+  let path = chapterPath(c);
+  if (path.next.again) {
+    // 서버가 과정별·순서대로 보낸다
+    const same = chapters.filter((x) => x.course === c.course && levelOf(x) === levelOf(c));
+    const nx = same[same.indexOf(c) + 1];
+    if (nx) { c = nx; path = chapterPath(nx); }
+  }
+  return { c, path, first: false };
+}
+
+function renderContinue() {
+  const box = $('#continue-box');
+  $('#greet-sub').textContent = lpOn() ? '오늘도 한 묶음만 해 봐요.' : '오늘도 한 문장씩 연습해 봐요.';
+  const t = lpOn() && chapters.length ? continueTarget() : null;
+  if (!t) { box.innerHTML = ''; return; }
+  const { c, path, first } = t;
+  const { next, rows, many } = path;
+  const name = PATH_INFO[next.stage].name;
+  const no = (rows.find((r) => r.stage === next.stage) || {}).no || 1;
+  const drillStage = DRILL_STAGES.includes(next.stage);
+  let sub;
+  let ratio;
+  if (drillStage) {
+    const list = groupDrills(c, next.group);
+    const steps = loadSteps();
+    const marks = loadDrillMarks();
+    const done = list.filter((d) => stageDone(d.drill_id, next.stage, steps, marks)).length;
+    sub = `${no}단계 ${name} · ${done} / ${list.length} 문장`;
+    ratio = list.length ? done / list.length : 0;
+  } else {
+    sub = `${no}단계 ${name}${next.again ? ' · 한 번 더' : ''}`;
+    ratio = rows.filter((r) => r.done).length / rows.length;
+  }
+  if (first) { sub = `${no}단계 ${name}부터 시작해요`; ratio = 0; }
+  let seen = false;
+  try { seen = localStorage.getItem(CONTINUE_SEEN_KEY) === '1'; } catch { /* 저장 못 하면 늘 보임 */ }
+  const pct = Math.round(ratio * 100);
+  box.innerHTML = `<section class="continue-card" aria-labelledby="continue-title">
+      <div class="continue-top"><span class="continue-label">이어서 하기</span>${seen ? '' : '<span class="continue-new">새 기능</span>'}</div>
+      <p class="continue-title" id="continue-title">${escapeHtml(`${c.order}장 · ${drillStage && many && !first ? `${groupLabel(next.group)} 묶음` : c.title}`)}</p>
+      <p class="continue-sub">${escapeHtml(sub)}</p>
+      <div class="continue-bar" role="progressbar" aria-label="진행" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
+      <button type="button" class="continue-go" id="continue-go">${first ? `${escapeHtml(c.order)}장 시작하기` : '이어서 하기'} · 약 ${next.min}분</button>
+    </section>`;
+  $('#continue-go').addEventListener('click', () => {
+    try { localStorage.setItem(CONTINUE_SEEN_KEY, '1'); } catch { /* 저장 못 해도 진행 */ }
+    openChapter(c.chapter_id);   // 돌아오기를 누르면 그 챕터 화면
+    goPathStage(next.stage, next.group);
+  });
 }
 
 /** 단계로 들어가기: 문장 단계는 그 단계에서 아직 안 끝난 첫 묶음부터, 대화 단계는 그 모드가 고른 시작 전 화면 */

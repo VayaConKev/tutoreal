@@ -595,6 +595,24 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 /* 피드백을 못 받았을 때의 안내 (40단계) */
 .fb-later { text-align: center; margin: 12px 0 0; }
 
+/* 홈 '이어서 하기' 카드 (109단계, UI 예시 ①): 주 색 카드, 흰(다크는 어두운) 글자, 막대, 카드 색 버튼 */
+.continue-card { background: var(--accent); color: var(--on-accent); border-radius: 20px; padding: 18px; margin: 0 0 14px;
+  display: flex; flex-direction: column; gap: 8px; }
+.continue-card p { margin: 0; }
+.continue-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.continue-label { font-size: 13px; font-weight: 700; opacity: 0.85; }
+.continue-new { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 3px 10px; background: var(--teal-soft); color: var(--teal-ink); }
+.continue-title { font-size: 20px; font-weight: 800; line-height: 1.3; }
+.continue-sub { font-size: 14px; opacity: 0.88; }
+.continue-bar { height: 6px; border-radius: 999px; overflow: hidden; background: rgba(255, 255, 255, 0.22); }
+.continue-bar i { display: block; height: 100%; background: var(--continue-fill, var(--teal)); border-radius: 999px; }
+.continue-go { margin-top: 4px; min-height: 48px; border: 0; border-radius: 14px; background: var(--card); color: var(--accent);
+  font: inherit; font-size: 16px; font-weight: 800; cursor: pointer; }
+.continue-go:active { transform: scale(0.99); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .continue-bar { background: rgba(4, 34, 63, 0.2); } :root:not([data-theme="light"]) { --continue-fill: var(--on-accent); } }
+:root[data-theme="dark"] .continue-bar { background: rgba(4, 34, 63, 0.2); }
+:root[data-theme="dark"] { --continue-fill: var(--on-accent); }
+
 /* 미리 보기 챕터 표시 (43단계): 선생님·테스터에게만 보이는 챕터 */
 .preview-tag { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 
