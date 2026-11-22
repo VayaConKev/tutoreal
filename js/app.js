@@ -87,6 +87,7 @@ function show(name) {
   document.body.classList.toggle('no-brand', name === 'talk' || name === 'word');
   document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   if (name === 'list' && chapters.length) renderList();   // 대화·문장 연습을 하고 돌아오면 진행 상황(79단계)을 새로 센다
+  if (name === 'detail') renderPath();   // 학습 단계 목록도 돌아올 때마다 새로 센다 (107단계)
   window.scrollTo(0, 0);
 }
 
@@ -284,7 +285,125 @@ function openChapter(id) {
   // 화면 아래 버튼 줄(77단계)에서 반 칸만 쓰므로 짧게. 읽기 기능에는 '문장 30개'까지
   $('#drill-open').textContent = `문장 연습 · ${n}`;
   $('#drill-open').setAttribute('aria-label', `문장 연습, 문장 ${n}개`);
-  show('detail');
+  show('detail');   // 학습 단계 목록은 show('detail')에서 그린다 (107단계)
+}
+
+/* ── 학습 단계 6개 (107단계, learningPath.on인 사람만): 문장 연습 1~3 · AI 수검자와 대화 4~6 ──
+   완료: 1~3 모든 묶음의 문장을 그 단계에서 마침 (104단계 기록) / 4·5 그 모드로 대화를 끝까지 하고 저장 (106단계 기록)
+         / 6 자유: 지금 챕터 완료 기준 (체크리스트 꼭 할 항목을 한 대화에서 모두, 없으면 대화 1번). 모드 기록이 없는 예전 대화도 자유
+   다음 단계: 묶음마다 1→2→3, 그다음 묶음. 모든 묶음 뒤 4 → 5 → 6. 약 N분: 남은 문장 × 20초 올림 (최소 1분), 대화는 약 3분 */
+const PATH_INFO = {
+  read: { name: '듣고 따라 읽기', desc: '휴대폰이 읽어 주는 문장을 따라 읽어요' },
+  blank: { name: '빈칸 채우기', desc: '틀을 보며 핵심 단어를 떠올려요' },
+  korean: { name: '통째로 말하기', desc: '한국어만 보고 말해요' },
+  script: { name: '대본 보며 대화', desc: '화면의 대사를 읽기만 해도 돼요' },
+  cue: { name: '큐카드 보며 대화', desc: '한국어 키워드만 보고 말해요' },
+  free: { name: '자유 대화', desc: '힌트 버튼만 있어요' }
+};
+const TALK_MINUTES = 3;
+const drillMinutes = (n) => Math.max(1, Math.ceil(n * 20 / 60));
+
+/** 챕터의 단계 6개 상태와 다음 단계 { rows: [{ stage, no, done, sub, group }], next: { stage, group, min, again } } */
+function chapterPath(c) {
+  const steps = loadSteps();
+  const marks = loadDrillMarks();
+  const history = loadHistory().filter((e) => e.chapterId === c.chapter_id);
+  const groups = (c.drills || []).length ? drillGroups(c) : [];
+  const many = groups.length > 1;
+  const rows = [];
+  let next = null;
+  // 다음 단계: 묶음마다 1→2→3
+  for (const g of groups) {
+    const st = DRILL_STAGES.find((x) => !groupStageDone(c, g, x, steps, marks));
+    if (st) {
+      const left = groupDrills(c, g).filter((d) => !stageDone(d.drill_id, st, steps, marks)).length;
+      next = { stage: st, group: g, min: drillMinutes(left) };
+      break;
+    }
+  }
+  if (groups.length) {
+    DRILL_STAGES.forEach((st, i) => {
+      const doneGroups = groups.filter((g) => groupStageDone(c, g, st, steps, marks));
+      const cur = groups.find((g) => !doneGroups.includes(g));
+      const done = cur === undefined;
+      let sub = PATH_INFO[st].desc;
+      if (done) sub = many ? '모든 묶음 완료' : '완료';
+      else {
+        const curList = groupDrills(c, cur);
+        const curDone = curList.filter((d) => stageDone(d.drill_id, st, steps, marks)).length;
+        if (doneGroups.length || curDone) {
+          sub = [doneGroups.length ? `${doneGroups.map(groupLabel).join('·')} 묶음 완료` : '',
+            curDone ? `${many ? `${groupLabel(cur)} ` : ''}${curDone} / ${curList.length}` : ''].filter(Boolean).join(' · ');
+        }
+      }
+      rows.push({ stage: st, no: i + 1, done, sub, group: done ? groups[0] : cur });
+    });
+  }
+  // 대화 4~6
+  const required = (c.checklist || []).filter((x) => !x.optional);
+  const allDone = (e) => {
+    const r = ((e.feedback && e.feedback.checklist) || []).filter((x) => !x.optional);
+    return r.length > 0 && r.every((x) => x.done);
+  };
+  TALK_MODES.forEach((m, i) => {
+    const talks = history.filter((e) => (m === 'free' ? !e.mode || e.mode === 'free' : e.mode === m));
+    const done = m === 'free' ? (required.length ? talks.some(allDone) : talks.length > 0) : talks.length > 0;
+    let sub = PATH_INFO[m].desc;
+    if (talks.length) sub = `대화 ${talks.length}번${!done ? ' · 체크리스트를 모두 하면 완료' : ''}`;
+    rows.push({ stage: m, no: i + 4, done, sub });
+  });
+  if (!next) {
+    const m = TALK_MODES.find((x) => !rows.find((r) => r.stage === x).done);
+    next = m ? { stage: m, min: TALK_MINUTES } : { stage: 'free', min: TALK_MINUTES, again: true };
+  }
+  return { rows, next, hasDrills: groups.length > 0, many };
+}
+
+/** 단계로 들어가기: 문장 단계는 그 단계에서 아직 안 끝난 첫 묶음부터, 대화 단계는 그 모드가 고른 시작 전 화면 */
+function goPathStage(stage, group) {
+  if (DRILL_STAGES.includes(stage)) {
+    drill.level = stage;
+    drill.group = group !== undefined ? group : (drillGroups(currentChapter)[0] || '');
+    startDrill();
+  } else {
+    openTalk(stage);
+  }
+}
+
+/** 챕터 화면: 켜졌으면 단계 카드·다음 단계 버튼·접힌 챕터 내용, 꺼졌으면 예전 두 버튼 */
+function renderPath() {
+  const c = currentChapter;
+  const lp = lpOn() && !!c;
+  $('#view-detail').classList.toggle('lp', lp);
+  $('#path-card').hidden = !lp;
+  $('#path-next').hidden = !lp;
+  $('#talk-start').hidden = lp;
+  if (!lp) {
+    $('#detail-more').open = true;
+    $('#drill-open').hidden = !(c && (c.drills || []).length);
+    return;
+  }
+  $('#drill-open').hidden = true;
+  const { rows, next, hasDrills, many } = chapterPath(c);
+  const row = (r) => {
+    const now = r.stage === next.stage && !next.again;
+    return `<button type="button" class="path-row${now ? ' now' : ''}${r.done ? ' done' : ''}" data-stage="${r.stage}"${r.group !== undefined ? ` data-group="${escapeHtml(r.group)}"` : ''}>
+      <span class="path-dot" aria-hidden="true">${r.done ? '✓' : r.no}</span>
+      <span class="path-text"><span class="path-name">${PATH_INFO[r.stage].name}</span><span class="path-sub">${escapeHtml(r.sub)}</span></span>
+      <span class="visually-hidden">${r.done ? '완료' : now ? '지금 할 단계' : ''}</span>
+    </button>`;
+  };
+  $('#path-card').innerHTML = `${hasDrills ? `<p class="path-label">문장 연습</p>${rows.filter((r) => DRILL_STAGES.includes(r.stage)).map(row).join('')}<hr class="path-hr">` : ''}
+    <p class="path-label">AI 수검자와 대화</p>${rows.filter((r) => TALK_MODES.includes(r.stage)).map(row).join('')}`;
+  $('#path-card').querySelectorAll('.path-row').forEach((b) => b.addEventListener('click', () => goPathStage(b.dataset.stage, b.dataset.group)));
+  // 다음 단계 버튼 (UI 예시): 위 '다음 단계 · 약 N분', 아래 '단계 이름 · 묶음 이름'
+  const where = DRILL_STAGES.includes(next.stage) && many ? ` · ${groupLabel(next.group)} 묶음` : '';
+  const short = { read: '따라 읽기', blank: '빈칸 채우기', korean: '통째로 말하기', script: '대본 보며 대화', cue: '큐카드 보며 대화', free: '자유 대화' }[next.stage];
+  $('#path-next').innerHTML = `<span class="path-next-top">${next.again ? '모든 단계 완료 · 약' : '다음 단계 · 약'} ${next.min}분</span>
+    <span class="path-next-main">${short}${where}${next.again ? ' · 한 번 더' : ''}</span>`;
+  $('#path-next').onclick = () => goPathStage(next.stage, next.group);
+  // 처음 열 때는 챕터 내용을 접어 둔다 (학생이 펼쳐 둔 것은 그 챕터를 보는 동안 유지)
+  if ($('#detail-more').dataset.chapter !== c.chapter_id) { $('#detail-more').open = false; $('#detail-more').dataset.chapter = c.chapter_id; }
 }
 
 /* ── 불러오는 동안의 자리 표시 (59단계): 글자 대신, 곧 보일 카드 모양의 회색 틀에 빛이 지나간다 ──
@@ -477,10 +596,11 @@ const talkUi = { mode: 'script', view: 'script', active: false, started: false, 
 const talkModeDone = (chapterId, mode) => loadHistory().some((e) => e.chapterId === chapterId && e.mode === mode);
 
 /** 챕터의 '대화 시작'·문장 연습의 '대화 시작하기'·기록의 '이어서 연습하기': 켜졌으면 모드를 고르는 시작 전 화면, 아니면 예전처럼 바로 */
-function openTalk() {
+function openTalk(pick) {
   if (!lpOn()) return withMicIntro(() => beginTalk());
   if (live || !currentChapter) return;
-  talkUi.mode = TALK_MODES.find((m) => !talkModeDone(currentChapter.chapter_id, m)) || 'script';   // 아직 안 해 본 가장 쉬운 모드
+  // 챕터의 단계 줄에서 고른 모드, 아니면 아직 안 해 본 가장 쉬운 모드 (107단계)
+  talkUi.mode = TALK_MODES.includes(pick) ? pick : (TALK_MODES.find((m) => !talkModeDone(currentChapter.chapter_id, m)) || 'script');
   talkUi.view = talkUi.mode;
   talkUi.active = false;
   talkUi.started = false;

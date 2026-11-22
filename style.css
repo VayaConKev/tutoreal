@@ -761,3 +761,29 @@ button.wx-link { display: block; width: auto; margin: 10px auto 0; }
 .talk-script-line .who { font-size: 12px; color: var(--muted); padding-top: 2px; }
 .talk-script-line .ans { color: var(--muted); }
 .talk-script-line.now { border: 2px solid var(--accent); }
+
+/* 챕터 화면 학습 단계 6개 (107단계, UI 예시 ②): 단계 카드, 동그라미, 지금 단계 남색, 아래 '다음 단계' 두 줄 버튼, 챕터 내용 접기 */
+#view-detail:not(.lp) .detail-more > summary { display: none; }
+.detail-more > summary { cursor: pointer; color: var(--accent); font-weight: 700; font-size: 15px; min-height: 44px; display: flex; align-items: center; list-style: none; }
+.detail-more > summary::-webkit-details-marker { display: none; }
+.detail-more > summary::after { content: '▾'; margin-left: 6px; }
+.detail-more[open] > summary::after { content: '▴'; }
+#view-detail.lp .detail-mic { display: none; }
+.path-card { padding: 14px 16px; }
+.path-card[hidden] { display: none; }
+.path-label { font-size: 13px; font-weight: 700; color: var(--muted); margin: 0 0 2px; }
+.path-hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0 10px; }
+.path-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 6px 0; background: none; border: 0;
+  font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.path-dot { flex: none; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 800; background: var(--card); color: var(--muted); border: 1.5px solid var(--line); }
+.path-row.done .path-dot { background: var(--teal-ink); border-color: var(--teal-ink); color: var(--card); }
+.path-row.now .path-dot { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.path-text { display: flex; flex-direction: column; min-width: 0; }
+.path-name { font-size: 15px; }
+.path-row.now .path-name { color: var(--accent); font-weight: 800; }
+.path-sub { font-size: 12px; color: var(--muted); }
+.path-next { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 8px 14px; min-height: 56px; }
+.path-next[hidden] { display: none; }
+.path-next-top { font-size: 12px; font-weight: 400; opacity: 1; color: var(--on-accent); }
+.path-next-main { font-size: 17px; font-weight: 800; }
