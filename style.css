@@ -472,6 +472,20 @@ textarea {
 .soon-title { font-size: 18px; font-weight: 700; margin: 0 0 6px; }
 .soon-sub { color: var(--muted); margin: 0; }
 .level-desc { color: var(--muted); font-size: 14px; margin: -2px 0 10px; }
+/* 학습 단계 유도 (103단계, UI 예시): 단계 탭 한 줄, 묶음 칩, '묶음 이름 · n / m'과 굵은 막대, 버튼 속 그림 */
+#drill-levels .level { min-height: 48px; padding: 8px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#drill-levels .level[hidden] { display: none; }
+.group-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+.group-chips[hidden] { display: none; }
+.group-chip { min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--card);
+  color: var(--muted); font: inherit; font-size: 14px; cursor: pointer; }
+.group-chip.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 700; }
+.step-count.grouped { display: flex; justify-content: space-between; gap: 8px; text-align: left; margin: 0 0 8px; }
+.step-count.grouped b { color: var(--accent); }
+.drill-progress.thick { height: 8px; border-radius: 4px; }
+.drill-progress.thick i { border-radius: 4px; }
+.btn-icon, .drill-say .say-icon, .drill-actions .say-icon { width: 18px; height: 18px; vertical-align: -3px; margin-right: 6px;
+  fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .drill-card { min-height: 220px; }
 .situation-label { color: var(--teal-ink); font-size: 13px; font-weight: 700; margin: 0 0 2px; }
 .situation { color: var(--text); font-size: 19px; font-weight: 700; line-height: 1.45; margin: 0 0 14px; }

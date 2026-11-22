@@ -1037,7 +1037,7 @@ async function finishReview(next) {
     await saveReview(d);
     review.data = null;
     if (next === 'word' && dailyWord) openWord();
-    else if (next === 'drill') { openChapter(d.chapter.chapter_id); startDrill(); }
+    else if (next === 'drill') { openChapter(d.chapter.chapter_id); openDrill(); }
     else show('detail');
   } catch (err) {
     console.warn(err);
@@ -1535,11 +1535,12 @@ function hideSwipeHint() {
 
 /* ── 문장 연습: 핵심 단어 자리가 빈칸인 문장을 소리 내어 말해 보고 정답을 확인한다 (AI를 쓰지 않음) ──
    sentence의 [대괄호] 부분이 빈칸. 단계: blank(빈칸) / korean(한국어 상황만 보고 문장 전체).
-   '어려웠어요'를 누른 문장은 그 회차 끝에 한 번 더 나오고, 다음 회차에는 먼저 나온다 (이 휴대폰에 기억). */
+   '어려웠어요'를 누른 문장은 그 회차 끝에 한 번 더 나오고, 다음 회차에는 먼저 나온다 (이 휴대폰에 기억).
+   학습 단계 유도 (103단계, learningPath.on인 사람만): 앞에 read(듣고 따라 읽기) 단계가 더해지고, 시트 group 칸의 묶음 하나씩 연습한다. */
 
 const DRILL_KEY = 'tutoreal.drills';
 const drill = {
-  level: 'blank', queue: [], pos: 0, revealed: false, hintShown: false, hard: 0, total: 0,
+  level: 'blank', group: '', queue: [], pos: 0, revealed: false, hintShown: false, hard: 0, total: 0, spoken: null,
   phase: 'idle', rec: null, timer: null, coach: null, coachError: ''   // 발음 코칭: idle / recording / checking
 };
 const REC_MAX_MS = 12000;   // 12초가 지나면 녹음을 자동으로 멈춘다
@@ -1549,6 +1550,7 @@ const COACH_TITLE = {
   retry: '다시 한 번 해 볼까요?'
 };
 const LEVEL_DESC = {
+  read: '휴대폰이 읽어 주는 문장을 듣고 그대로 따라 읽어요.',
   blank: '문장 틀을 보면서 핵심 단어를 떠올려요.',
   korean: '상황만 보고 영어 문장을 처음부터 말해요. 실전처럼!'
 };
@@ -1572,12 +1574,42 @@ function parseSentence(s) {
 }
 const plainSentence = (s) => s.replace(/\[([^\]]+)\]/g, '$1');
 
+/* 학습 단계 유도 (103단계): 문장 연습 3단계와 묶음. 스위치가 꺼진 사람은 예전처럼 빈칸·통째로 2단계, 묶음 없이 전체 */
+const lpOn = () => !!learningPath.on;
+const DRILL_STAGES = ['read', 'blank', 'korean'];
+const STAGE_TAB = { read: '1 따라 읽기', blank: '2 빈칸', korean: '3 통째로' };   // UI 예시대로 한 줄 짧은 이름
+const STAGE_NAME = { read: '듣고 따라 읽기', blank: '빈칸 채우기', korean: '통째로 말하기' };
+const OLD_TAB = { blank: '1단계 빈칸 채우기', korean: '2단계 통째로 말하기' };
+const MIC_SVG = '<svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+/** 챕터의 묶음 이름들: 시트 group 칸, 첫 문장 순서대로 (서버가 order 순으로 보낸다). 빈칸은 '' */
+function drillGroups(c) {
+  const out = [];
+  ((c && c.drills) || []).forEach((d) => { const g = d.group || ''; if (!out.includes(g)) out.push(g); });
+  return out;
+}
+// 묶음 이름이 빈 문장: 모두 비었으면 묶음 하나(칩 없음), 일부만 비었으면 '기타' 묶음
+const groupLabel = (g) => g || '기타';
+
+/** 챕터 화면의 '문장 연습' 버튼: 스위치가 켜졌으면 1단계 따라 읽기, 첫 묶음부터 (104단계부터는 안 끝난 곳부터) */
+function openDrill() {
+  if (lpOn()) {
+    drill.level = 'read';
+    drill.group = drillGroups(currentChapter)[0] || '';
+  } else {
+    if (drill.level === 'read') drill.level = 'blank';
+    drill.group = '';
+  }
+  startDrill();
+}
+
 function startDrill() {
   const marks = loadDrillMarks();
-  const list = (currentChapter.drills || []).slice();
-  // 지난번에 '어려웠어요'였던 문장을 먼저 (나머지는 시트 순서)
-  list.sort((a, b) => Number(!!(marks[b.drill_id] || {}).hard) - Number(!!(marks[a.drill_id] || {}).hard));
+  const grouped = lpOn();
+  const list = (currentChapter.drills || []).filter((d) => !grouped || (d.group || '') === drill.group);
+  // 지난번에 '어려웠어요'였던 문장을 먼저 (나머지는 시트 순서). 따라 읽기는 시트 순서 그대로
+  if (drill.level !== 'read') list.sort((a, b) => Number(!!(marks[b.drill_id] || {}).hard) - Number(!!(marks[a.drill_id] || {}).hard));
   drill.queue = list.map((d) => ({ ...d, again: false }));
+  drill.spoken = null;
   drill.pos = 0;
   drill.hard = 0;
   drill.total = list.length;
@@ -1591,11 +1623,71 @@ function startDrill() {
   show('drill');
 }
 
+/** 카드 아래 안내 문구. 켜졌으면 UI 예시처럼 단계 설명을 겸한다 (단어 문항은 전체가 빈칸) */
+function sayText(d, lp) {
+  if (!lp) return drill.level === 'blank' ? '소리 내어 문장 전체를 말해 보세요.' : `${langName()} 문장 전체를 소리 내어 말해 보세요.`;
+  if (drill.level === 'korean') return `상황만 보고 ${langName()} 문장 전체를 소리 내어 말해 보세요.`;
+  return d.kind === 'word' ? '단어 전체가 비어 있어요. 떠올려서 소리 내어 말해 보세요.'
+    : '틀은 보이고 핵심 단어만 비어 있어요. 문장 전체를 소리 내어 말해 보세요.';
+}
+
+/** 묶음 칩 (103단계): 스위치가 켜졌고 묶음이 둘 이상일 때만. 누르면 그 묶음을 지금 단계로 처음부터 */
+function renderDrillGroups(lp) {
+  const box = $('#drill-groups');
+  const groups = lp ? drillGroups(currentChapter) : [];
+  box.hidden = groups.length < 2;
+  if (box.hidden) { box.innerHTML = ''; return; }
+  box.innerHTML = groups.map((g) => `<button type="button" class="group-chip${g === drill.group ? ' on' : ''}" data-group="${escapeHtml(g)}"
+    aria-pressed="${g === drill.group}">${escapeHtml(groupLabel(g))}</button>`).join('');
+  box.querySelectorAll('.group-chip').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.group === drill.group) return;
+    if (window.speechSynthesis) speechSynthesis.cancel();
+    drill.group = b.dataset.group;
+    startDrill();
+  }));
+}
+
 function renderDrill() {
-  document.querySelectorAll('.level').forEach((b) => b.classList.toggle('on', b.dataset.level === drill.level));
+  const lp = lpOn();
+  if (!lp && drill.level === 'read') drill.level = 'blank';
+  // 단계 탭: 스위치가 켜졌으면 3개(UI 예시의 짧은 이름), 꺼졌으면 예전 2개. 선생님 요약의 과정 버튼(.level)은 건드리지 않는다
+  document.querySelectorAll('#drill-levels .level').forEach((b) => {
+    const lv = b.dataset.level;
+    b.hidden = !lp && lv === 'read';
+    b.textContent = lp ? STAGE_TAB[lv] : (OLD_TAB[lv] || '');
+    b.classList.toggle('on', lv === drill.level);
+    b.setAttribute('aria-pressed', String(lv === drill.level));
+  });
+  renderDrillGroups(lp);
+  $('#level-desc').hidden = lp;   // 켜졌으면 단계 설명은 카드 안 안내 문구로
   $('#level-desc').textContent = LEVEL_DESC[drill.level].replace('영어', langName());
+  $('#drill-count').classList.toggle('grouped', lp);
+  $('#drill-progress').classList.toggle('thick', lp);
+  const groups = lp ? drillGroups(currentChapter) : [];
+  const groupName = groups.length > 1 ? `${groupLabel(drill.group)} 묶음` : '전체 문장';
   const card = $('#drill-card');
   const actions = $('#drill-actions');
+  if (drill.pos >= drill.queue.length && lp) {
+    // 다 했어요 (103단계): 다음 단계가 주 버튼. 3단계까지 끝나면 대화 시작과 다음 묶음 (정식 묶음 완료 화면은 108단계)
+    $('#drill-count').innerHTML = `<span>${escapeHtml(groupName)}</span><b>${drill.total} / ${drill.total}</b>`;
+    setDrillProgress(1);
+    const nextStage = DRILL_STAGES[DRILL_STAGES.indexOf(drill.level) + 1];
+    const gi = groups.indexOf(drill.group);
+    const nextGroup = gi >= 0 && gi < groups.length - 1 ? groups[gi + 1] : null;
+    card.innerHTML = `<h3>다 했어요!</h3>
+      <p class="goal">${groups.length > 1 ? `${escapeHtml(groupName)} ` : ''}${drill.total}문장을 ${drill.level === 'read' ? '따라 읽었어요.'
+        : `연습했어요.${drill.hard ? ` 어려웠던 문장 ${drill.hard}개는 다음 연습 때 먼저 나와요.` : ''}`}</p>`;
+    actions.innerHTML = `${nextStage ? `<button class="primary" id="drill-next-stage">다음 단계로: ${STAGE_NAME[nextStage]}</button>`
+        : '<button class="primary" id="drill-to-talk">대화 시작하기</button>'}
+      ${!nextStage && nextGroup !== null ? `<button class="secondary" id="drill-next-group">다음 묶음: ${escapeHtml(groupLabel(nextGroup))}</button>` : ''}
+      <button class="secondary" id="drill-again">한 번 더 연습</button>
+      ${nextStage ? '<button class="secondary" id="drill-to-talk">대화 시작하기</button>' : ''}`;
+    if ($('#drill-next-stage')) $('#drill-next-stage').addEventListener('click', () => { drill.level = nextStage; startDrill(); });
+    if ($('#drill-next-group')) $('#drill-next-group').addEventListener('click', () => { drill.level = 'read'; drill.group = nextGroup; startDrill(); });
+    $('#drill-again').addEventListener('click', () => startDrill());
+    $('#drill-to-talk').addEventListener('click', () => { show('detail'); withMicIntro(beginTalk); });
+    return;
+  }
   if (drill.pos >= drill.queue.length) {
     $('#drill-count').textContent = '';
     setDrillProgress(1);
@@ -1604,7 +1696,7 @@ function renderDrill() {
     actions.innerHTML = `<button class="secondary" id="drill-again">한 번 더 연습</button>
       ${drill.level === 'blank' ? '<button class="secondary" id="drill-level2">2단계 도전하기 (통째로 말하기)</button>' : ''}
       <button class="primary" id="drill-to-talk">대화 시작하기</button>`;
-    $('#drill-again').addEventListener('click', startDrill);
+    $('#drill-again').addEventListener('click', () => startDrill());
     if ($('#drill-level2')) $('#drill-level2').addEventListener('click', () => { drill.level = 'korean'; startDrill(); });
     $('#drill-to-talk').addEventListener('click', () => { show('detail'); withMicIntro(beginTalk); });
     return;
@@ -1612,11 +1704,14 @@ function renderDrill() {
   const d = drill.queue[drill.pos];
   const parts = parseSentence(d.sentence);
   const firstRound = drill.queue.filter((x) => !x.again).length;
-  $('#drill-count').textContent = d.again ? '한 번 더' : `${Math.min(drill.pos + 1, firstRound)} / ${firstRound}`;
+  const countNow = d.again ? '한 번 더' : `${Math.min(drill.pos + 1, firstRound)} / ${firstRound}`;
+  // 켜졌으면 '과거력 묶음 · 3 / 7' (UI 예시: 왼쪽 묶음 이름, 오른쪽 번호)
+  if (lp) $('#drill-count').innerHTML = `<span>${escapeHtml(groupName)}</span><b>${countNow}</b>`;
+  else $('#drill-count').textContent = countNow;
   setDrillProgress(d.again ? 1 : Math.min(drill.pos + 1, firstRound) / firstRound);
 
   let sentence;
-  if (drill.revealed) {
+  if (drill.revealed || drill.level === 'read') {   // 따라 읽기: 문장 전체, 힌트 단어는 정답처럼 강조
     sentence = parts.map((p) => (p.blank ? `<span class="filled">${escapeHtml(p.blank)}</span>` : escapeHtml(p.text))).join('');
   } else if (drill.level === 'blank') {
     sentence = parts.map((p) => (p.blank
@@ -1652,13 +1747,26 @@ function renderDrill() {
     <p class="situation">${escapeHtml(d.situation)}</p>
     ${sentence ? `<p class="sentence-label">${drill.revealed ? '정답' : `${langName()} 문장`}</p><p class="sentence">${sentence}</p>` : ''}
     ${blankPy ? `<p class="drill-py">${blankPy}</p>` : ''}
-    ${drill.revealed ? (d.pron ? (ja ? `<p class="drill-py">${escapeHtml(plainSentence(d.pron))}</p>` : `<p class="drill-pron">발음: ${escapeHtml(d.pron)}</p>`) : '')
+    ${(drill.revealed || drill.level === 'read') && d.pron
+      ? (ja ? `<p class="drill-py">${escapeHtml(plainSentence(d.pron))}</p>` : `<p class="drill-pron">발음: ${escapeHtml(d.pron)}</p>`) : ''}
+    ${drill.level === 'read' ? `<p class="drill-say">${SPEAKER_ICON}한 번 읽어 줬어요. 소리 내어 따라 읽어 보세요.</p>` : ''}
+    ${drill.revealed || drill.level === 'read' ? ''
       : drill.phase === 'recording' ? `<p class="recording">${METER_HTML}<span>듣고 있어요. 문장을 말한 뒤 "다 말했어요"를 눌러 주세요.</span></p>`
       : drill.phase === 'checking' ? '<p class="drill-say">발음을 확인하는 중…</p>'
-      : `<p class="drill-say">${drill.level === 'blank' ? '소리 내어 문장 전체를 말해 보세요.' : `${langName()} 문장 전체를 소리 내어 말해 보세요.`}</p>
+      : `<p class="drill-say">${sayText(d, lp)}</p>
          ${drill.hintShown ? `<p class="drill-hint">${escapeHtml(hint)}</p>` : ''}`}
     ${drill.coachError ? `<p class="hint">${escapeHtml(drill.coachError)}</p>` : ''}`;
 
+  // 따라 읽기 (103단계): 화면이 열리면 한 번 읽어 주고, 코칭 없이 '따라 읽었어요'로 다음 문장 (AI 비용 없음)
+  if (drill.level === 'read') {
+    actions.innerHTML = `<button class="primary" id="read-next">따라 읽었어요</button>
+      <button class="secondary" id="drill-listen">${SPEAKER_ICON}다시 듣기</button>`;
+    $('#read-next').addEventListener('click', () => { if (window.speechSynthesis) speechSynthesis.cancel(); drill.pos++; renderDrill(); });
+    $('#drill-listen').addEventListener('click', () => speak(plainSentence(d.sentence)));
+    if (drill.spoken !== d) { drill.spoken = d; speak(plainSentence(d.sentence)); }
+    return;
+  }
+  const mic = lp ? MIC_SVG : '🎤 ';   // 켜졌으면 UI 예시처럼 마이크 그림 (학생 화면은 그대로)
   if (drill.phase === 'recording') {
     actions.innerHTML = '<button class="primary" id="rec-stop">다 말했어요</button><button class="secondary" id="rec-cancel">취소</button>';
     $('#rec-stop').addEventListener('click', stopCoach);
@@ -1666,7 +1774,7 @@ function renderDrill() {
   } else if (drill.phase === 'checking') {
     actions.innerHTML = '';
   } else if (!drill.revealed) {
-    actions.innerHTML = `<button class="primary" id="rec-start">🎤 말하고 확인받기</button>
+    actions.innerHTML = `<button class="primary" id="rec-start">${mic}말하고 확인받기</button>
       <div class="row">${drill.hintShown ? '' : `<button class="secondary" id="drill-hint">${ja && jaBlanks ? '힌트 (로마자)' : '힌트 (첫 글자)'}</button>`}
       <button class="secondary" id="drill-reveal">정답 보기</button></div>`;
     $('#rec-start').addEventListener('click', () => withMicIntro(startCoach));
@@ -1674,7 +1782,7 @@ function renderDrill() {
     $('#drill-reveal').addEventListener('click', () => { drill.revealed = true; drill.coachError = ''; renderDrill(); speak(plainSentence(d.sentence)); });
   } else {
     actions.innerHTML = `<div class="row"><button class="secondary" id="drill-listen">🔊 다시 듣기</button>
-      <button class="secondary" id="rec-start">🎤 다시 말해 보기</button></div>
+      <button class="secondary" id="rec-start">${mic}다시 말해 보기</button></div>
       <div class="row"><button class="secondary" id="drill-hard">어려웠어요</button>
       <button class="primary" id="drill-easy">쉬웠어요</button></div>`;
     $('#drill-listen').addEventListener('click', () => speak(plainSentence(d.sentence)));
@@ -2044,12 +2152,14 @@ const TAB_ACTION = {
 $('#avatar-logout').addEventListener('click', confirmLogout);   // 53단계: 탭 바에서 내 캐릭터 화면으로 옮김
 document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => TAB_ACTION[b.dataset.tab]()));
 $('#greet-avatar').addEventListener('click', openAvatarPicker);
-$('#drill-open').addEventListener('click', startDrill);
+$('#drill-open').addEventListener('click', openDrill);
 document.querySelectorAll('.diff-tab').forEach((b) => b.addEventListener('click', () => setDifficulty(b.dataset.diff)));
 $('#drill-back').addEventListener('click', () => { if (window.speechSynthesis) speechSynthesis.cancel(); cancelRecording(); show('detail'); });
-document.querySelectorAll('.level').forEach((b) => b.addEventListener('click', () => {
+document.querySelectorAll('#drill-levels .level').forEach((b) => b.addEventListener('click', () => {
   cancelRecording();
+  if (window.speechSynthesis) speechSynthesis.cancel();
   drill.level = b.dataset.level;
+  if (lpOn()) { startDrill(); return; }   // 켜졌으면 단계를 바꾸면 그 묶음을 처음부터 (따라 읽기는 시트 순서, 나머지는 어려웠던 문장 먼저)
   drill.revealed = false;
   drill.hintShown = false;
   drill.coach = null;
