@@ -495,6 +495,7 @@ textarea {
 .blank { display: inline-block; border-bottom: 2px solid var(--muted); margin: 0 3px; height: 1.2em; vertical-align: -0.15em; }
 .filled { color: var(--teal-ink); font-weight: 800; font-size: 1.08em; border-bottom: 2px solid var(--teal); }
 .drill-say { color: var(--muted); font-size: 14px; margin: 16px 0 0; }
+.sound-tip { color: var(--muted); font-size: 13px; margin: 4px 0 0; }   /* 110단계: 아이폰 무음 모드에서는 휴대폰 음성 읽기가 안 난다 (따라 읽기만) */
 .drill-hint { color: var(--teal-ink); font-size: 16px; font-weight: 700; margin: 8px 0 0; letter-spacing: 0.05em; }
 .drill-pron { color: var(--muted); font-size: 14px; margin: 10px 0 0; }
 .drill-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }

@@ -2313,7 +2313,8 @@ function renderDrill() {
     ${blankPy ? `<p class="drill-py">${blankPy}</p>` : ''}
     ${(drill.revealed || drill.level === 'read') && d.pron
       ? (ja ? `<p class="drill-py">${escapeHtml(plainSentence(d.pron))}</p>` : `<p class="drill-pron">발음: ${escapeHtml(d.pron)}</p>`) : ''}
-    ${drill.level === 'read' ? `<p class="drill-say">${SPEAKER_ICON}한 번 읽어 줬어요. 소리 내어 따라 읽어 보세요.</p>` : ''}
+    ${drill.level === 'read' ? `<p class="drill-say">${SPEAKER_ICON}한 번 읽어 줬어요. 소리 내어 따라 읽어 보세요.</p>
+      <p class="sound-tip">소리가 안 나면 무음 모드를 꺼 주세요.</p>` : ''}
     ${drill.revealed || drill.level === 'read' ? ''
       : drill.phase === 'recording' ? `<p class="recording">${METER_HTML}<span>듣고 있어요. 문장을 말한 뒤 "다 말했어요"를 눌러 주세요.</span></p>`
       : drill.phase === 'checking' ? '<p class="drill-say">발음을 확인하는 중…</p>'
