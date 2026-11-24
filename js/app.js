@@ -341,20 +341,22 @@ function chapterPath(c) {
   for (const g of groups) {
     const st = DRILL_STAGES.find((x) => !groupStageDone(c, g, x, steps, marks));
     if (st) {
-      const left = groupDrills(c, g).filter((d) => !stageDone(d.drill_id, st, steps, marks)).length;
+      const left = stageDrills(c, st, g).filter((d) => !stageDone(d.drill_id, st, steps, marks)).length;
       next = { stage: st, group: g, min: drillMinutes(left) };
       break;
     }
   }
   if (groups.length) {
     DRILL_STAGES.forEach((st, i) => {
-      const doneGroups = groups.filter((g) => groupStageDone(c, g, st, steps, marks));
-      const cur = groups.find((g) => !doneGroups.includes(g));
+      // 115단계: 그 단계에 할 문장이 있는 묶음만 센다 (단어만 있는 묶음을 2·3단계 '완료'로 적지 않게)
+      const real = groups.filter((g) => stageDrills(c, st, g).length);
+      const doneGroups = real.filter((g) => groupStageDone(c, g, st, steps, marks));
+      const cur = real.find((g) => !doneGroups.includes(g));
       const done = cur === undefined;
       let sub = PATH_INFO[st].desc;
       if (done) sub = many ? '모든 묶음 완료' : '완료';
       else {
-        const curList = groupDrills(c, cur);
+        const curList = stageDrills(c, st, cur);
         const curDone = curList.filter((d) => stageDone(d.drill_id, st, steps, marks)).length;
         if (doneGroups.length || curDone) {
           sub = [doneGroups.length ? `${doneGroups.map(groupLabel).join('·')} 묶음 완료` : '',
@@ -439,7 +441,7 @@ function renderContinue() {
   let sub;
   let ratio;
   if (drillStage) {
-    const list = groupDrills(c, next.group);
+    const list = stageDrills(c, next.stage, next.group);
     const steps = loadSteps();
     const marks = loadDrillMarks();
     const done = list.filter((d) => stageDone(d.drill_id, next.stage, steps, marks)).length;
@@ -1716,7 +1718,7 @@ function practiceSummary() {
   let units = 0;
   chapters.forEach((c) => {
     (c.drills || []).forEach((d) => { if (DRILL_STAGES.some((st) => stageDone(d.drill_id, st, steps, marks))) sentences++; });
-    drillGroups(c).forEach((g) => DRILL_STAGES.forEach((st) => { if (groupStageDone(c, g, st, steps, marks)) units++; }));
+    drillGroups(c).forEach((g) => DRILL_STAGES.forEach((st) => { if (stageDrills(c, st, g).length && groupStageDone(c, g, st, steps, marks)) units++; }));
   });
   return sentences ? `문장 연습: 연습한 문장 ${sentences}개 · 마친 묶음·단계 ${units}개 (이 휴대폰)` : '';
 }
@@ -2077,15 +2079,23 @@ function stageDone(id, stage, steps, marks) {
   return !!((steps[id] || {})[stage] || (stage === 'blank' && marks[id]));
 }
 const groupDrills = (c, g) => ((c && c.drills) || []).filter((d) => (d.group || '') === g);
-/** 그 묶음의 그 단계를 모두 마쳤나 */
+/** 그 단계에서 연습할 문장 (115단계): 켜진 사람은 단어 문항(kind=word)을 1단계 따라 읽기에만. g를 주면 그 묶음만.
+    꺼진 사람은 예전처럼 모든 문장 */
+function stageDrills(c, stage, g) {
+  return ((c && c.drills) || []).filter((d) => (g === undefined || (d.group || '') === g)
+    && (stage === 'read' || d.kind !== 'word' || !lpOn()));
+}
+/** 그 묶음의 그 단계를 모두 마쳤나. 단어만 있는 묶음의 2·3단계는 할 문장이 없어 끝난 것으로 (115단계) */
 function groupStageDone(c, g, stage, steps = loadSteps(), marks = loadDrillMarks()) {
-  const list = groupDrills(c, g);
-  return list.length > 0 && list.every((d) => stageDone(d.drill_id, stage, steps, marks));
+  const list = stageDrills(c, stage, g);
+  if (!list.length) return stage !== 'read' && groupDrills(c, g).length > 0;
+  return list.every((d) => stageDone(d.drill_id, stage, steps, marks));
 }
 /** 모든 묶음에서 그 단계를 마쳤나 (단계 탭의 ✓) */
 function chapterStageDone(c, stage, steps = loadSteps(), marks = loadDrillMarks()) {
-  const list = (c && c.drills) || [];
-  return list.length > 0 && list.every((d) => stageDone(d.drill_id, stage, steps, marks));
+  const list = stageDrills(c, stage);
+  if (!list.length) return stage !== 'read' && ((c && c.drills) || []).length > 0;
+  return list.every((d) => stageDone(d.drill_id, stage, steps, marks));
 }
 /** 문장 하나를 마쳤다: 단계 기록 + 이번 회차의 연습 기록을 고쳐 쓴다 */
 function markDrillDone(d) {
@@ -2154,7 +2164,13 @@ function openDrill() {
 function startDrill() {
   const marks = loadDrillMarks();
   const grouped = lpOn();
-  const all = (currentChapter.drills || []).filter((d) => !grouped || (d.group || '') === drill.group);
+  // 115단계: 2·3단계에서 이 묶음에 할 문장이 없으면(단어만 있는 묶음) 문장이 있는 첫 묶음으로, 챕터 전체가 단어면 따라 읽기로
+  if (grouped && !stageDrills(currentChapter, drill.level, drill.group).length) {
+    const g = drillGroups(currentChapter).find((x) => stageDrills(currentChapter, drill.level, x).length);
+    if (g !== undefined) drill.group = g;
+    else drill.level = 'read';
+  }
+  const all = grouped ? stageDrills(currentChapter, drill.level, drill.group) : (currentChapter.drills || []);
   // 켜졌으면 그 단계에서 아직 안 한 문장부터 (104단계). 다 한 묶음은 처음부터 전부
   const steps = loadSteps();
   const undone = grouped ? all.filter((d) => !stageDone(d.drill_id, drill.level, steps, marks)) : all;
@@ -2189,7 +2205,8 @@ function sayText(d, lp) {
 /** 묶음 칩 (103단계): 스위치가 켜졌고 묶음이 둘 이상일 때만. 누르면 그 묶음을 지금 단계로 처음부터 */
 function renderDrillGroups(lp) {
   const box = $('#drill-groups');
-  const groups = lp ? drillGroups(currentChapter) : [];
+  // 115단계: 지금 단계에 할 문장이 있는 묶음만 (2·3단계에서 단어만 있는 묶음은 칩이 없다)
+  const groups = lp ? drillGroups(currentChapter).filter((g) => stageDrills(currentChapter, drill.level, g).length) : [];
   box.hidden = groups.length < 2;
   if (box.hidden) { box.innerHTML = ''; return; }
   const steps = loadSteps();
@@ -2273,13 +2290,19 @@ function renderDrill() {
     // 다 했어요 (103단계): 다음 단계가 주 버튼. 1·2단계 뒤, 또는 앞 단계를 건너뛰고 3단계만 마쳤을 때
     $('#drill-count').innerHTML = `<span>${escapeHtml(groupName)}</span><b>${drill.total} / ${drill.total}</b>`;
     setDrillProgress(1);
-    const nextStage = DRILL_STAGES[DRILL_STAGES.indexOf(drill.level) + 1];
+    // 115단계: 다음 단계는 이 묶음에 할 문장이 있는 단계 (단어만 있는 묶음은 따라 읽기 다음이 없다 → 다음 묶음이 주 버튼)
+    const nextStage = DRILL_STAGES.slice(DRILL_STAGES.indexOf(drill.level) + 1).find((st) => stageDrills(currentChapter, st, drill.group).length);
     const gi = groups.indexOf(drill.group);
     const nextGroup = gi >= 0 && gi < groups.length - 1 ? groups[gi + 1] : null;
+    const wordsOnly = !nextStage && drill.level === 'read' && nextGroup !== null;
     card.innerHTML = `<h3>다 했어요!</h3>
       <p class="goal">${groups.length > 1 ? `${escapeHtml(groupName)} ` : ''}${drill.total}문장을 ${drill.level === 'read' ? '따라 읽었어요.'
         : `연습했어요.${drill.hard ? ` 어려웠던 문장 ${drill.hard}개는 다음 연습 때 먼저 나와요.` : ''}`}</p>`;
-    actions.innerHTML = `${nextStage ? `<button class="primary" id="drill-next-stage">다음 단계로: ${STAGE_NAME[nextStage]}</button>`
+    actions.innerHTML = wordsOnly
+      ? `<button class="primary" id="drill-next-group">다음 묶음: ${escapeHtml(groupLabel(nextGroup))}</button>
+      <button class="secondary" id="drill-again">한 번 더 연습</button>
+      <button class="secondary" id="drill-to-talk">대화 시작하기</button>`
+      : `${nextStage ? `<button class="primary" id="drill-next-stage">다음 단계로: ${STAGE_NAME[nextStage]}</button>`
         : '<button class="primary" id="drill-to-talk">대화 시작하기</button>'}
       ${!nextStage && nextGroup !== null ? `<button class="secondary" id="drill-next-group">다음 묶음: ${escapeHtml(groupLabel(nextGroup))}</button>` : ''}
       <button class="secondary" id="drill-again">한 번 더 연습</button>
