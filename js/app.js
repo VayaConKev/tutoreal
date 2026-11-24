@@ -729,8 +729,31 @@ function openTalk(pick, group) {
   $('#talk-back').hidden = false;
   $('#talk-card').hidden = true;
   setTalkStatus(`${chapterNum(currentChapter.chapter_id, currentChapter.order)}장 · ${currentChapter.title}`);
+  setTalkBar('before');
   renderTalkModes();
   show('talk');
+}
+
+/* ── 대화 머리줄 (113단계, 모드 대화만): '‹ N장 | 제목 | 종료' ──
+   state: 'before' 시작 전 / 'live' 대화 중 ('‹' 숨김, '종료') / 'after' 끝난 뒤 / 'off' 예전 화면 (아래 '대화 끝내기')
+   canLeave: 끝난 뒤 '‹'를 보일지 (말했으면 대화 후 화면으로 가야 기록이 남으므로 숨긴다) */
+let quitTimer = 0;
+function setTalkBar(state, canLeave = true) {
+  setQuitArmed(false);
+  $('#talk-bar').hidden = state === 'off' || !currentChapter;
+  if ($('#talk-bar').hidden) return;
+  $('#talk-bar-back').textContent = `‹ ${chapterNum(currentChapter.chapter_id, currentChapter.order)}장`;
+  $('#talk-bar-title').textContent = currentChapter.title;
+  $('#talk-bar-back').hidden = state === 'live' || !canLeave;
+  $('#talk-quit').hidden = state !== 'live';
+}
+/** '종료'를 한 번 누른 상태: '정말 종료?'와 말풍선, 3초 뒤 저절로 원래대로 */
+function setQuitArmed(on) {
+  clearTimeout(quitTimer);
+  quitTimer = on ? setTimeout(() => setQuitArmed(false), 3000) : 0;
+  $('#talk-quit').classList.toggle('armed', on);
+  $('#talk-quit').textContent = on ? '정말 종료?' : '종료';
+  $('#talk-quit-tip').hidden = !on;
 }
 
 /** 대본 카드의 첫 줄: 묶음 완료 화면에서 들어왔으면 그 묶음의 첫 문장 (서버 대본 줄의 번호 d04와 drill_id 끝을 맞춘다), 아니면 첫 줄 */
@@ -848,7 +871,8 @@ async function beginTalk(mode = '') {
   $('#transcript').innerHTML = '';
   transcript.lines = [];
   endTurn();
-  $('#talk-end').hidden = false;
+  $('#talk-end').hidden = !!mode;   // 113단계: 모드 대화는 머리줄 '종료'로 끝낸다
+  setTalkBar(mode ? 'live' : 'off');
   $('#talk-next').hidden = true;
   $('#talk-back').hidden = true;
   show('talk');
@@ -924,6 +948,7 @@ function endedTalk(reason, info, t) {
   // 피드백은 대화가 끝나는 이 순간부터 만든다. 학생이 대화 후 화면 1~3단계를 하는 동안 준비된다 (31단계).
   if (review.data) loadFeedback(review.data);
   $('#talk-end').hidden = true;
+  setTalkBar(t.mode ? 'after' : 'off', !spoke);
   $('#talk-next').hidden = !spoke;
   $('#talk-back').hidden = spoke;
   $('#talk-status').scrollIntoView({ block: 'center', behavior: 'smooth' });   // 아래로 내려가 있어도 끝난 문구가 보이게
@@ -2784,6 +2809,16 @@ document.querySelectorAll('#talk-modes .level').forEach((b) => b.addEventListene
 }));
 $('#talk-begin').addEventListener('click', () => withMicIntro(() => beginTalk(talkUi.mode)));
 $('#talk-end').addEventListener('click', () => { if (live) { talk.endReason = 'user'; live.stop(''); } });
+// 머리줄 '종료' (113단계): 한마디라도 했으면 3초 안에 한 번 더 눌러야 끝난다. 연결 중이거나 말하기 전이면 바로
+$('#talk-quit').addEventListener('click', () => {
+  if (!live) return;
+  const spoke = transcript.lines.some((l) => l.who === 'me' && l.text.trim());
+  if (spoke && !quitTimer) { setQuitArmed(true); return; }
+  setQuitArmed(false);
+  talk.endReason = 'user';
+  live.stop('');
+});
+$('#talk-bar-back').addEventListener('click', () => { if (!live) show('detail'); });
 $('#talk-back').addEventListener('click', () => show('detail'));
 $('#talk-next').addEventListener('click', openReview);
 window.addEventListener('pagehide', () => { if (live) { talk.endReason = 'left'; live.stop(''); } });

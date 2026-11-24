@@ -87,6 +87,15 @@
     </section>
 
     <section id="view-talk" hidden>
+      <!-- 대화 머리줄 (113단계, 학습 단계 유도가 켜진 사람만): '‹ N장'은 대화 전·후에만, '종료'는 대화 중에만. 말한 뒤에는 두 번 눌러야 끝난다 -->
+      <div class="talk-bar" id="talk-bar" hidden>
+        <button class="link talk-bar-back" id="talk-bar-back" type="button"></button>
+        <p class="talk-bar-title" id="talk-bar-title"></p>
+        <span class="talk-quit-wrap">
+          <button class="talk-quit" id="talk-quit" type="button" hidden>종료</button>
+          <span class="talk-quit-tip" id="talk-quit-tip" role="status" hidden>한 번 더 누르면 끝나요</span>
+        </span>
+      </div>
       <!-- 대화 모드 (106단계, 학습 단계 유도가 켜진 사람만): 시작 전에는 모드 고르기, 대화 중에는 아래 카드 모양 -->
       <div class="levels talk-modes" id="talk-modes" role="group" aria-label="대화 모드" hidden>
         <button class="level" data-mode="script">4 대본</button>
