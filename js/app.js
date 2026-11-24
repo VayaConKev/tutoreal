@@ -2354,9 +2354,10 @@ function renderDrill() {
       ? (ja ? `<p class="drill-py">${escapeHtml(plainSentence(d.pron))}</p>` : `<p class="drill-pron">발음: ${escapeHtml(d.pron)}</p>`) : ''}
     ${drill.level === 'read' ? `<p class="drill-say">${SPEAKER_ICON}한 번 읽어 줬어요. 소리 내어 따라 읽어 보세요.</p>
       <p class="sound-tip">소리가 안 나면 무음 모드를 꺼 주세요.</p>` : ''}
-    ${drill.revealed || drill.level === 'read' ? ''
+    ${drill.level === 'read' ? ''
+      // 114단계: 정답을 본 뒤 다시 말할 때도 '듣고 있어요'와 목소리 막대를 보인다. '확인하는 중'은 아래 버튼 자리에만
       : drill.phase === 'recording' ? `<p class="recording">${METER_HTML}<span>듣고 있어요. 문장을 말한 뒤 "다 말했어요"를 눌러 주세요.</span></p>`
-      : drill.phase === 'checking' ? '<p class="drill-say">발음을 확인하는 중…</p>'
+      : drill.phase === 'checking' || drill.revealed ? ''
       : `<p class="drill-say">${sayText(d, lp)}</p>
          ${drill.hintShown ? `<p class="drill-hint">${escapeHtml(hint)}</p>` : ''}`}
     ${drill.coachError ? `<p class="hint">${escapeHtml(drill.coachError)}</p>` : ''}`;
@@ -2376,7 +2377,9 @@ function renderDrill() {
     $('#rec-stop').addEventListener('click', stopCoach);
     $('#rec-cancel').addEventListener('click', () => { cancelRecording(); renderDrill(); });
   } else if (drill.phase === 'checking') {
-    actions.innerHTML = '';
+    // 114단계: 버튼 자리를 비우지 않고 같은 높이의 '확인하는 중' 칸으로 (화면이 덜컹거리지 않게)
+    const h = actions.offsetHeight;
+    actions.innerHTML = `<div class="drill-wait" role="status" style="min-height: ${h}px"><span class="drill-spin" aria-hidden="true"></span>발음을 확인하는 중…</div>`;
   } else if (!drill.revealed) {
     actions.innerHTML = `<button class="primary" id="rec-start">${mic}말하고 확인받기</button>
       <div class="row">${drill.hintShown ? '' : `<button class="secondary" id="drill-hint">${ja && jaBlanks ? '힌트 (로마자)' : '힌트 (첫 글자)'}</button>`}
@@ -2385,14 +2388,28 @@ function renderDrill() {
     if ($('#drill-hint')) $('#drill-hint').addEventListener('click', () => { drill.hintShown = true; renderDrill(); });
     $('#drill-reveal').addEventListener('click', () => { drill.revealed = true; drill.coachError = ''; renderDrill(); speak(plainSentence(d.sentence)); });
   } else {
-    actions.innerHTML = `<div class="row"><button class="secondary" id="drill-listen">🔊 다시 듣기</button>
-      <button class="secondary" id="rec-start">${mic}다시 말해 보기</button></div>
-      <div class="row"><button class="secondary" id="drill-hard">어려웠어요</button>
-      <button class="primary" id="drill-easy">쉬웠어요</button></div>`;
+    // 114단계 (켜진 사람만): 결과에 따라 진한 버튼 하나. 다시 해 볼 때(retry·정답만 봄)는 '다시 말해 보기',
+    // 통과(great·good)면 '쉬웠어요 · 다음 →'. '어려웠어요 · 다음'은 늘 남겨 막히지 않게 (그 문장은 다음 연습 때 먼저)
+    const pass = c && (c.overall === 'great' || c.overall === 'good');
+    if (lp && !pass) {
+      actions.innerHTML = `<div class="row"><button class="secondary" id="drill-listen">${SPEAKER_ICON}다시 듣기</button>
+        <button class="secondary" id="drill-hard">어려웠어요 · 다음</button></div>
+        <button class="primary" id="rec-start">${mic}${c ? '다시 말해 보기' : '말해 보기'}</button>`;
+    } else if (lp) {
+      actions.innerHTML = `<div class="row"><button class="secondary" id="drill-listen">${SPEAKER_ICON}다시 듣기</button>
+        <button class="secondary" id="rec-start">${mic}다시 말해 보기</button></div>
+        <div class="row"><button class="secondary" id="drill-hard">어려웠어요 · 다음</button>
+        <button class="primary" id="drill-easy">쉬웠어요 · 다음 →</button></div>`;
+    } else {
+      actions.innerHTML = `<div class="row"><button class="secondary" id="drill-listen">🔊 다시 듣기</button>
+        <button class="secondary" id="rec-start">${mic}다시 말해 보기</button></div>
+        <div class="row"><button class="secondary" id="drill-hard">어려웠어요</button>
+        <button class="primary" id="drill-easy">쉬웠어요</button></div>`;
+    }
     $('#drill-listen').addEventListener('click', () => speak(plainSentence(d.sentence)));
     $('#rec-start').addEventListener('click', () => withMicIntro(startCoach));
     $('#drill-hard').addEventListener('click', () => nextDrill(true));
-    $('#drill-easy').addEventListener('click', () => nextDrill(false));
+    if ($('#drill-easy')) $('#drill-easy').addEventListener('click', () => nextDrill(false));
   }
 }
 
@@ -2400,6 +2417,7 @@ function renderDrill() {
 async function startCoach() {
   if (window.speechSynthesis) speechSynthesis.cancel();
   drill.coachError = '';
+  drill.coach = null;   // 114단계: 다시 말할 때 지난 결과를 지운다 (남아 있으면 지금 녹음 중인지 헷갈림)
   const rec = new Recorder();
   rec.onLevel = makeMeter(() => $('#drill-card .recording .voice-meter'));   // 내 목소리 막대 (55단계)
   drill.rec = rec;

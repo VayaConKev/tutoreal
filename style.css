@@ -511,6 +511,15 @@ textarea {
 .coach-word .tip { display: block; color: var(--muted); font-size: 14px; }
 .drill-actions .row { display: flex; gap: 8px; }
 .drill-actions button { margin-top: 0; }
+.drill-actions .row button { padding-left: 8px; padding-right: 8px; }   /* 114단계: '쉬웠어요 · 다음 →'이 두 줄로 꺾이지 않게 */
+@media (max-width: 359px) { .drill-actions .row button { font-size: 15px; } .drill-actions .row .say-icon { margin-right: 4px; } }
+.drill-wait {   /* 114단계: 발음을 확인하는 동안 버튼 자리를 같은 높이로 채운다 */
+  display: flex; align-items: center; justify-content: center; gap: 10px; border-radius: 12px;
+  background: var(--accent-soft); color: var(--muted); font-weight: 700;
+}
+.drill-spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: drill-spin .8s linear infinite; }
+@keyframes drill-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .drill-spin { animation-duration: 2.4s; } }
 /* 묶음 완료 화면 (108단계, UI 예시 ④): 탭·칩·진행 줄을 숨기고 청록 ✓, 제목, '다음 단계 추천' 카드, 다음 묶음, 오늘은 여기까지 */
 #view-drill.chunk-done #drill-levels, #view-drill.chunk-done #drill-groups, #view-drill.chunk-done #level-desc,
 #view-drill.chunk-done #drill-count, #view-drill.chunk-done #drill-progress { display: none; }
