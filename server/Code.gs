@@ -102,12 +102,14 @@
  * v0.68 (105단계 수정): 대본·큐카드 모드 지시에 '이 모드 규칙이 우선' 한 줄 (시트 지시문의 '가끔 질문 하나 하기'와 부딪히지 않게. 대본은 자기 질문 하지 않기).
  * v0.69 (112단계): settings current_chapter(지금 수업 중인 챕터, 쉼표로 여러 개). 챕터 목록에 current_chapter를 더 보낸다 —
  *                 적힌 것 중 그 사람이 볼 수 있는 첫 챕터, 없으면 빈 글. 앱은 기록이 없는 학생의 홈 카드를 이 챕터로 연다.
+ * v0.70 (117단계): 대본 줄(대본·큐카드 카드와 AI 지시문)에서 단어 문항(kind=word, 비면 '단어:'·전체 대괄호로 자동)을 뺀다.
+ *                 단어는 따라 읽기에서만 연습한다 (115단계). 남은 줄의 번호(d04 등)와 짝지은 기본 답은 그대로.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.69';
+const SERVER_VERSION = 'v0.70';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -1337,10 +1339,11 @@ function parseAnswers_(v) {
   return out;
 }
 
-/** 대본 줄: 그 챕터의 켜진 문장을 순서대로, 간호사 대사(대괄호 뺌) · 한국어 큐(cue, 비면 situation) · 짝지은 기본 답 */
+/** 대본 줄: 그 챕터의 켜진 문장을 순서대로, 간호사 대사(대괄호 뺌) · 한국어 큐(cue, 비면 situation) · 짝지은 기본 답.
+    단어 문항은 대사가 아니라서 뺀다 (117단계) */
 function scriptLines_(chapterId, answers) {
   return readTable_('drills')
-    .filter(function (d) { return String(d.chapter_id) === chapterId && d.drill_id && d.sentence && isTrue_(d.active); })
+    .filter(function (d) { return String(d.chapter_id) === chapterId && d.drill_id && d.sentence && isTrue_(d.active) && drillKind_(d) !== 'word'; })
     .sort(function (a, b) { return Number(a.order) - Number(b.order); })
     .map(function (d) {
       const m = String(d.drill_id).match(/-(d\d+)$/i);

@@ -761,7 +761,7 @@ function setQuitArmed(on) {
 /** 대본 카드의 첫 줄: 묶음 완료 화면에서 들어왔으면 그 묶음의 첫 문장 (서버 대본 줄의 번호 d04와 drill_id 끝을 맞춘다), 아니면 첫 줄 */
 function scriptStart(lines, group) {
   if (group === null || group === undefined || !currentChapter) return 0;
-  const d = groupDrills(currentChapter, group)[0];
+  const d = groupDrills(currentChapter, group).find((x) => x.kind !== 'word');   // 117단계: 대본에는 단어 줄이 없다
   const m = d && String(d.drill_id).match(/-(d\d+)$/i);
   const i = m ? lines.findIndex((l) => l.n === m[1].toLowerCase()) : -1;
   return i > 0 ? i : 0;
@@ -1636,7 +1636,8 @@ function withMicIntro(start) {
   }
   let seen = false;
   try { seen = localStorage.getItem(MIC_INTRO_KEY) === '1'; } catch { /* 저장 못 하면 매번 보여 줌 */ }
-  if (micPermission === 'unknown' && seen) return start();
+  // 116단계: 안내는 이 휴대폰에서 한 번만. 아이폰 Safari는 허용을 기억하지 않아 늘 'prompt'라서, 예전에는 말할 때마다 이 창이 떴다
+  if (seen) return start();
   showModal(MIC_ICON, '마이크를 사용할게요',
     '말하기 연습을 하려면 마이크가 필요해요. 다음에 뜨는 창에서 \'허용\'을 눌러 주세요. 녹음한 목소리는 저장하지 않아요.', [
       { label: '나중에', cls: 'secondary', onClick: closeModal },
@@ -2194,6 +2195,15 @@ function startDrill() {
   show('drill');
 }
 
+/** 따라 읽기를 마친 수 (118단계): '문장 6개와 단어 2개를' / '단어 2개를' / '8문장을' (단어가 없으면 예전 그대로) */
+function readCount() {
+  const list = stageDrills(currentChapter, 'read', drill.group);
+  const words = list.filter((d) => d.kind === 'word').length;
+  const sents = list.length - words;
+  if (!words) return `${list.length}문장을`;
+  return sents ? `문장 ${sents}개와 단어 ${words}개를` : `단어 ${words}개를`;
+}
+
 /** 카드 아래 안내 문구. 켜졌으면 UI 예시처럼 단계 설명을 겸한다 (단어 문항은 전체가 빈칸) */
 function sayText(d, lp) {
   if (!lp) return drill.level === 'blank' ? '소리 내어 문장 전체를 말해 보세요.' : `${langName()} 문장 전체를 소리 내어 말해 보세요.`;
@@ -2296,8 +2306,8 @@ function renderDrill() {
     const nextGroup = gi >= 0 && gi < groups.length - 1 ? groups[gi + 1] : null;
     const wordsOnly = !nextStage && drill.level === 'read' && nextGroup !== null;
     card.innerHTML = `<h3>다 했어요!</h3>
-      <p class="goal">${groups.length > 1 ? `${escapeHtml(groupName)} ` : ''}${drill.total}문장을 ${drill.level === 'read' ? '따라 읽었어요.'
-        : `연습했어요.${drill.hard ? ` 어려웠던 문장 ${drill.hard}개는 다음 연습 때 먼저 나와요.` : ''}`}</p>`;
+      <p class="goal">${groups.length > 1 ? `${escapeHtml(groupName)} ` : ''}${drill.level === 'read' ? `${readCount()} 따라 읽었어요.`
+        : `${drill.total}문장을 연습했어요.${drill.hard ? ` 어려웠던 문장 ${drill.hard}개는 다음 연습 때 먼저 나와요.` : ''}`}</p>`;
     actions.innerHTML = wordsOnly
       ? `<button class="primary" id="drill-next-group">다음 묶음: ${escapeHtml(groupLabel(nextGroup))}</button>
       <button class="secondary" id="drill-again">한 번 더 연습</button>
@@ -2359,6 +2369,7 @@ function renderDrill() {
     : '';
 
   const c = drill.coach;
+  const isWord = lp && drill.level === 'read' && d.kind === 'word';   // 118단계: 따라 읽기의 단어 문항은 '단어'로 보인다
   const coachHtml = c ? `<div class="coach ${c.overall}">
       <p class="coach-title">${COACH_TITLE[c.overall] || COACH_TITLE.retry}</p>
       ${c.message ? `<p class="coach-msg">${escapeHtml(c.message)}</p>` : ''}
@@ -2371,11 +2382,11 @@ function renderDrill() {
     ${coachHtml}
     <p class="situation-label">상황</p>
     <p class="situation">${escapeHtml(d.situation)}</p>
-    ${sentence ? `<p class="sentence-label">${drill.revealed ? '정답' : `${langName()} 문장`}</p><p class="sentence">${sentence}</p>` : ''}
+    ${sentence ? `<p class="sentence-label">${drill.revealed ? '정답' : `${langName()} ${isWord ? '단어' : '문장'}`}</p><p class="sentence">${sentence}</p>` : ''}
     ${blankPy ? `<p class="drill-py">${blankPy}</p>` : ''}
     ${(drill.revealed || drill.level === 'read') && d.pron
       ? (ja ? `<p class="drill-py">${escapeHtml(plainSentence(d.pron))}</p>` : `<p class="drill-pron">발음: ${escapeHtml(d.pron)}</p>`) : ''}
-    ${drill.level === 'read' ? `<p class="drill-say">${SPEAKER_ICON}한 번 읽어 줬어요. 소리 내어 따라 읽어 보세요.</p>
+    ${drill.level === 'read' ? `<p class="drill-say">${SPEAKER_ICON}${isWord ? '핵심 단어예요. 듣고 따라 말해 보세요.' : '한 번 읽어 줬어요. 소리 내어 따라 읽어 보세요.'}</p>
       <p class="sound-tip">소리가 안 나면 무음 모드를 꺼 주세요.</p>` : ''}
     ${drill.level === 'read' ? ''
       // 114단계: 정답을 본 뒤 다시 말할 때도 '듣고 있어요'와 목소리 막대를 보인다. '확인하는 중'은 아래 버튼 자리에만
