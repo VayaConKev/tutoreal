@@ -104,12 +104,15 @@
  *                 적힌 것 중 그 사람이 볼 수 있는 첫 챕터, 없으면 빈 글. 앱은 기록이 없는 학생의 홈 카드를 이 챕터로 연다.
  * v0.70 (117단계): 대본 줄(대본·큐카드 카드와 AI 지시문)에서 단어 문항(kind=word, 비면 '단어:'·전체 대괄호로 자동)을 뺀다.
  *                 단어는 따라 읽기에서만 연습한다 (115단계). 남은 줄의 번호(d04 등)와 짝지은 기본 답은 그대로.
+ * v0.71 (119단계): 대화 전 화면의 EMR 카드 — 챕터 목록에 켜진 시나리오의 scenario_id · 이름 · 성별 · 생년월일 · 검사 · 수면 여부만 담는다
+ *                 (숨은 설정·기본 답·슬립 결과는 보내지 않고, 검사 칸에 결과가 적힌 시나리오는 검사를 빈칸으로). talk에 scenario_id를 보내면
+ *                 그 시나리오로 대화한다 (그 챕터의 켜진 시나리오가 아니면 지금처럼 무작위).
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.70';
+const SERVER_VERSION = 'v0.71';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -665,6 +668,14 @@ function listChapters_(student) {
         group: String(d.group || '').trim(), kind: drillKind_(d), cue: String(d.cue || '').trim() || String(d.situation || '')
       });
     });
+  // 대화 전 화면의 EMR 카드 (119단계): 켜진 시나리오의 차트 칸만
+  const briefs = {};
+  readTable_('scenarios')
+    .filter(function (sc) { return sc.scenario_id && isTrue_(sc.active); })
+    .forEach(function (sc) {
+      const id = String(sc.chapter_id);
+      (briefs[id] = briefs[id] || []).push(scenarioBrief_(sc));
+    });
   return readTable_('chapters')
     .filter(function (c) { return c.chapter_id && chapterVisible_(c, student) && canUseCourse_(student, courseOf_(c)); })
     .sort(function (a, b) {
@@ -683,11 +694,33 @@ function listChapters_(student) {
         preview: isPreview_(c),   // 미리 보기 챕터 (선생님·테스터에게만 보임) — 앱이 '미리 보기' 표시를 붙인다
         level: chapterLevel_(c),   // 난이도 탭 (99단계) — 앱이 이 값으로 탭을 나눈다
         checklist: checklistOf_(c),
-        drills: drills[String(c.chapter_id)] || []
+        drills: drills[String(c.chapter_id)] || [],
+        scenarios: briefs[String(c.chapter_id)] || []
       };
     });
 }
 
+
+/**
+ * 대화 전 화면의 EMR (119단계): 이름 · 성별 · 생년월일 · 검사 · 수면 여부(with / without / 빈칸).
+ * 슬립이 있으면 검사·수면은 슬립의 G/C·+/−에서 (결과는 보내지 않는다). 검사 칸이 'Result'로 시작하면(결과 설명 챕터) 검사는 빈칸.
+ * 검사 글의 'with/without sedation'은 수면 여부로 옮기고 검사에서는 뺀다.
+ */
+function scenarioBrief_(sc) {
+  const slip = parseSlip_(sc.slip);
+  let exam = String(sc.exam || '').trim();
+  let sedation = '';
+  if (slip) {
+    exam = slip.exams.map(function (x) { return x === 'G' ? 'stomach endoscopy' : 'colonoscopy'; }).join(' and ');
+    sedation = slip.sedation === '+' ? 'with' : slip.sedation === '-' ? 'without' : '';
+  } else if (/^result\b/i.test(exam)) {
+    exam = '';
+  } else {
+    const m = exam.match(/\s*\b(with|without)\s+sedation\b/i);
+    if (m) { sedation = m[1].toLowerCase(); exam = exam.replace(m[0], '').trim(); }
+  }
+  return { scenario_id: String(sc.scenario_id), name: String(sc.name || ''), sex: String(sc.sex || ''), dob: formatDob_(sc.dob), exam: exam, sedation: sedation };
+}
 
 /**
  * 문항 유형 (102단계): drills 탭 kind 칸이 word·sentence면 그대로. 비어 있으면 자동 —
@@ -829,7 +862,7 @@ function handlePost_(body) {
         learning_path: learningPath_(auth.student), current_chapter: currentChapter_(list) });
     }
     if (body.action === 'talk') {
-      const result = startTalk_(body.code, String(body.chapter_id || ''), talkMode_(body.mode));
+      const result = startTalk_(body.code, String(body.chapter_id || ''), talkMode_(body.mode), String(body.scenario_id || ''));
       result.server = SERVER_VERSION;
       return json_(result);
     }
@@ -1017,7 +1050,7 @@ function getSettings_() {
 }
 
 /** 접속 코드를 확인한 뒤 대화 한 번 분량의 임시 토큰을 준다. */
-function startTalk_(code, chapterId, mode) {
+function startTalk_(code, chapterId, mode, scenarioId) {
   const auth = auth_(code);
   if (!auth.ok) return auth;
   if (!usableChapter_(chapterId, auth.student)) return { ok: false, error: 'NO_CHAPTER' };
@@ -1026,7 +1059,7 @@ function startTalk_(code, chapterId, mode) {
   const budget = checkBudget_();
   if (!budget.ok) return budget;
   const maxSec = Math.min(limit.remainingSec, budget.remainingSec, LIVE_SESSION_MAX_MIN * 60);
-  const result = createLiveToken_(chapterId, maxSec, auth.student, mode);
+  const result = createLiveToken_(chapterId, maxSec, auth.student, mode, scenarioId);
   if (result.ok) {
     result.session_id = logSessionStart_(auth.student, chapterId, result.scenario_id, mode);
     result.limit_sec = maxSec;                                       // 이 대화에서 쓸 수 있는 최대 시간(초)
@@ -1040,7 +1073,7 @@ function startTalk_(code, chapterId, mode) {
  * 챕터의 활성 시나리오 하나를 무작위로 고르고, 지시문을 채워 임시 토큰 안에 고정한다.
  * 지시문과 시나리오의 숨은 설정(twist)은 브라우저로 보내지 않는다. 브라우저는 토큰과 환자 차트만 받는다.
  */
-function createLiveToken_(chapterId, maxSec, student, mode) {
+function createLiveToken_(chapterId, maxSec, student, mode, scenarioId) {
   maxSec = maxSec || LIVE_SESSION_MAX_MIN * 60;
   const chapter = readTable_('chapters').filter(function (c) {
     return String(c.chapter_id) === chapterId && chapterVisible_(c, student);
@@ -1051,7 +1084,9 @@ function createLiveToken_(chapterId, maxSec, student, mode) {
     return String(s.chapter_id) === chapterId && isTrue_(s.active);
   });
   if (!scenarios.length) return { ok: false, error: 'NO_SCENARIO' };
-  const sc = scenarios[Math.floor(Math.random() * scenarios.length)];
+  // 대화 전 화면에서 보여 준 시나리오 (119단계). 그 챕터의 켜진 시나리오가 아니면 무작위
+  const sc = scenarios.filter(function (s) { return scenarioId && String(s.scenario_id) === scenarioId; })[0] ||
+    scenarios[Math.floor(Math.random() * scenarios.length)];
 
   const course = courseOf_(chapter);
   const prompt = coursePrompt_('patient', course);

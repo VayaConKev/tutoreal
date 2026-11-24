@@ -702,7 +702,7 @@ const TALK_DESC = {
   cue: '한국어 키워드만 보고 말해요. 수검자가 가끔 다르게 대답해요.',
   free: '대본 없이 말해요. 막히면 힌트 버튼을 눌러요.'
 };
-const talkUi = { mode: 'script', view: 'script', active: false, started: false, script: [], offset: 0, startGroup: null, expanded: false, hints: 0, hintShown: [] };
+const talkUi = { mode: 'script', view: 'script', active: false, started: false, script: [], offset: 0, startGroup: null, scenario: null, expanded: false, hints: 0, hintShown: [] };
 /** 이 챕터에서 그 모드로 대화한 적이 있나 (이 휴대폰의 기록) */
 const talkModeDone = (chapterId, mode) => loadHistory().some((e) => e.chapterId === chapterId && e.mode === mode);
 
@@ -728,12 +728,43 @@ function openTalk(pick, group) {
   $('#talk-end').hidden = true;
   $('#talk-next').hidden = true;
   $('#talk-begin').hidden = false;
-  $('#talk-back').hidden = false;
+  $('#talk-back').hidden = true;   // 119단계: 돌아가기는 머리줄 '‹ N장'으로
   $('#talk-card').hidden = true;
-  setTalkStatus(`${chapterNum(currentChapter.chapter_id, currentChapter.order)}장 · ${currentChapter.title}`);
+  setTalkStatus('');
+  // 119단계: 이번 대화의 수검자를 미리 골라 EMR로 보여 주고, 같은 수검자로 대화한다 (예전 서버는 목록이 없어 서버가 고른다)
+  const sc = currentChapter.scenarios || [];
+  talkUi.scenario = sc.length ? sc[Math.floor(Math.random() * sc.length)] : null;
+  $('#view-talk').classList.add('pre');
   setTalkBar('before');
   renderTalkModes();
   show('talk');
+}
+
+/** 대화 전 설명 카드 (119단계): 고른 방식 이름·설명, EMR(이름 · 성별 · 생년월일 · 검사 · 수면), 미리 보기 2~3줄, 약 3분, 마이크 안내 */
+function renderTalkBrief() {
+  const box = $('#talk-brief');
+  const mode = talkUi.mode;
+  const p = talkUi.scenario;
+  const sexKo = p ? ({ male: '남', female: '여' }[String(p.sex || '').toLowerCase()] || '') : '';
+  const sed = p ? ({ with: '수면', without: '비수면' }[p.sedation] || '') : '';
+  const emr = p ? `<div class="brief-emr"><p class="brief-emr-name"><b>EMR</b>${escapeHtml(p.name)}</p>
+      <p class="brief-emr-meta">${escapeHtml([sexKo, p.dob, p.exam, sed].filter(Boolean).join(' · '))}</p></div>` : '';
+  // 미리 보기: 단어가 아닌 문장을 대본 순서대로 (묶음 완료 화면에서 왔으면 그 묶음 첫 문장부터) 3줄
+  const lines = (currentChapter.drills || []).filter((d) => d.kind !== 'word');
+  const first = talkUi.startGroup !== null && talkUi.startGroup !== undefined
+    ? Math.max(0, lines.findIndex((d) => (d.group || '') === talkUi.startGroup)) : 0;
+  const pick = lines.slice(first, first + 3);
+  let preview = '';
+  if (mode === 'free') preview = '<p class="brief-free">화면에 대사는 나오지 않고, 힌트 버튼만 있어요.</p>';
+  else if (pick.length) {
+    preview = `<ol class="brief-lines">${pick.map((d) => `<li>${escapeHtml(mode === 'cue' ? (d.cue || d.situation) : plainSentence(d.sentence))}</li>`).join('')}</ol>`;
+  }
+  box.innerHTML = `<p class="brief-mode">${PATH_INFO[mode].name}</p>
+    <p class="brief-desc">${TALK_DESC[mode]}</p>
+    ${emr}
+    ${preview ? `<p class="brief-label">${mode === 'script' ? '내 첫 대사' : mode === 'cue' ? '큐카드' : '힌트'} 미리 보기</p>${preview}` : ''}
+    <p class="brief-foot">약 ${TALK_MINUTES}분 · 마이크를 써요. 목소리는 저장하지 않아요.</p>`;
+  box.hidden = false;
 }
 
 /* ── 대화 머리줄 (113단계, 모드 대화만): '‹ N장 | 제목 | 종료' ──
@@ -781,8 +812,9 @@ function renderTalkModes() {
     b.classList.toggle('done', done);
     b.setAttribute('aria-pressed', String(m === pick));
   });
-  $('#talk-mode-desc').hidden = talkUi.started;
-  $('#talk-mode-desc').textContent = TALK_DESC[talkUi.mode];
+  $('#talk-mode-desc').hidden = true;   // 119단계: 방식 설명은 대화 전 설명 카드 안으로
+  if (talkUi.started) $('#talk-brief').hidden = true;
+  else renderTalkBrief();
 }
 
 /** 대화 중 아래 카드 (UI 예시의 둥근 시트) */
@@ -834,6 +866,8 @@ async function beginTalk(mode = '') {
   if (!TALK_MODES.includes(mode)) mode = '';
   // 학습 단계 유도 (106단계): 모드를 골라 시작했으면 탭·카드를 쓰고, 아니면 예전 화면
   $('#view-talk').classList.toggle('lp', !!mode);
+  $('#view-talk').classList.remove('pre');
+  $('#talk-brief').hidden = true;
   $('#talk-modes').hidden = !mode;
   $('#talk-mode-desc').hidden = true;
   $('#talk-begin').hidden = true;
@@ -885,7 +919,7 @@ async function beginTalk(mode = '') {
     await session.openMic();
     if (session.ended) return;   // 준비 중에 '끝내기'를 누른 경우
     setTalkStatus(`${partnerTitle()}를 부르는 중…`);
-    const { token, model, patient, sessionId, scenarioId, server, limitSec, limitKind, slip, script } = await startTalk(loadCode(), currentChapter.chapter_id, mode);
+    const { token, model, patient, sessionId, scenarioId, server, limitSec, limitKind, slip, script } = await startTalk(loadCode(), currentChapter.chapter_id, mode, mode && talkUi.scenario ? talkUi.scenario.scenario_id : '');
     const gotAt = Date.now();
     t.sessionId = sessionId;
     t.scenarioId = scenarioId || '';
@@ -952,7 +986,7 @@ function endedTalk(reason, info, t) {
   $('#talk-end').hidden = true;
   setTalkBar(t.mode ? 'after' : 'off', !spoke);
   $('#talk-next').hidden = !spoke;
-  $('#talk-back').hidden = spoke;
+  $('#talk-back').hidden = spoke || !!t.mode;   // 119단계: 모드 대화는 머리줄 '‹ N장'으로 돌아간다
   $('#talk-status').scrollIntoView({ block: 'center', behavior: 'smooth' });   // 아래로 내려가 있어도 끝난 문구가 보이게
 }
 

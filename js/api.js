@@ -49,8 +49,9 @@ export async function login(code) {
 
 // mode (105단계): 대화 모드 script(대본) / cue(큐카드) / free(자유). 비우면 보내지 않는다 — 서버가 지금과 똑같이 대화를 만든다.
 // 모드를 보낸 대화는 script(대본 줄: n, nurse, cue, answer)를 받는다. patient.sex는 한 줄 EMR용
-export async function startTalk(code, chapterId, mode = '') {
-  const data = await postServer('talk', { code, chapter_id: chapterId, ...(mode ? { mode } : {}) });
+// scenario_id (119단계): 대화 전 화면에서 보여 준 수검자. 비우면 서버가 무작위로 고른다
+export async function startTalk(code, chapterId, mode = '', scenarioId = '') {
+  const data = await postServer('talk', { code, chapter_id: chapterId, ...(mode ? { mode } : {}), ...(scenarioId ? { scenario_id: scenarioId } : {}) });
   return {
     token: data.token, model: data.model, patient: data.patient, sessionId: data.session_id, scenarioId: data.scenario_id, server: data.server,
     limitSec: data.limit_sec, limitKind: data.limit_kind, slip: data.slip || null,

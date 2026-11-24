@@ -51,7 +51,8 @@ const kinds = drillsOf(now, 'ch01').map((d) => d.drill_id + ':' + d.kind);
 console.log('ch01 문항 유형 (자동):', kinds.join(', '));
 assert(kinds.includes('ch01-d07:word') && kinds.includes('ch01-d02:sentence'));
 // 다른 칸·챕터 정보도 예전과 같다 (drills만 세 값이 더해짐)
-const strip = (r) => r.chapters.map((c) => ({ ...c, drills: c.drills.map((d) => ({ drill_id: d.drill_id, situation: d.situation, sentence: d.sentence, pron: d.pron })) }));
+// 119단계에서 더한 scenarios(대화 전 EMR)는 test119에서 본다
+const strip = (r) => r.chapters.map(({ scenarios, ...c }) => ({ ...c, drills: c.drills.map((d) => ({ drill_id: d.drill_id, situation: d.situation, sentence: d.sentence, pron: d.pron })) }));
 assert.deepEqual(strip(now), strip(before), '챕터 목록의 다른 값은 그대로');
 
 // ③ 시트에 적은 값: group·kind·cue를 그대로 (kind는 word/sentence만, 대소문자 무시, 다른 글자는 자동)
