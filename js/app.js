@@ -456,13 +456,14 @@ function renderContinue() {
   try { seen = localStorage.getItem(CONTINUE_SEEN_KEY) === '1'; } catch { /* 저장 못 하면 늘 보임 */ }
   const pct = Math.round(ratio * 100);
   box.innerHTML = `<section class="continue-card" aria-labelledby="continue-title">
-      <div class="continue-top"><span class="continue-label">이어서 하기</span>${seen ? '' : '<span class="continue-new">새 기능</span>'}</div>
+      <div class="continue-top"><span class="continue-label">${first ? '시작하기' : '이어서 하기'}</span>${seen ? '' : '<span class="continue-new">새 기능</span>'}</div>
       <p class="continue-title" id="continue-title">${escapeHtml(`${chapterNum(c.chapter_id, c.order)}장 · ${drillStage && many && !first ? `${groupLabel(next.group)} 묶음` : c.title}`)}</p>
       <p class="continue-sub">${escapeHtml(sub)}</p>
       <div class="continue-bar" role="progressbar" aria-label="진행" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
       <button type="button" class="continue-go" id="continue-go">${first ? `${escapeHtml(chapterNum(c.chapter_id, c.order))}장 시작하기` : '이어서 하기'} · 약 ${next.min}분</button>
     </section>`;
-  $('#continue-go').addEventListener('click', () => {
+  // 120단계: 카드 어디를 눌러도 들어간다 (버튼을 누르면 이 클릭이 카드까지 올라온다). '새 기능' 표시는 한 번 누르면 숨긴다
+  box.querySelector('.continue-card').addEventListener('click', () => {
     try { localStorage.setItem(CONTINUE_SEEN_KEY, '1'); } catch { /* 저장 못 해도 진행 */ }
     openChapter(c.chapter_id);   // 돌아오기를 누르면 그 챕터 화면
     goPathStage(next.stage, next.group);

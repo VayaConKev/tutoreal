@@ -619,6 +619,8 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 .continue-go { margin-top: 4px; min-height: 48px; border: 0; border-radius: 14px; background: var(--card); color: var(--accent);
   font: inherit; font-size: 16px; font-weight: 800; cursor: pointer; }
 .continue-go:active { transform: scale(0.99); }
+.continue-card { cursor: pointer; -webkit-tap-highlight-color: transparent; }   /* 120단계: 카드 전체를 누를 수 있다 */
+.continue-card:active { transform: scale(0.995); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .continue-bar { background: rgba(4, 34, 63, 0.2); } :root:not([data-theme="light"]) { --continue-fill: var(--on-accent); } }
 :root[data-theme="dark"] .continue-bar { background: rgba(4, 34, 63, 0.2); }
 :root[data-theme="dark"] { --continue-fill: var(--on-accent); }
