@@ -794,14 +794,15 @@ button.wx-link { display: block; width: auto; margin: 10px auto 0; }
 .talk-head.emr .talk-meta { font-size: 13px; }
 /* 대화 머리줄 (113단계): 스크롤해도 맨 위에 붙는다. 홈 화면 앱에서는 상태 표시줄 아래로 (safe-area).
    '1장 · 제목'은 머리줄로 옮기고, 시간은 EMR 카드 오른쪽 위에 둔다 */
-.talk-bar {
+/* 121단계: 문장 연습 화면(#view-drill.learn-bar, 켜진 사람만)도 같은 머리줄 '‹ N장 | 제목'. 꺼진 사람은 예전 '‹ N장' 글자 버튼 그대로 */
+.talk-bar, #view-drill.learn-bar .drill-bar {
   position: sticky; top: 0; z-index: 6; display: flex; align-items: center; gap: 8px; min-height: 44px;
   margin: calc(-1 * max(14px, env(safe-area-inset-top, 0px))) -16px 8px;
   padding: max(4px, env(safe-area-inset-top, 0px)) 16px 4px; background: var(--bg);
 }
-.talk-bar[hidden], .talk-bar [hidden] { display: none; }
-.talk-bar .talk-bar-back { margin: 0 0 0 -12px; flex: none; font-weight: 700; }
-.talk-bar-title { flex: 1; min-width: 0; margin: 0; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.talk-bar[hidden], .talk-bar [hidden], .drill-bar [hidden] { display: none; }
+.talk-bar .talk-bar-back, #view-drill.learn-bar #drill-back { margin: 0 0 0 -12px; flex: none; font-weight: 700; }
+.talk-bar-title, .drill-bar-title { flex: 1; min-width: 0; margin: 0; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .talk-quit-wrap { position: relative; flex: none; margin-left: auto; }
 .talk-quit {
   min-height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--danger-soft); color: var(--danger);

@@ -85,7 +85,8 @@ function show(name) {
   $('#tabbar').hidden = !tab;
   document.body.classList.toggle('has-tabbar', !!tab);
   // 대화·오늘의 단어 화면은 위쪽 로고 줄을 숨겨 대화 글자와 칸이 더 많이 보이게 한다 (80단계, 78단계에는 작은 휴대폰의 오늘의 단어만)
-  document.body.classList.toggle('no-brand', name === 'talk' || name === 'word');
+  // 121단계: 학습 단계 유도가 켜졌으면 문장 연습 화면도 로고 줄을 숨긴다 (로고는 홈 쪽 화면에만)
+  document.body.classList.toggle('no-brand', name === 'talk' || name === 'word' || (name === 'drill' && lpOn()));
   document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   if (name === 'list' && chapters.length) renderList();   // 대화·문장 연습을 하고 돌아오면 진행 상황(79단계)을 새로 센다
   if (name === 'detail') renderPath();   // 학습 단계 목록도 돌아올 때마다 새로 센다 (107단계)
@@ -2226,6 +2227,9 @@ function startDrill() {
   drill.coachError = '';
   cancelRecording();
   $('#drill-back').textContent = `‹ ${chapterNum(currentChapter.chapter_id, currentChapter.order)}장`;
+  $('#view-drill').classList.toggle('learn-bar', lpOn());   // 121단계: 켜졌으면 '‹ N장 | 제목' 머리줄
+  $('#drill-bar-title').hidden = !lpOn();
+  $('#drill-bar-title').textContent = currentChapter.title;
   renderDrill();
   show('drill');
 }

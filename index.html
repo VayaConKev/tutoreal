@@ -147,7 +147,11 @@
     </section>
 
     <section id="view-drill" hidden>
-      <button class="link" id="drill-back"></button>
+      <!-- 머리줄 (121단계): 켜진 사람은 대화 화면과 같은 '‹ N장 | 제목'(로고 없음), 꺼진 사람은 '‹ N장' 글자 버튼만 -->
+      <div class="drill-bar" id="drill-bar">
+        <button class="link" id="drill-back"></button>
+        <p class="drill-bar-title" id="drill-bar-title" hidden></p>
+      </div>
       <div class="levels" id="drill-levels" role="group" aria-label="연습 단계">
         <button class="level" data-level="read" hidden>1 따라 읽기</button>
         <button class="level" data-level="blank">1단계 빈칸 채우기</button>
