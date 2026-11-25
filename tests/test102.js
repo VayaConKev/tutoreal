@@ -26,7 +26,7 @@ const lp = w.tabs.settings.find((r) => r[0] === 'learning_path_published');
 assert(lp && lp[1] === 'preview', 'learning_path_published = preview');
 // 더해진 설정 줄은 learning_path_published와 그 뒤 단계에서 더한 줄만 (112단계 current_chapter)
 const added = () => w.tabs.settings.slice(settingsCount).map((r) => r[0]);
-assert(added().includes('learning_path_published') && added().every((k) => ['learning_path_published', 'current_chapter'].includes(k)), added().join(', '));
+assert(added().includes('learning_path_published') && added().every((k) => ['learning_path_published', 'current_chapter', 'next_class_chapter'].includes(k)), added().join(', '));
 const settingsNow = w.tabs.settings.length;
 w.run('setup');
 assert.equal(w.tabs.drills[0].length, H.length); assert.equal(w.tabs.settings.length, settingsNow);

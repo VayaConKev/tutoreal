@@ -1005,3 +1005,12 @@
 - 로고 줄(라이트/다크 버튼 포함)은 문장 연습 화면에서 숨긴다. 대화 화면은 예전부터 숨김. 홈 · 챕터 · 내 기록 · 내 캐릭터 화면은 그대로
 - 꺼진 사람의 문장 연습 화면은 그대로 (로고와 '‹ N장' 글자 버튼)
 - 서버는 그대로 (v0.71), 배포 필요 없음
+
+## v1.27 (2026-11-25) · 서버 v0.72
+- 122단계: 출입증 체크인 준비 (의도 문서 intent/2026-11-25-login-badge.md). 앱 화면은 그대로 (새 값은 123단계부터 쓴다)
+- 서버 v0.72: login 응답에 badge와 next_class를 더한다. 예전 값(name, role, avatar, course)은 그대로
+  - badge: { dept, role, no, since } — students 탭 badge_dept · badge_role · badge_no. 비면 소속 · 역할은 과정별 기본값(영어 ENDOSCOPY UNIT / Nurse English, 일본어 JAPANESE STUDY / 日本語), 번호는 빈 글. since는 created_at을 한국 시간 'yyyy.MM.dd' (없으면 빈 글)
+  - next_class: { date, chapter_id, order, title } — 날짜는 settings next_class_date (일본어 과정은 next_class_date_ja 줄이 있으면 그것), 챕터는 next_class_chapter(쉼표로 여러 개) 중 그 사람에게 보이는 첫 챕터. 둘 다 비면 null
+- setup이 students 탭에 badge_dept · badge_role · badge_no 칸, settings에 next_class_chapter 줄(빈칸)을 더한다
+- 시험 test122 추가, test102는 setup이 더하는 설정 줄에 next_class_chapter를 허용하도록 손질
+- 배포: Code.gs 붙여 넣기 → 저장 → 새 버전 배포 → setup() 실행

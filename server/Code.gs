@@ -107,12 +107,14 @@
  * v0.71 (119단계): 대화 전 화면의 EMR 카드 — 챕터 목록에 켜진 시나리오의 scenario_id · 이름 · 성별 · 생년월일 · 검사 · 수면 여부만 담는다
  *                 (숨은 설정·기본 답·슬립 결과는 보내지 않고, 검사 칸에 결과가 적힌 시나리오는 검사를 빈칸으로). talk에 scenario_id를 보내면
  *                 그 시나리오로 대화한다 (그 챕터의 켜진 시나리오가 아니면 지금처럼 무작위).
+ * v0.72 (122단계): 출입증 체크인 준비 — login 응답에 badge(소속 · 역할 · 번호 · SINCE)와 next_class(다음 수업 날짜 · 챕터)를 더한다.
+ *                 students 탭 badge_dept · badge_role · badge_no 칸, settings next_class_chapter 줄 (setup이 더함). 앱 화면은 그대로.
  *
  * 비밀 정보 규칙: API 키는 '프로젝트 설정 → 스크립트 속성'의 GEMINI_API_KEY에만 저장한다.
  * 이 코드와 로그에는 절대 키를 적거나 출력하지 않는다.
  */
 
-const SERVER_VERSION = 'v0.71';
+const SERVER_VERSION = 'v0.72';
 
 // 탭 이름과 칸 이름. 앱 코드가 이 이름으로 데이터를 찾으므로 바꾸지 않는다 (추가는 가능).
 const SCHEMA = {
@@ -129,7 +131,7 @@ const SCHEMA = {
   scenarios:      ['scenario_id', 'chapter_id', 'name', 'sex', 'dob', 'country', 'exam', 'twist', 'level', 'active', 'slip', 'answers', 'variants'],
   prompts:        ['prompt_id', 'text', 'active'],
   // profile: 학생 소개 (이름·회사·하는 일 등 사실). AI 상대의 힌트와 피드백 예문이 이 사실로 문장을 만든다. 시트에만 둔다.
-  students:       ['student_id', 'display_name', 'access_code', 'status', 'daily_limit_min', 'created_at', 'role', 'avatar', 'course', 'profile'],
+  students:       ['student_id', 'display_name', 'access_code', 'status', 'daily_limit_min', 'created_at', 'role', 'avatar', 'course', 'profile', 'badge_dept', 'badge_role', 'badge_no'],
   sessions:       ['session_id', 'student_id', 'started_at', 'duration_sec', 'chapter_id', 'scenario_id', 'shared',
                    'hints_used', 'korean_ratio', 'end_reason', 'est_cost_usd', 'confidence', 'difficulty_note', 'feedback',
                    // hard_lines: 학생이 대화 후 '어려웠던 부분'으로 고른 줄 번호 (transcripts 탭의 seq, 예: 3,5)
@@ -406,6 +408,7 @@ const SEED = {
     ['default_daily_limit_min', 30, '학생 1명당 하루 사용 시간 상한 (분)'],
     ['last_class_date', '', '최근 수업일 (화요일 요약 기간 시작)'],
     ['next_class_date', '', '다음 수업일'],
+    ['next_class_chapter', '', '다음 수업 챕터의 chapter_id (쉼표로 여러 개, 그 사람에게 보이는 첫 챕터). 출입증 체크인 화면의 NEXT CLASS 카드. 일본어 과정 날짜는 next_class_date_ja 줄을 따로 두면 그것을 쓴다'],
     ['live_in_usd_per_min', 0.005, 'Live 음성 입력 요금 (분당 달러, 공식 요금표 2026-10 기준)'],
     ['live_out_usd_per_min', 0.018, 'Live 음성 출력 요금 (분당 달러)'],
     ['text_in_usd_per_m', 0.75, '텍스트 모델 입력 요금 (100만 토큰당 달러). 2027-01-01부터 1.50'],
@@ -902,13 +905,65 @@ function handlePost_(body) {
   }
 }
 
-/** 코드가 맞고 상태가 active인 학생이면 이름만 돌려준다. 대소문자와 앞뒤 공백은 무시한다. */
+/** 코드가 맞고 상태가 active인 학생이면 이름만 돌려준다. 대소문자와 앞뒤 공백은 무시한다.
+    122단계: 출입증 정보(badge)와 다음 수업(next_class)을 더한다 (앱은 123단계부터 쓴다) */
 function login_(code) {
   const auth = auth_(code);
   if (!auth.ok) return auth;
   return {
     ok: true, name: String(auth.student.display_name || auth.student.student_id),
-    role: roleOf_(auth.student), avatar: String(auth.student.avatar || '').trim(), course: courseOf_(auth.student)
+    role: roleOf_(auth.student), avatar: String(auth.student.avatar || '').trim(), course: courseOf_(auth.student),
+    badge: badgeOf_(auth.student), next_class: nextClass_(auth.student)
+  };
+}
+
+/* ───────────────────────── 122단계: 출입증 체크인 ───────────────────────── */
+
+// 소속·역할 칸이 비었을 때 과정별 기본값 (중국어 과정은 2026-11-21에 없앴다)
+const BADGE_DEFAULTS = { en: { dept: 'ENDOSCOPY UNIT', role: 'Nurse English' }, ja: { dept: 'JAPANESE STUDY', role: '日本語' } };
+
+/** 날짜 칸(Date 또는 'yyyy-MM-dd' 글자)을 한국 시간 'yyyy-MM-dd'로. 알 수 없으면 빈 글 */
+function dayOf_(v) {
+  if (v instanceof Date && !isNaN(v.getTime())) return Utilities.formatDate(v, 'Asia/Seoul', 'yyyy-MM-dd').slice(0, 10);
+  const m = String(v || '').trim().match(/^(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})/);
+  return m ? m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) : '';
+}
+
+/** 출입증: 소속 · 역할 · 번호(students 탭 badge_* 칸, 비면 과정별 기본값 · 번호는 빈 글) · SINCE(created_at, 'yyyy.MM.dd') */
+function badgeOf_(student) {
+  const def = BADGE_DEFAULTS[courseOf_(student)] || BADGE_DEFAULTS.en;
+  return {
+    dept: String(student.badge_dept || '').trim() || def.dept,
+    role: String(student.badge_role || '').trim() || def.role,
+    no: String(student.badge_no || '').trim(),
+    since: dayOf_(student.created_at).replace(/-/g, '.')
+  };
+}
+
+/**
+ * 다음 수업: 날짜는 settings next_class_date (영어 외 과정은 next_class_date_<과정>이 있으면 그것, 예: next_class_date_ja),
+ * 챕터는 next_class_chapter(쉼표로 여러 개) 중 이 사람에게 보이는 첫 챕터. 둘 다 없으면 null.
+ * { date: 'yyyy-MM-dd' 또는 '', chapter_id, order, title } — 챕터가 없으면 chapter_id·title은 빈 글, order는 0
+ */
+function nextClass_(student) {
+  const settings = getSettings_();
+  const course = courseOf_(student);
+  const own = course !== 'en' ? dayOf_(settings['next_class_date_' + course]) : '';
+  const date = own || dayOf_(settings.next_class_date);
+  const ids = String(settings.next_class_chapter || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+  const chapters = readTable_('chapters');
+  let chapter = null;
+  for (let i = 0; i < ids.length && !chapter; i++) {
+    chapter = chapters.filter(function (c) {
+      return String(c.chapter_id) === ids[i] && chapterVisible_(c, student) && canUseCourse_(student, courseOf_(c));
+    })[0] || null;
+  }
+  if (!date && !chapter) return null;
+  return {
+    date: date,
+    chapter_id: chapter ? String(chapter.chapter_id) : '',
+    order: chapter ? Number(chapter.order) || 0 : 0,
+    title: chapter ? String(chapter.title || '') : ''
   };
 }
 
