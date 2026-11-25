@@ -886,7 +886,10 @@ button.wx-link { display: block; width: auto; margin: 10px auto 0; }
 /* ── 출입증 체크인 (123단계~, 미리 보기 기기만, docs/design/tutoreal-login-badge-final.html) ──
    출입증 안은 테마와 상관없이 늘 라이트 색(--badge-*). 화면 바깥은 배경·부제에 기존 변수, 제목·목걸이 줄·클립·버튼만 새 값.
    높이는 모든 상태에서 같다: 출입증 420px 고정, 안내 문구 자리 늘 확보, 테두리 늘 2px (125·126단계에서 색만 바꾼다).
-   고정폭 글꼴은 JetBrains Mono 파일을 넣기 전까지 기기의 고정폭 글꼴을 쓴다 */
+   고정폭 글꼴: JetBrains Mono NL(합자 없음) 500·700, 영문만 담은 파일을 저장소에 둔다 (fonts/, 라이선스 fonts/OFL-JetBrainsMono.txt).
+   출입증 화면에서만 쓰므로 그 화면이 열릴 때만 받는다 */
+@font-face { font-family: 'JetBrains Mono'; src: url('fonts/jetbrains-mono-500.woff2') format('woff2'); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('fonts/jetbrains-mono-700.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
 .pass-screen {
   --badge-card: #ffffff; --badge-line: #e2e5ea; --badge-text: #1f2937; --badge-muted: #5b6472; --badge-input: #f3f4f6;
   --badge-soft: #e4f0ef; --badge-soft-ink: #256b69; --badge-pass: #2f7a78; --badge-success: #1a7a50;
