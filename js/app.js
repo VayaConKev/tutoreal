@@ -184,8 +184,8 @@ function stopPassRetry() {
   passRetry.timer = 0;
 }
 /* ── 체크인 성공 (126단계): 초록 띠 CHECKED IN과 시각, 사진 자리에 ✓, 입력칸 대신 NEXT CLASS 카드, 찍히는 효과.
-   자동 체크인이어도 1초 보여 주고 홈으로 ('바로 시작하기'를 누르면 바로). 챕터 목록은 그동안 미리 불러 둔다 ── */
-const PASS_HOME_MS = 1000;
+   자동 체크인이어도 3초 보여 주고 홈으로 ('바로 시작하기'를 누르면 바로). 챕터 목록은 그동안 미리 불러 둔다 ── */
+const PASS_HOME_MS = 3000;   // 128단계 전 휴대폰 시험: 1초는 너무 짧아 3초로 (2026-11-25)
 const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
 let passHomeTimer = 0;
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -344,7 +344,7 @@ async function enter(code, auto = false) {
     $('#tab-teacher').hidden = role !== 'teacher';   // 화면에서만 숨긴다. 서버도 요청마다 역할을 확인한다.
     setVersion(server);
     if (passOn()) {
-      // 126단계: 체크인 성공 화면을 1초 보여 주고 홈으로. 챕터는 그동안 불러 둔다
+      // 126단계: 체크인 성공 화면을 3초 보여 주고 홈으로. 챕터는 그동안 불러 둔다
       renderLoginLook();
       showPassSuccess(nextClass);
     } else {
