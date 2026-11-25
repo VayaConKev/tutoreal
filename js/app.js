@@ -162,7 +162,7 @@ const PASS_RETRY_MAX = 3;
 const passRetry = { n: 0, timer: 0 };
 let passState = '';
 function passButtonText() {
-  return passState === 'error' ? '다시 체크인' : passState === 'slow' ? '지금 다시 시도' : '체크인';
+  return passState === 'error' ? '다시 체크인' : passState === 'slow' ? '지금 다시 시도' : passState === 'success' ? '바로 시작하기' : '체크인';
 }
 /** kind: '' 처음 / 'error' 코드 오류 / 'slow' 서버 지연. lead는 굵게, rest는 이어서 */
 function setPassState(kind, lead = '', rest = '') {
@@ -170,10 +170,11 @@ function setPassState(kind, lead = '', rest = '') {
   const screen = $('#pass-screen');
   screen.classList.toggle('is-error', kind === 'error');
   screen.classList.toggle('is-slow', kind === 'slow');
-  $('#pass-state').textContent = kind === 'error' ? 'CHECK-IN FAILED' : kind === 'slow' ? 'PLEASE WAIT' : 'TUTOREAL PASS';
-  $('#pass-msg svg').innerHTML = PASS_ICON[kind || 'info'];
+  screen.classList.toggle('is-success', kind === 'success');
+  $('#pass-state').textContent = kind === 'error' ? 'CHECK-IN FAILED' : kind === 'slow' ? 'PLEASE WAIT' : kind === 'success' ? 'CHECKED IN' : 'TUTOREAL PASS';
+  $('#pass-msg svg').innerHTML = PASS_ICON[kind === 'error' || kind === 'slow' ? kind : 'info'];
   $('#pass-msg').setAttribute('role', kind === 'error' ? 'alert' : 'status');
-  if (kind) $('#pass-msg-text').innerHTML = `<b>${escapeHtml(lead)}</b> ${escapeHtml(rest)}`;
+  if (kind === 'error' || kind === 'slow') $('#pass-msg-text').innerHTML = `<b>${escapeHtml(lead)}</b> ${escapeHtml(rest)}`;
   else $('#pass-msg-text').textContent = PASS_HINT;
   $('#pass-code').setAttribute('aria-invalid', String(kind === 'error'));
   $('#pass-submit').textContent = passButtonText();
@@ -182,6 +183,56 @@ function stopPassRetry() {
   clearTimeout(passRetry.timer);
   passRetry.timer = 0;
 }
+/* ── 체크인 성공 (126단계): 초록 띠 CHECKED IN과 시각, 사진 자리에 ✓, 입력칸 대신 NEXT CLASS 카드, 찍히는 효과.
+   자동 체크인이어도 1초 보여 주고 홈으로 ('바로 시작하기'를 누르면 바로). 챕터 목록은 그동안 미리 불러 둔다 ── */
+const PASS_HOME_MS = 1000;
+const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
+let passHomeTimer = 0;
+const pad2 = (n) => String(n).padStart(2, '0');
+/** NEXT CLASS 카드: 챕터 제목, '11.26 목요일 수업', D-day. 날짜가 지났거나 둘 다 없으면 '다음 수업 일정이 곧 올라와요' */
+function renderPassNext(nc) {
+  let day = null;
+  const m = nc && String(nc.date || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) day = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const left = day ? Math.round((day - today) / 86400000) : null;
+  if (left !== null && left < 0) day = null;   // 지난 수업일은 보이지 않는다 (설정을 아직 안 바꾼 주)
+  const title = nc && nc.title ? nc.title : '';
+  if (!day && !title) {
+    $('#pass-next-t').textContent = '다음 수업 일정이 곧 올라와요';
+    $('#pass-next-d').textContent = '';
+    $('#pass-next-dday').textContent = '';
+    return;
+  }
+  $('#pass-next-t').textContent = title || '다음 수업';
+  $('#pass-next-d').textContent = day ? `${pad2(day.getMonth() + 1)}.${pad2(day.getDate())} ${WEEKDAY_KO[day.getDay()]}요일 수업` : '수업 날짜가 곧 올라와요';
+  $('#pass-next-dday').textContent = !day ? '' : left === 0 ? 'D-DAY' : `D-${left}`;
+}
+function showPassSuccess(nextClass) {
+  setPassState('success');
+  const d = new Date();
+  $('#pass-stamp').textContent = `${pad2(d.getMonth() + 1)}.${pad2(d.getDate())} ${PASS_DAYS[d.getDay()]} · ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  $('#pass-title').textContent = '체크인 완료!';
+  $('#pass-sub').textContent = '홈으로 이동하고 있어요.';
+  $('#pass-photo').insertAdjacentHTML('beforeend',
+    '<span class="pass-check" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>');
+  renderPassNext(nextClass);
+  const pass = $('#pass');
+  pass.classList.remove('shake', 'stamp');
+  void pass.offsetWidth;
+  pass.classList.add('stamp');
+  clearTimeout(passHomeTimer);
+  passHomeTimer = setTimeout(passGoHome, PASS_HOME_MS);
+}
+function passGoHome() {
+  clearTimeout(passHomeTimer);
+  passHomeTimer = 0;
+  if (passState !== 'success') return;
+  setPassState('');
+  show('list');
+}
+
 /** 체크인 실패를 출입증 모습으로 (125단계) */
 function showPassFailure(err, code) {
   stopPassRetry();
@@ -242,7 +293,7 @@ async function enter(code, auto = false) {
   submit.textContent = '확인 중…';
   if (!pass || passState !== 'slow') setLoginMsg('');   // 서버 지연 안내는 다시 시도하는 동안 그대로
   try {
-    const { name, role, avatar, course, server, badge } = await login(code);
+    const { name, role, avatar, course, server, badge, nextClass } = await login(code);
     // 123단계: 선생님·테스터 코드로 들어오면 이 기기는 다음부터 출입증 화면 (미리 보기)
     if (role === 'teacher' || role === 'tester') { try { localStorage.setItem(PASS_PREVIEW_KEY, '1'); } catch { /* 괜찮음 */ } }
     if (passOn()) {
@@ -261,7 +312,13 @@ async function enter(code, auto = false) {
     renderMe();
     $('#tab-teacher').hidden = role !== 'teacher';   // 화면에서만 숨긴다. 서버도 요청마다 역할을 확인한다.
     setVersion(server);
-    show('list');
+    if (passOn()) {
+      // 126단계: 체크인 성공 화면을 1초 보여 주고 홈으로. 챕터는 그동안 불러 둔다
+      renderLoginLook();
+      showPassSuccess(nextClass);
+    } else {
+      show('list');
+    }
     loadChapters();
   } catch (err) {
     console.warn(err);
@@ -2974,7 +3031,11 @@ function submitCode(input) {
   enter(code);
 }
 $('#login-form').addEventListener('submit', (e) => { e.preventDefault(); submitCode($('#login-code')); });
-$('#pass-form').addEventListener('submit', (e) => { e.preventDefault(); submitCode($('#pass-code')); });   // 123단계 출입증
+$('#pass-form').addEventListener('submit', (e) => {   // 123단계 출입증
+  e.preventDefault();
+  if (passState === 'success') { passGoHome(); return; }   // 126단계: '바로 시작하기'
+  submitCode($('#pass-code'));
+});
 // 125단계: 코드를 고치면 오류·지연 모습을 풀고 자동 다시 시도도 멈춘다
 $('#pass-code').addEventListener('input', () => {
   if (!passState) return;
@@ -2982,7 +3043,7 @@ $('#pass-code').addEventListener('input', () => {
   passRetry.n = 0;
   setPassState('');
 });
-$('#pass').addEventListener('animationend', () => $('#pass').classList.remove('shake'));
+$('#pass').addEventListener('animationend', () => $('#pass').classList.remove('shake', 'stamp'));
 // 아래쪽 탭 바
 const TAB_ACTION = {
   list: () => show('list'), history: openHistory, avatar: openAvatarPicker,

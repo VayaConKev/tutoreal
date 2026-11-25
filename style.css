@@ -969,6 +969,27 @@ button.wx-link { display: block; width: auto; margin: 10px auto 0; }
 @keyframes pass-shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
 .pass.shake { animation: pass-shake 360ms ease-in-out 1; }
 @media (prefers-reduced-motion: reduce) { .pass.shake { animation: none; } }
+/* 126단계: 체크인 성공. 입력칸과 NEXT CLASS 카드를 같은 칸에 겹쳐 두고 보이는 쪽만 바꾼다 (출입증 높이 그대로).
+   체크박스는 지우지 않고 숨기기만 한다 (버튼 자리 그대로). 성공하면 한 번 눌렸다 올라오는 효과 */
+.pass-screen .pass-middle { display: grid; grid-template-columns: minmax(0, 1fr); align-content: center; align-items: center; justify-content: stretch; }
+.pass-entry, .pass-done { grid-area: 1 / 1; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.pass-done, .pass-screen.is-success .pass-entry { visibility: hidden; }
+.pass-screen.is-success .pass-done { visibility: visible; }
+.pass-screen.is-success { --pass-band: var(--badge-success); }
+.pass-screen.is-success .pass-auto, .pass-screen.is-success .pass-switch { visibility: hidden; }
+.pass-next { background: var(--badge-soft); border-radius: 14px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.pass-next-text { min-width: 0; }
+.pass-next-k { font: 700 11px var(--badge-mono); letter-spacing: 1.5px; color: var(--badge-soft-ink); }
+.pass-next-t { font-size: 15px; font-weight: 800; color: var(--badge-text); }
+.pass-next-d { font-size: 13px; color: var(--badge-muted); }
+.pass-next-dday { flex: none; font: 700 22px var(--badge-mono); color: var(--badge-soft-ink); }
+.pass-check {
+  position: absolute; right: -6px; bottom: -6px; width: 28px; height: 28px; border-radius: 50%; box-sizing: border-box;
+  background: var(--badge-success); border: 3px solid var(--badge-card); color: #ffffff; display: flex; align-items: center; justify-content: center;
+}
+@keyframes pass-stamp { 0% { transform: scale(1); } 35% { transform: scale(0.97) translateY(2px); } 100% { transform: scale(1); } }
+.pass.stamp { animation: pass-stamp 320ms ease-out 1; }
+@media (prefers-reduced-motion: reduce) { .pass.stamp { animation: none; } }
 .pass-photo img { width: 100%; height: 100%; object-fit: cover; border-radius: 18px; }   /* 124단계: 내 캐릭터 */
 .pass-screen .pass-switch { display: flex; justify-content: center; width: 100%; min-height: 44px; margin: 0; padding: 0; font-size: 14px; color: var(--muted); text-align: center; }
 .pass-screen .pass-switch[hidden] { display: none; }
