@@ -85,5 +85,6 @@
 
 ## 열린 질문 · 다음에 할 것
 
-- 디자인 기준 파일 `docs/design/tutoreal-login-badge-final.html`을 저장소에 넣어야 한다 (123단계 전). 공개 저장소라 실제 이름·병원 이름이 없는지 확인
+- (끝남 2026-11-25) 디자인 기준 파일 `docs/design/tutoreal-login-badge-final.html`을 저장소에 넣음. 예시 이름은 Student A로 바꿨고, 안내 문구·zh 기본값·글꼴은 시안 그대로 두고 구현 때 위 결정을 따른다
+- 123단계에서 정하기: 시안의 역할 줄 'Nurse English · Intermediate'처럼 난이도를 붙일지, `badge_role`만 쓸지
 - 나중에: 접속 코드 대신 서버가 주는 표로 바꾸기
