@@ -983,6 +983,12 @@ button.wx-link { display: block; width: auto; margin: 10px auto 0; }
 .pass-next-t { font-size: 15px; font-weight: 800; color: var(--badge-text); }
 .pass-next-d { font-size: 13px; color: var(--badge-muted); }
 .pass-next-dday { flex: none; font: 700 22px var(--badge-mono); color: var(--badge-soft-ink); }
+.pass-week-k { font: 500 11px var(--badge-mono); letter-spacing: 1.5px; color: var(--badge-muted); margin-bottom: 6px; }   /* 127단계 */
+.pass-week-days { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.pass-week-days li { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: var(--badge-muted); }
+.pass-dot { width: 30px; height: 30px; box-sizing: border-box; border-radius: 50%; border: 1.5px dashed var(--badge-line); display: flex; align-items: center; justify-content: center; }
+.pass-week-days .on .pass-dot { background: var(--badge-pass); border: 0; color: #ffffff; }
+.pass-week-days .today { color: var(--badge-text); font-weight: 800; }
 .pass-check {
   position: absolute; right: -6px; bottom: -6px; width: 28px; height: 28px; border-radius: 50%; box-sizing: border-box;
   background: var(--badge-success); border: 3px solid var(--badge-card); color: #ffffff; display: flex; align-items: center; justify-content: center;

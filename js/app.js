@@ -209,14 +209,45 @@ function renderPassNext(nc) {
   $('#pass-next-d').textContent = day ? `${pad2(day.getMonth() + 1)}.${pad2(day.getDate())} ${WEEKDAY_KO[day.getDay()]}요일 수업` : '수업 날짜가 곧 올라와요';
   $('#pass-next-dday').textContent = !day ? '' : left === 0 ? 'D-DAY' : `D-${left}`;
 }
+/* ── THIS WEEK 출석 도장 (127단계): 체크인한 날(이 기기의 날짜)을 이 기기에만 저장하고 서버로 보내지 않는다.
+   월~일 7칸, 체크인한 날은 청록 ✓, 오늘은 굵게, 빈 날은 연한 점선만 (끊김을 알리는 문구는 쓰지 않는다) ── */
+const PASS_DAYS_KEY = 'tutoreal.passDays';
+const PASS_DAYS_MAX = 60;   // 최근 날짜만 남긴다
+const dayKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+function loadPassDays() {
+  try { const v = JSON.parse(localStorage.getItem(PASS_DAYS_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+function savePassDays(list) {
+  try { list ? localStorage.setItem(PASS_DAYS_KEY, JSON.stringify(list.slice(-PASS_DAYS_MAX))) : localStorage.removeItem(PASS_DAYS_KEY); } catch { /* 괜찮음 */ }
+}
+function recordPassDay(d) {
+  const key = dayKey(d);
+  const list = loadPassDays();
+  if (!list.includes(key)) { list.push(key); list.sort(); savePassDays(list); }
+}
+const CHECK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+function renderPassWeek(today) {
+  const days = loadPassDays();
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
+  const names = ['월', '화', '수', '목', '금', '토', '일'];
+  $('#pass-week').innerHTML = names.map((n, i) => {
+    const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+    const on = days.includes(dayKey(d));
+    const isToday = dayKey(d) === dayKey(today);
+    return `<li class="${on ? 'on' : ''}${isToday ? ' today' : ''}" aria-label="${n}요일${on ? ' 체크인' : ''}${isToday ? ' (오늘)' : ''}">
+      <span class="pass-dot" aria-hidden="true">${on ? CHECK_SVG : ''}</span><span aria-hidden="true">${n}</span></li>`;
+  }).join('');
+}
+
 function showPassSuccess(nextClass) {
   setPassState('success');
+  recordPassDay(new Date());   // 127단계: 오늘 출석 도장
+  renderPassWeek(new Date());
   const d = new Date();
   $('#pass-stamp').textContent = `${pad2(d.getMonth() + 1)}.${pad2(d.getDate())} ${PASS_DAYS[d.getDay()]} · ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   $('#pass-title').textContent = '체크인 완료!';
   $('#pass-sub').textContent = '홈으로 이동하고 있어요.';
-  $('#pass-photo').insertAdjacentHTML('beforeend',
-    '<span class="pass-check" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>');
+  $('#pass-photo').insertAdjacentHTML('beforeend', `<span class="pass-check" aria-hidden="true">${CHECK_SVG}</span>`);
   renderPassNext(nextClass);
   const pass = $('#pass');
   pass.classList.remove('shake', 'stamp');
@@ -335,6 +366,7 @@ async function enter(code, auto = false) {
 function logout() {
   saveCode('');
   savePassProfile(null);   // 124단계: 로그아웃은 보통 다른 사람이 쓰려고 할 때라 출입증 정보도 지운다 → 첫 방문
+  savePassDays(null);      // 127단계: 출석 도장도 함께
   $('#tab-teacher').hidden = true;
   dailyWord = null;   // 다른 과정(일본어) 학생이 같은 휴대폰으로 들어올 수 있다
   renderWordCard();
@@ -3647,6 +3679,7 @@ $('#pass-switch').addEventListener('click', () => {
   setPassState('');
   saveCode('');
   savePassProfile(null);
+  savePassDays(null);   // 127단계
   $('#pass-code').value = '';
   setLoginMsg('');
   renderLoginLook();

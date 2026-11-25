@@ -62,11 +62,16 @@
                        placeholder="선생님께 받은 코드" aria-describedby="pass-msg">
                 <p class="pass-msg" id="pass-msg" role="status"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5h.01"/></svg><span id="pass-msg-text">코드는 선생님께 받은 그대로 입력해 주세요.</span></p>
               </div>
-              <!-- 체크인 성공 (126단계): 입력칸 대신 NEXT CLASS 카드. THIS WEEK 출석 도장은 127단계 -->
+              <!-- 체크인 성공 (126단계): 입력칸 대신 NEXT CLASS 카드와 THIS WEEK 출석 도장 (127단계) -->
               <div class="pass-done" id="pass-done">
                 <div class="pass-next">
                   <div class="pass-next-text"><p class="pass-next-k">NEXT CLASS</p><p class="pass-next-t" id="pass-next-t"></p><p class="pass-next-d" id="pass-next-d"></p></div>
                   <p class="pass-next-dday" id="pass-next-dday"></p>
+                </div>
+                <!-- THIS WEEK 출석 도장 (127단계): 체크인한 날, 이 기기에만 저장 -->
+                <div class="pass-week">
+                  <p class="pass-week-k" id="pass-week-k">THIS WEEK</p>
+                  <ol class="pass-week-days" id="pass-week" aria-labelledby="pass-week-k"></ol>
                 </div>
               </div>
             </div>
