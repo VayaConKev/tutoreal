@@ -150,6 +150,61 @@ function setLoginMsg(text) {
   $('#pass-msg-text').textContent = text || PASS_HINT;
 }
 
+/* ── 출입증 상태 (125단계): 코드 오류(빨강) / 서버 지연(주황). 높이는 그대로 두고 색 · 띠 문구 · 안내 · 버튼 글자만 바꾼다 ──
+   서버 지연이면 코드는 지우지 않고 10초 뒤 저절로 다시 시도한다 (3번까지). 코드를 고치거나 다시 누르면 처음 상태로 */
+const PASS_ICON = {
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5h.01"/>',
+  error: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/>',
+  slow: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'
+};
+const PASS_RETRY_SEC = 10;
+const PASS_RETRY_MAX = 3;
+const passRetry = { n: 0, timer: 0 };
+let passState = '';
+function passButtonText() {
+  return passState === 'error' ? '다시 체크인' : passState === 'slow' ? '지금 다시 시도' : '체크인';
+}
+/** kind: '' 처음 / 'error' 코드 오류 / 'slow' 서버 지연. lead는 굵게, rest는 이어서 */
+function setPassState(kind, lead = '', rest = '') {
+  passState = kind;
+  const screen = $('#pass-screen');
+  screen.classList.toggle('is-error', kind === 'error');
+  screen.classList.toggle('is-slow', kind === 'slow');
+  $('#pass-state').textContent = kind === 'error' ? 'CHECK-IN FAILED' : kind === 'slow' ? 'PLEASE WAIT' : 'TUTOREAL PASS';
+  $('#pass-msg svg').innerHTML = PASS_ICON[kind || 'info'];
+  $('#pass-msg').setAttribute('role', kind === 'error' ? 'alert' : 'status');
+  if (kind) $('#pass-msg-text').innerHTML = `<b>${escapeHtml(lead)}</b> ${escapeHtml(rest)}`;
+  else $('#pass-msg-text').textContent = PASS_HINT;
+  $('#pass-code').setAttribute('aria-invalid', String(kind === 'error'));
+  $('#pass-submit').textContent = passButtonText();
+}
+function stopPassRetry() {
+  clearTimeout(passRetry.timer);
+  passRetry.timer = 0;
+}
+/** 체크인 실패를 출입증 모습으로 (125단계) */
+function showPassFailure(err, code) {
+  stopPassRetry();
+  if (err.message === 'INVALID_CODE' || err.message === 'TOO_MANY_TRIES') {
+    passRetry.n = 0;
+    if (err.message === 'INVALID_CODE') setPassState('error', '확인되지 않은 코드예요.', '글자와 숫자를 한 글자씩 확인해 주세요.');
+    else setPassState('error', '잘못된 시도가 많아요.', '10분 뒤에 다시 해 주세요.');
+    const pass = $('#pass');
+    pass.classList.remove('shake');
+    void pass.offsetWidth;   // 같은 오류가 다시 나도 흔들리게
+    pass.classList.add('shake');
+    return;
+  }
+  // 그 밖(응답 늦음, 연결 끊김, 서버 오류)은 서버 지연: 10초 뒤 저절로 다시 시도, 3번까지
+  if (passRetry.n < PASS_RETRY_MAX) {
+    passRetry.n++;
+    setPassState('slow', '서버가 잠시 느려요.', `${PASS_RETRY_SEC}초 뒤 자동으로 다시 시도할게요.`);
+    passRetry.timer = setTimeout(() => { passRetry.timer = 0; enter(code, true); }, PASS_RETRY_SEC * 1000);
+  } else {
+    setPassState('slow', '서버에 연결되지 않아요.', "잠시 뒤 '지금 다시 시도'를 눌러 주세요.");
+  }
+}
+
 /** 로그인 화면 모습 (123단계): 미리 보기 기기면 출입증, 아니면 예전 카드. 띠의 날짜는 오늘 ('11.25 WED') */
 const PASS_DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 let passIcon = '';   // 첫 방문의 사진 자리 (사람 모양 그림, index.html 그대로)
@@ -176,17 +231,23 @@ function renderLoginLook() {
   if (p) $('#pass-switch').textContent = `${p.name} 님이 아닌가요? 다른 코드로 체크인`;
 }
 
-async function enter(code) {
+async function enter(code, auto = false) {
   const pass = passOn();
   const submit = pass ? $('#pass-submit') : $('#login-submit');
+  if (pass) {
+    stopPassRetry();
+    if (!auto) { passRetry.n = 0; setPassState(''); }   // 직접 누르면 처음 모습으로, 자동 다시 시도는 다시 3번
+  }
   submit.disabled = true;
   submit.textContent = '확인 중…';
-  setLoginMsg('');
+  if (!pass || passState !== 'slow') setLoginMsg('');   // 서버 지연 안내는 다시 시도하는 동안 그대로
   try {
     const { name, role, avatar, course, server, badge } = await login(code);
     // 123단계: 선생님·테스터 코드로 들어오면 이 기기는 다음부터 출입증 화면 (미리 보기)
     if (role === 'teacher' || role === 'tester') { try { localStorage.setItem(PASS_PREVIEW_KEY, '1'); } catch { /* 괜찮음 */ } }
     if (passOn()) {
+      passRetry.n = 0;
+      setPassState('');
       // 124단계: 출입증에서는 자동 체크인을 켠 사람만 기기에 코드를 남긴다. 출입증 정보는 늘 남겨 다음에 '다시 온 학생'으로
       keepCode(code, loadAuto());
       const b = badge || {};
@@ -205,11 +266,12 @@ async function enter(code) {
   } catch (err) {
     console.warn(err);
     if (err.message === 'INVALID_CODE') saveCode('');
-    setLoginMsg(errorText(err));
+    if (pass) showPassFailure(err, code);   // 125단계: 코드 오류 / 서버 지연
+    else setLoginMsg(errorText(err));
     show('login');
   } finally {
     submit.disabled = false;
-    submit.textContent = pass ? '체크인' : '로그인';
+    submit.textContent = pass ? passButtonText() : '로그인';
   }
 }
 
@@ -223,6 +285,8 @@ function logout() {
   $('#continue-box').innerHTML = '';   // 이어서 하기 카드도 다음 사람의 챕터를 받은 뒤 다시 그린다 (109단계)
   $('#login-code').value = '';
   $('#pass-code').value = '';
+  stopPassRetry();
+  setPassState('');
   setLoginMsg('');
   show('login');
   (passOn() ? $('#pass-code') : $('#login-code')).focus();
@@ -2902,11 +2966,23 @@ function nextTheme() {
 
 function submitCode(input) {
   const code = input.value.trim();
-  if (!code) { setLoginMsg('접속 코드를 입력해 주세요.'); return; }
+  if (!code) {
+    if (passOn()) { stopPassRetry(); setPassState(''); }
+    setLoginMsg('접속 코드를 입력해 주세요.');
+    return;
+  }
   enter(code);
 }
 $('#login-form').addEventListener('submit', (e) => { e.preventDefault(); submitCode($('#login-code')); });
 $('#pass-form').addEventListener('submit', (e) => { e.preventDefault(); submitCode($('#pass-code')); });   // 123단계 출입증
+// 125단계: 코드를 고치면 오류·지연 모습을 풀고 자동 다시 시도도 멈춘다
+$('#pass-code').addEventListener('input', () => {
+  if (!passState) return;
+  stopPassRetry();
+  passRetry.n = 0;
+  setPassState('');
+});
+$('#pass').addEventListener('animationend', () => $('#pass').classList.remove('shake'));
 // 아래쪽 탭 바
 const TAB_ACTION = {
   list: () => show('list'), history: openHistory, avatar: openAvatarPicker,
@@ -3506,6 +3582,8 @@ $('#pass-auto').addEventListener('change', (e) => {
 });
 // 124단계: 다른 사람으로 체크인 — 이 기기의 출입증 정보와 코드를 지우고 첫 방문 화면
 $('#pass-switch').addEventListener('click', () => {
+  stopPassRetry();
+  setPassState('');
   saveCode('');
   savePassProfile(null);
   $('#pass-code').value = '';
