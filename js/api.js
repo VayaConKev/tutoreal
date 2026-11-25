@@ -44,7 +44,9 @@ export async function getChapters(code) {
 
 export async function login(code) {
   const data = await postServer('login', { code });
-  return { name: data.name, role: data.role || 'student', avatar: data.avatar || '', course: data.course || 'en', server: data.server };
+  // badge · nextClass (서버 v0.72, 122단계): 출입증 체크인 화면용. 예전 서버는 없음 → null
+  return { name: data.name, role: data.role || 'student', avatar: data.avatar || '', course: data.course || 'en', server: data.server,
+    badge: data.badge || null, nextClass: data.next_class || null };
 }
 
 // mode (105단계): 대화 모드 script(대본) / cue(큐카드) / free(자유). 비우면 보내지 않는다 — 서버가 지금과 똑같이 대화를 만든다.

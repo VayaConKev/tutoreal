@@ -23,11 +23,20 @@ let clock = null;       // 경과 시간 타이머
 
 // 접속 코드는 이 기기의 브라우저에만 기억한다 (다음에 열 때 다시 입력하지 않도록).
 const CODE_KEY = 'tutoreal.code';
+// 124단계: 이번에 들어온 코드. 출입증에서 자동 체크인을 끄면 기기에는 저장하지 않고 여기에만 둔다 (서버 요청마다 쓴다)
+let codeMem = '';
 function loadCode() {
+  if (codeMem) return codeMem;
   try { return localStorage.getItem(CODE_KEY) || ''; } catch { return ''; }
 }
 function saveCode(code) {
+  codeMem = code || '';
   try { code ? localStorage.setItem(CODE_KEY, code) : localStorage.removeItem(CODE_KEY); } catch { /* 저장 못 해도 동작 */ }
+}
+/** 코드를 쓰되 기기에는 store일 때만 남긴다 (124단계) */
+function keepCode(code, store) {
+  saveCode(store ? code : '');
+  codeMem = code;
 }
 // 자동 로그인: 사용자가 직접 체크했을 때만 (기본 꺼짐). 꺼져 있으면 코드만 미리 채우고 '로그인'을 눌러야 들어간다.
 const AUTO_KEY = 'tutoreal.autologin';
@@ -42,6 +51,14 @@ function saveAuto(on) {
 const PASS_PREVIEW_KEY = 'tutoreal.passPreview';
 function passOn() {
   try { return localStorage.getItem(PASS_PREVIEW_KEY) === '1'; } catch { return false; }
+}
+// 출입증 정보 (124단계): 체크인한 사람의 이름 · 캐릭터 · 소속 · 역할 · 번호 · SINCE를 이 기기에. 있으면 '다시 온 학생' 화면. 로그아웃하면 지운다
+const PASS_PROFILE_KEY = 'tutoreal.passProfile';
+function loadPassProfile() {
+  try { const v = JSON.parse(localStorage.getItem(PASS_PROFILE_KEY) || 'null'); return v && v.name ? v : null; } catch { return null; }
+}
+function savePassProfile(p) {
+  try { p ? localStorage.setItem(PASS_PROFILE_KEY, JSON.stringify(p)) : localStorage.removeItem(PASS_PROFILE_KEY); } catch { /* 괜찮음 */ }
 }
 
 const ERROR_TEXT = {
@@ -135,6 +152,7 @@ function setLoginMsg(text) {
 
 /** 로그인 화면 모습 (123단계): 미리 보기 기기면 출입증, 아니면 예전 카드. 띠의 날짜는 오늘 ('11.25 WED') */
 const PASS_DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+let passIcon = '';   // 첫 방문의 사진 자리 (사람 모양 그림, index.html 그대로)
 function renderLoginLook() {
   const on = passOn();
   $('#login-form').hidden = on;
@@ -142,6 +160,20 @@ function renderLoginLook() {
   if (!on) return;
   const d = new Date();
   $('#pass-stamp').textContent = `${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} ${PASS_DAYS[d.getDay()]}`;
+  // 124단계: 이 기기에 출입증 정보가 있으면 '다시 온 학생' (이름 · 캐릭터 · 소속 · 역할 · SINCE · No.), 없으면 첫 방문
+  if (!passIcon) passIcon = $('#pass-photo').innerHTML;
+  const p = loadPassProfile();
+  $('#pass-title').textContent = p ? `${p.name} 님, 다시 오셨네요` : '오늘의 3분, 체크인';
+  $('#pass-sub').textContent = p ? '오늘도 3분만 체크인해요.' : '출입증에 접속 코드를 찍고 들어가요.';
+  const pic = p && p.avatar && avatars.students[p.avatar];
+  $('#pass-photo').innerHTML = !p ? passIcon
+    : pic ? `<img src="img/avatars/${escapeHtml(pic)}" alt="">` : escapeHtml(String(p.name).trim().charAt(0).toUpperCase());
+  $('#pass-dept').textContent = p ? p.dept : 'TUTOREAL MEMBERS';
+  $('#pass-name').textContent = p ? p.name : 'NEW MEMBER';
+  $('#pass-role').textContent = p ? p.role : '선생님께 받은 코드로 시작해요';
+  $('#pass-issue').textContent = `SINCE ${(p && p.since) || '————'} · No. ${(p && p.no) || '———'}`;
+  $('#pass-switch').hidden = !p;
+  if (p) $('#pass-switch').textContent = `${p.name} 님이 아닌가요? 다른 코드로 체크인`;
 }
 
 async function enter(code) {
@@ -151,10 +183,17 @@ async function enter(code) {
   submit.textContent = '확인 중…';
   setLoginMsg('');
   try {
-    const { name, role, avatar, course, server } = await login(code);
+    const { name, role, avatar, course, server, badge } = await login(code);
     // 123단계: 선생님·테스터 코드로 들어오면 이 기기는 다음부터 출입증 화면 (미리 보기)
     if (role === 'teacher' || role === 'tester') { try { localStorage.setItem(PASS_PREVIEW_KEY, '1'); } catch { /* 괜찮음 */ } }
-    saveCode(code);
+    if (passOn()) {
+      // 124단계: 출입증에서는 자동 체크인을 켠 사람만 기기에 코드를 남긴다. 출입증 정보는 늘 남겨 다음에 '다시 온 학생'으로
+      keepCode(code, loadAuto());
+      const b = badge || {};
+      savePassProfile({ name, avatar, dept: b.dept || 'TUTOREAL MEMBERS', role: b.role || '', no: b.no || '', since: b.since || '' });
+    } else {
+      saveCode(code);
+    }
     me.name = name;
     me.avatar = avatar;
     me.course = course;
@@ -176,6 +215,7 @@ async function enter(code) {
 
 function logout() {
   saveCode('');
+  savePassProfile(null);   // 124단계: 로그아웃은 보통 다른 사람이 쓰려고 할 때라 출입증 정보도 지운다 → 첫 방문
   $('#tab-teacher').hidden = true;
   dailyWord = null;   // 다른 과정(일본어) 학생이 같은 휴대폰으로 들어올 수 있다
   renderWordCard();
@@ -3452,16 +3492,30 @@ $('#review-drill').addEventListener('click', () => finishReview('drill'));
 setVersion();
 renderThemeBtn();
 $('#theme-btn').addEventListener('click', nextTheme);
-loadAvatars().then(renderMe);
+loadAvatars().then(() => { renderMe(); if (!$('#view-login').hidden) renderLoginLook(); });   // 124단계: 출입증 사진 자리도 캐릭터로
 show('login');
 // 저장된 코드는 입력칸에 채워 두기만 한다. '다음부터 자동 로그인'을 체크한 사람만 바로 들어간다.
 const saved = loadCode();
-// 예전 카드와 출입증의 체크박스는 같은 설정 (124단계에서 출입증의 접속 코드 저장 규칙을 따로 정한다)
+// 예전 카드와 출입증의 체크박스는 같은 설정. 출입증에서는 이 체크가 코드 저장 여부도 정한다 (124단계)
 const syncAuto = (on) => { saveAuto(on); $('#auto-login').checked = on; $('#pass-auto').checked = on; };
 syncAuto(loadAuto());
 $('#auto-login').addEventListener('change', (e) => syncAuto(e.target.checked));
-$('#pass-auto').addEventListener('change', (e) => syncAuto(e.target.checked));
-if (saved) {
+$('#pass-auto').addEventListener('change', (e) => {
+  syncAuto(e.target.checked);
+  if (!e.target.checked) keepCode(codeMem, false);   // 124단계: 자동 체크인을 끄면 기기에 남은 코드를 지운다
+});
+// 124단계: 다른 사람으로 체크인 — 이 기기의 출입증 정보와 코드를 지우고 첫 방문 화면
+$('#pass-switch').addEventListener('click', () => {
+  saveCode('');
+  savePassProfile(null);
+  $('#pass-code').value = '';
+  setLoginMsg('');
+  renderLoginLook();
+  $('#pass-code').focus();
+});
+// 출입증에서 자동 체크인이 꺼져 있으면 예전에 저장된 코드를 지운다 (124단계 규칙, 예전 화면은 그대로)
+if (saved && passOn() && !loadAuto()) saveCode('');
+if (loadCode()) {
   $('#login-code').value = saved;
   $('#pass-code').value = saved;
   if (loadAuto()) enter(saved);
