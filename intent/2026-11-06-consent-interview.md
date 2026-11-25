@@ -33,6 +33,7 @@
 | # | 순서 | 문장 초안 | 단계 |
 | --- | --- | --- | --- |
 | 1 | 본인 확인 | Could you tell me your full name, please? | 1장 복습 |
+|   | 화면 정보 확인 | Is your information on the screen correct? (짧게: Is this your information?) | I① |
 | 2 | 등록 정보 (여권번호 등) | Is this your passport number? | I① |
 | 3 | 검사·수면 확인 | You're having a stomach endoscopy with sedation today, right? | I① |
 | 4 | 금식 | How long have you fasted? / When did you last eat? | I① |
@@ -135,6 +136,7 @@
 | 화면 목록은 scene에 적고 수검자가 병명을 말함 (대화 화면 카드 없음) | 코드를 바꾸지 않고, 귀로 듣고 알아채는 연습이 된다. 어려우면 카드를 더한다 | 대화 화면에 목록 카드 |
 | ci01 시나리오는 모두 해당 사항을 하나 이상 넣음 | 듣고 멈추는 연습을 늘 하게 한다. 멈추기를 꼭 할 항목으로 판단할 수 있다 | 해당 사항이 없는 수검자도 넣기 |
 | 듣기 단어는 문장 연습에만, 핵심 단어에는 넣지 않음 | 핵심 단어는 학생이 말했는지를 보는 칸이라, 수검자가 말하는 병명은 '안 씀'으로 나온다 | keywords에 병명 넣기 |
+| (2026-11-25) 생년월일·여권번호는 소리 내어 읽지 않는다. 성함 다음에 화면을 가리키며 "Is your information on the screen correct?"(짧게 "Is this your information?"), 여권번호는 "Is this your passport number?"까지만. 6주차 인쇄물을 고쳐 다시 만들고, 앱 ci01에 문장 `ci01-d30`(순서 12.5)·체크리스트 1줄·keywords `information`을 더함 | 다른 사람이 들을 수 있는 곳에서 개인정보를 소리 내지 않는다. 실제로도 화면의 본인 정보가 맞는지 묻는다 (선생님) | 1장처럼 생년월일을 되읽기 ("So, … Is that right?"), 여권번호를 소리 내 읽기 |
 
 ## 성공 기준
 
