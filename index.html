@@ -32,6 +32,46 @@
         <button class="primary" type="submit" id="login-submit">로그인</button>
         <p class="hint" id="login-msg" role="alert"></p>
       </form>
+      <!-- 출입증 체크인 (123단계~, docs/design/tutoreal-login-badge-final.html): 만드는 동안은 이 기기에서 선생님·테스터 코드로
+           들어온 적이 있을 때만 보인다 (위의 예전 로그인 대신). 128단계에서 모두에게 켜고 예전 로그인은 지운다 -->
+      <div class="pass-screen" id="pass-screen" hidden>
+        <div class="pass-head">
+          <h2 class="pass-title" id="pass-title">오늘의 3분, 체크인</h2>
+          <p class="pass-sub" id="pass-sub">출입증에 접속 코드를 찍고 들어가요.</p>
+        </div>
+        <div class="pass-lanyard" aria-hidden="true"><i class="pass-strap"></i><i class="pass-clip"></i></div>
+        <form id="pass-form" novalidate>
+          <div class="pass" id="pass">
+            <div class="pass-band">
+              <i class="pass-hole" aria-hidden="true"></i>
+              <div class="pass-band-row"><span class="pass-state" id="pass-state">TUTOREAL PASS</span><span class="pass-stamp" id="pass-stamp"></span></div>
+            </div>
+            <div class="pass-who">
+              <div class="pass-photo" id="pass-photo"><svg aria-hidden="true" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></div>
+              <div class="pass-id">
+                <p class="pass-dept" id="pass-dept">TUTOREAL MEMBERS</p>
+                <p class="pass-name" id="pass-name">NEW MEMBER</p>
+                <p class="pass-role" id="pass-role">선생님께 받은 코드로 시작해요</p>
+              </div>
+            </div>
+            <div class="pass-divider"></div>
+            <div class="pass-middle">
+              <label class="pass-label" for="pass-code">PASS CODE</label>
+              <input class="pass-code" id="pass-code" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                     placeholder="선생님께 받은 코드" aria-describedby="pass-msg">
+              <p class="pass-msg" id="pass-msg" role="status"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5h.01"/></svg><span id="pass-msg-text">코드는 선생님께 받은 그대로 입력해 주세요.</span></p>
+            </div>
+            <div class="pass-foot">
+              <p class="pass-logo"><span>Tuto</span><b>real</b></p>
+              <p class="pass-issue" id="pass-issue">SINCE ———— · No. ———</p>
+            </div>
+          </div>
+          <div class="pass-below">
+            <label class="pass-auto"><input type="checkbox" id="pass-auto"> 다음부터 자동 체크인</label>
+            <button class="pass-go" type="submit" id="pass-submit">체크인</button>
+          </div>
+        </form>
+      </div>
     </section>
 
     <section id="view-list" hidden>

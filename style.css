@@ -882,3 +882,88 @@ button.wx-link { display: block; width: auto; margin: 10px auto 0; }
 .path-next[hidden] { display: none; }
 .path-next-top { font-size: 12px; font-weight: 400; opacity: 1; color: var(--on-accent); }
 .path-next-main { font-size: 17px; font-weight: 800; }
+
+/* ── 출입증 체크인 (123단계~, 미리 보기 기기만, docs/design/tutoreal-login-badge-final.html) ──
+   출입증 안은 테마와 상관없이 늘 라이트 색(--badge-*). 화면 바깥은 배경·부제에 기존 변수, 제목·목걸이 줄·클립·버튼만 새 값.
+   높이는 모든 상태에서 같다: 출입증 420px 고정, 안내 문구 자리 늘 확보, 테두리 늘 2px (125·126단계에서 색만 바꾼다).
+   고정폭 글꼴은 JetBrains Mono 파일을 넣기 전까지 기기의 고정폭 글꼴을 쓴다 */
+.pass-screen {
+  --badge-card: #ffffff; --badge-line: #e2e5ea; --badge-text: #1f2937; --badge-muted: #5b6472; --badge-input: #f3f4f6;
+  --badge-soft: #e4f0ef; --badge-soft-ink: #256b69; --badge-pass: #2f7a78; --badge-success: #1a7a50;
+  --badge-danger: #c43d3d; --badge-danger-soft: #fdf1f1; --badge-danger-text: #b42318; --badge-warn: #9a5b00; --badge-warn-text: #7a4300;
+  --badge-brand: #15336e; --badge-brand-accent: #2f7a78; --badge-placeholder: #8a93a0;
+  --badge-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --pass-heading: #15336e; --pass-strap: #15336e; --pass-clip: #b8c0cc; --pass-primary: #15336e; --pass-on-primary: #ffffff;
+  --pass-shadow: 0 8px 24px rgba(21, 51, 110, 0.12);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pass-screen {
+    --pass-heading: var(--text); --pass-strap: #50b3b2; --pass-clip: #5b6676; --pass-primary: var(--accent); --pass-on-primary: var(--on-accent);
+    --pass-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  }
+}
+:root[data-theme="dark"] .pass-screen {
+  --pass-heading: var(--text); --pass-strap: #50b3b2; --pass-clip: #5b6676; --pass-primary: var(--accent); --pass-on-primary: var(--on-accent);
+  --pass-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.pass-screen[hidden], #login-form[hidden] { display: none; }
+.pass-screen p { margin: 0; }
+.pass-head { padding: 0 12px; min-height: 64px; }
+.pass-title { margin: 0 0 4px; font-size: 26px; font-weight: 800; color: var(--pass-heading); letter-spacing: -0.3px; }
+.pass-sub { font-size: 15px; color: var(--muted); }
+.pass-lanyard { display: flex; flex-direction: column; align-items: center; margin-top: 10px; }
+.pass-strap { display: block; width: 14px; height: 30px; background: var(--pass-strap); border-radius: 3px 3px 0 0; }
+.pass-clip { display: block; width: 46px; height: 16px; background: var(--pass-clip); border-radius: 6px; }
+
+.pass {
+  position: relative; z-index: 1; margin: -4px 12px 0; height: 420px; box-sizing: border-box; display: flex; flex-direction: column;
+  background: var(--badge-card); color: var(--badge-text); border: 2px solid var(--pass-border, var(--badge-line)); border-radius: 22px;
+  overflow: hidden; box-shadow: var(--pass-shadow);
+}
+.pass-band { background: var(--pass-band, var(--badge-pass)); color: #ffffff; padding: 12px 18px; display: flex; flex-direction: column; gap: 10px; }
+.pass-hole { align-self: center; width: 52px; height: 9px; border-radius: 999px; background: var(--bg); }
+.pass-band-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-family: var(--badge-mono); }
+.pass-state { font-size: 13px; font-weight: 700; letter-spacing: 2px; }
+.pass-stamp { font-size: 12px; font-weight: 500; letter-spacing: 1px; white-space: nowrap; }
+.pass-who { padding: 18px 20px 6px; display: flex; gap: 14px; align-items: center; }
+.pass-photo {
+  position: relative; flex: none; width: 68px; height: 68px; border-radius: 18px; background: var(--badge-soft); color: var(--badge-soft-ink);
+  display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 800;
+}
+.pass-id { min-width: 0; }
+.pass-dept { font: 500 11px var(--badge-mono); letter-spacing: 1.5px; color: var(--badge-muted); }
+.pass-name { font-size: 20px; font-weight: 800; color: var(--badge-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pass-role { font-size: 13px; color: var(--badge-muted); }
+.pass-divider { height: 1px; background: var(--badge-line); margin: 10px 20px 0; }
+.pass-middle { flex: 1; min-height: 0; padding: 8px 20px 4px; display: flex; flex-direction: column; gap: 10px; justify-content: center; }
+.pass-label { font: 700 12px var(--badge-mono); letter-spacing: 1.5px; color: var(--badge-muted); }
+.pass-screen .pass-code {   /* 앱 전체 input[type="text"] 규칙보다 앞서게 */
+  box-sizing: border-box; width: 100%; height: 56px; margin: 0; padding: 0 16px; border-radius: 14px;
+  border: 2px solid var(--pass-input-border, var(--badge-line)); background: var(--pass-input-bg, var(--badge-input));
+  font: 17px var(--badge-mono); letter-spacing: 1.5px; color: var(--badge-text);
+}
+.pass-screen .pass-code::placeholder { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; letter-spacing: 0; color: var(--badge-placeholder); }
+.pass-screen .pass-code:focus { outline: 2px solid var(--badge-brand); outline-offset: 1px; }
+.pass-msg { height: 44px; display: flex; gap: 8px; align-items: flex-start; color: var(--pass-msg, var(--badge-muted)); font-size: 13px; line-height: 1.55; overflow: hidden; }
+.pass-msg svg { flex: none; margin-top: 1px; }
+.pass-foot { border-top: 1px dashed var(--badge-line); margin: 0 20px; padding: 10px 0 12px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.pass-logo { font-weight: 800; font-size: 16px; letter-spacing: -0.3px; color: var(--badge-brand); }
+.pass-logo b { color: var(--badge-brand-accent); font-weight: 800; }
+.pass-issue { font: 500 10px var(--badge-mono); letter-spacing: 1.5px; color: var(--badge-muted); }
+
+.pass-below { padding: 16px 12px 0; display: flex; flex-direction: column; gap: 6px; }
+.pass-auto { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 15px; color: var(--muted); cursor: pointer; }
+.pass-auto input { width: 22px; height: 22px; margin: 0; accent-color: var(--pass-primary); }
+.pass-go {
+  width: 100%; min-height: 56px; border: 0; border-radius: 16px; background: var(--pass-primary); color: var(--pass-on-primary);
+  font: inherit; font-size: 17px; font-weight: 800; cursor: pointer;
+}
+.pass-go:disabled { opacity: 0.6; cursor: default; }
+@media (max-width: 359px) {
+  .pass { margin-inline: 0; }
+  .pass-who { padding-inline: 16px; gap: 12px; }
+  .pass-middle, .pass-divider, .pass-foot { margin-inline: 0; padding-inline: 16px; }
+  .pass-divider { margin-inline: 16px; padding-inline: 0; }
+  .pass-foot { margin-inline: 16px; padding-inline: 0; }
+  .pass-below, .pass-head { padding-inline: 0; }
+}

@@ -37,6 +37,12 @@ function loadAuto() {
 function saveAuto(on) {
   try { on ? localStorage.setItem(AUTO_KEY, '1') : localStorage.removeItem(AUTO_KEY); } catch { /* 저장 못 해도 동작 */ }
 }
+// 출입증 체크인 미리 보기 (123단계~): 이 기기에서 선생님·테스터 코드로 들어온 적이 있으면 새 로그인 화면 (128단계에서 모두에게 켜고 지운다).
+// 주소 뒤 표시는 쓰지 않는다: 아이폰 홈 화면 앱은 Safari와 저장 공간이 달라 시험할 수 없다
+const PASS_PREVIEW_KEY = 'tutoreal.passPreview';
+function passOn() {
+  try { return localStorage.getItem(PASS_PREVIEW_KEY) === '1'; } catch { return false; }
+}
 
 const ERROR_TEXT = {
   INVALID_CODE: '접속 코드가 맞지 않아요.',
@@ -89,7 +95,8 @@ function show(name) {
   document.body.classList.toggle('no-brand', name === 'talk' || name === 'word' || (name === 'drill' && lpOn()));
   document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   if (name === 'list' && chapters.length) renderList();   // 대화·문장 연습을 하고 돌아오면 진행 상황(79단계)을 새로 센다
-  if (name === 'detail') renderPath();   // 학습 단계 목록도 돌아올 때마다 새로 센다 (107단계)
+  if (name === 'detail') renderPath();
+  if (name === 'login') renderLoginLook();   // 123단계: 출입증 또는 예전 카드   // 학습 단계 목록도 돌아올 때마다 새로 센다 (107단계)
   window.scrollTo(0, 0);
 }
 
@@ -119,13 +126,34 @@ function escapeHtml(s) {
 
 /* ── 접속 코드 ── */
 
+/** 로그인 안내 줄: 예전 화면은 빈칸, 출입증은 늘 안내 문구 자리를 두고 글만 바꾼다 (출입증 높이 고정) */
+const PASS_HINT = '코드는 선생님께 받은 그대로 입력해 주세요.';
+function setLoginMsg(text) {
+  $('#login-msg').textContent = text;
+  $('#pass-msg-text').textContent = text || PASS_HINT;
+}
+
+/** 로그인 화면 모습 (123단계): 미리 보기 기기면 출입증, 아니면 예전 카드. 띠의 날짜는 오늘 ('11.25 WED') */
+const PASS_DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+function renderLoginLook() {
+  const on = passOn();
+  $('#login-form').hidden = on;
+  $('#pass-screen').hidden = !on;
+  if (!on) return;
+  const d = new Date();
+  $('#pass-stamp').textContent = `${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} ${PASS_DAYS[d.getDay()]}`;
+}
+
 async function enter(code) {
-  const submit = $('#login-submit');
+  const pass = passOn();
+  const submit = pass ? $('#pass-submit') : $('#login-submit');
   submit.disabled = true;
   submit.textContent = '확인 중…';
-  $('#login-msg').textContent = '';
+  setLoginMsg('');
   try {
     const { name, role, avatar, course, server } = await login(code);
+    // 123단계: 선생님·테스터 코드로 들어오면 이 기기는 다음부터 출입증 화면 (미리 보기)
+    if (role === 'teacher' || role === 'tester') { try { localStorage.setItem(PASS_PREVIEW_KEY, '1'); } catch { /* 괜찮음 */ } }
     saveCode(code);
     me.name = name;
     me.avatar = avatar;
@@ -138,11 +166,11 @@ async function enter(code) {
   } catch (err) {
     console.warn(err);
     if (err.message === 'INVALID_CODE') saveCode('');
-    $('#login-msg').textContent = errorText(err);
+    setLoginMsg(errorText(err));
     show('login');
   } finally {
     submit.disabled = false;
-    submit.textContent = '로그인';
+    submit.textContent = pass ? '체크인' : '로그인';
   }
 }
 
@@ -154,9 +182,10 @@ function logout() {
   classChapterId = '';
   $('#continue-box').innerHTML = '';   // 이어서 하기 카드도 다음 사람의 챕터를 받은 뒤 다시 그린다 (109단계)
   $('#login-code').value = '';
-  $('#login-msg').textContent = '';
+  $('#pass-code').value = '';
+  setLoginMsg('');
   show('login');
-  $('#login-code').focus();
+  (passOn() ? $('#pass-code') : $('#login-code')).focus();
 }
 
 /* ── 챕터 ── */
@@ -2831,15 +2860,13 @@ function nextTheme() {
 
 /* ── 시작 ── */
 
-$('#login-form').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const code = $('#login-code').value.trim();
-  if (!code) {
-    $('#login-msg').textContent = '접속 코드를 입력해 주세요.';
-    return;
-  }
+function submitCode(input) {
+  const code = input.value.trim();
+  if (!code) { setLoginMsg('접속 코드를 입력해 주세요.'); return; }
   enter(code);
-});
+}
+$('#login-form').addEventListener('submit', (e) => { e.preventDefault(); submitCode($('#login-code')); });
+$('#pass-form').addEventListener('submit', (e) => { e.preventDefault(); submitCode($('#pass-code')); });   // 123단계 출입증
 // 아래쪽 탭 바
 const TAB_ACTION = {
   list: () => show('list'), history: openHistory, avatar: openAvatarPicker,
@@ -3429,9 +3456,13 @@ loadAvatars().then(renderMe);
 show('login');
 // 저장된 코드는 입력칸에 채워 두기만 한다. '다음부터 자동 로그인'을 체크한 사람만 바로 들어간다.
 const saved = loadCode();
-$('#auto-login').checked = loadAuto();
-$('#auto-login').addEventListener('change', (e) => saveAuto(e.target.checked));
+// 예전 카드와 출입증의 체크박스는 같은 설정 (124단계에서 출입증의 접속 코드 저장 규칙을 따로 정한다)
+const syncAuto = (on) => { saveAuto(on); $('#auto-login').checked = on; $('#pass-auto').checked = on; };
+syncAuto(loadAuto());
+$('#auto-login').addEventListener('change', (e) => syncAuto(e.target.checked));
+$('#pass-auto').addEventListener('change', (e) => syncAuto(e.target.checked));
 if (saved) {
   $('#login-code').value = saved;
+  $('#pass-code').value = saved;
   if (loadAuto()) enter(saved);
 }

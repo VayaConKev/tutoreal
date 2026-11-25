@@ -1014,3 +1014,12 @@
 - setup이 students 탭에 badge_dept · badge_role · badge_no 칸, settings에 next_class_chapter 줄(빈칸)을 더한다
 - 시험 test122 추가, test102는 setup이 더하는 설정 줄에 next_class_chapter를 허용하도록 손질
 - 배포: Code.gs 붙여 넣기 → 저장 → 새 버전 배포 → setup() 실행
+
+## v1.28 (2026-11-25)
+- 123단계: 출입증 체크인 화면의 뼈대와 첫 방문 상태 (의도 문서 intent/2026-11-25-login-badge.md, 디자인 docs/design/tutoreal-login-badge-final.html). 미리 보기 기기만
+- 미리 보기: 이 기기에서 선생님·테스터 코드로 한 번 들어오면(예전 화면이든 새 화면이든) 다음부터 로그인 화면이 출입증으로 바뀐다 (기기에 tutoreal.passPreview). 학생 기기는 128단계 전까지 예전 화면 그대로
+- 화면: 제목 '오늘의 3분, 체크인'과 부제, 목걸이 줄·클립, 출입증(띠 TUTOREAL PASS와 오늘 날짜 '11.25 WED', 사진 자리, TUTOREAL MEMBERS · NEW MEMBER · '선생님께 받은 코드로 시작해요', PASS CODE 입력칸, 안내 '코드는 선생님께 받은 그대로 입력해 주세요.', 하단 로고와 SINCE ———— · No. ———), 아래 '다음부터 자동 체크인'과 '체크인' 버튼
+- 출입증 높이는 420px 고정, 안내 문구 자리를 늘 둔다 (빈 코드로 눌러 '접속 코드를 입력해 주세요.'가 떠도 높이 그대로). 출입증 안은 다크 모드에서도 라이트 색, 바깥의 제목·목걸이 줄·버튼만 다크 색
+- 체크인 동작은 예전 로그인과 같다 (자동 체크인 체크는 예전 '자동 로그인'과 같은 설정, 코드 오류·서버 지연 모습은 125단계, 성공 화면은 126단계)
+- 고정폭 글꼴은 JetBrains Mono 파일을 넣기 전까지 기기의 고정폭 글꼴 (ui-monospace, Menlo 등)
+- 서버는 그대로 (v0.72)
