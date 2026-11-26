@@ -524,6 +524,8 @@ function openChapter(id) {
   // 세 번째 칸이 있으면 그 아래에 읽기 (py, 예: 일본어 과정의 로마자, 98단계)
   const list = c.checklist || [];
   $('#detail-checklist-box').hidden = !list.length;
+  // 접기 줄 이름 (v1.37): 안에 무엇이 있는지 그대로. 체크리스트가 있는 챕터는 체크리스트까지
+  $('#detail-more-label').textContent = list.length ? '목표·단어·체크리스트 보기' : '목표·핵심 단어 보기';
   currentChapter = c;
   $('#detail-checklist').innerHTML = list.map((item) => `<li>
     <span class="ck-ko">${escapeHtml(item.text)}${checklistTags(item)}</span>
@@ -546,7 +548,7 @@ const PATH_INFO = {
   korean: { name: '통째로 말하기', desc: '한국어만 보고 말해요' },
   script: { name: '대본 보며 대화', desc: '화면의 대사를 읽기만 해도 돼요' },
   cue: { name: '큐카드 보며 대화', desc: '한국어 키워드만 보고 말해요' },
-  free: { name: '자유 대화', desc: '힌트 버튼만 있어요' }
+  free: { name: '자유 대화', desc: '대사 없이 내 말로 말해요' }
 };
 const TALK_MINUTES = 3;
 const drillMinutes = (n) => Math.max(1, Math.ceil(n * 20 / 60));

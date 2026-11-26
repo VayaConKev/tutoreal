@@ -117,9 +117,9 @@
       <div class="card">
         <p class="eyebrow" id="detail-no"></p>
         <h3 id="detail-title"></h3>
-        <!-- 학습 단계 유도 (107단계): 켜진 사람은 목표·핵심 단어·체크리스트를 '챕터 내용 보기'로 접는다. 꺼진 사람은 늘 펼친 채 (제목 줄 숨김) -->
+        <!-- 학습 단계 유도 (107단계): 켜진 사람은 목표·핵심 단어·체크리스트를 접는다 (v1.37: 줄 이름 '목표·핵심 단어 보기', 체크리스트가 있으면 '목표·단어·체크리스트 보기'). 꺼진 사람은 늘 펼친 채 (제목 줄 숨김) -->
         <details class="detail-more" id="detail-more" open>
-          <summary>챕터 내용 보기<svg class="sum-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
+          <summary><span id="detail-more-label">목표·핵심 단어 보기</span><svg class="sum-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
           <p class="goal" id="detail-goal"></p>
           <h2>핵심 단어</h2>
           <div class="chips" id="detail-keywords"></div>
