@@ -722,7 +722,7 @@ function renderPath() {
   const row = (r) => {
     const now = r.stage === next.stage && !next.again;
     return `<button type="button" class="path-row${now ? ' now' : ''}${r.done ? ' done' : ''}" data-stage="${r.stage}"${r.group !== undefined ? ` data-group="${escapeHtml(r.group)}"` : ''}>
-      <span class="path-dot" aria-hidden="true">${r.done ? '✓' : r.no}</span>
+      <span class="path-dot" aria-hidden="true">${r.done ? CHECK_SVG : r.no}</span>
       <span class="path-text"><span class="path-name">${PATH_INFO[r.stage].name}</span><span class="path-sub">${escapeHtml(r.sub)}</span></span>
       <span class="visually-hidden">${r.done ? '완료' : now ? '지금 할 단계' : ''}</span>
     </button>`;

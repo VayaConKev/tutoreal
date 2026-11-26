@@ -134,7 +134,7 @@ h2.page-title { font-size: 22px; color: var(--text); font-weight: 800; letter-sp
 .chip { background: var(--teal-soft); color: var(--teal-ink); border-radius: 999px; padding: 4px 10px; font-size: 14px; }
 /* 핵심 단어 발음 듣기 (56단계): 칩 앞의 작은 스피커, 읽는 동안 진하게 */
 .chip-say { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 6px 12px; border: 0; font: inherit; font-size: 14px; cursor: pointer; }   /* 85단계: 높이 30→36px (누르기 쉽게) */
-.chip-say .say-icon { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.chip-say .say-icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .chip-say.speaking { background: var(--teal); color: var(--on-accent); }
 
 button.primary, button.secondary {
@@ -448,7 +448,7 @@ textarea {
    문장 연습이 있으면 [문장 연습 | 대화 시작] 두 칸, 없으면 대화 시작 한 칸 */
 .detail-actions {
   position: sticky; bottom: calc(68px + env(safe-area-inset-bottom, 0px)); z-index: 5; display: flex; gap: 8px;
-  margin: 12px -16px 0; padding: 10px 16px 12px; background: var(--bg);
+  margin: 12px -16px 0; padding: 12px 16px; background: var(--bg);
 }
 .detail-actions::before { content: ""; position: absolute; left: 0; right: 0; top: -16px; height: 16px; background: linear-gradient(to bottom, transparent, var(--bg)); pointer-events: none; }
 .detail-actions button { margin-top: 0; }
@@ -859,16 +859,18 @@ button.wx-link { display: block; width: auto; margin: 10px auto 0; }
 
 /* 챕터 화면 학습 단계 6개 (107단계, UI 예시 ②): 단계 카드, 동그라미, 지금 단계 남색, 아래 '다음 단계' 두 줄 버튼, 챕터 내용 접기 */
 #view-detail:not(.lp) .detail-more > summary { display: none; }
-.detail-more > summary { cursor: pointer; color: var(--accent); font-weight: 700; font-size: 15px; min-height: 44px; display: flex; align-items: center; list-style: none; }
+/* v1.35 (107단계 손질): 주 색은 지금 단계와 '다음 단계' 버튼에만. 뒤로 가기·장 번호는 흐린 글자, 접기 줄은 본문 색 */
+.detail-more > summary { cursor: pointer; color: var(--text); font-weight: 700; font-size: 15px; min-height: 44px; display: flex; align-items: center; list-style: none; }
 .detail-more > summary::-webkit-details-marker { display: none; }
-.detail-more > summary::after { content: '▾'; margin-left: 6px; }
-.detail-more[open] > summary::after { content: '▴'; }
+.sum-icon { width: 16px; height: 16px; margin-left: 4px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.detail-more[open] > summary .sum-icon { transform: rotate(180deg); }
+#view-detail.lp #back, #view-detail.lp #detail-no { color: var(--muted); }
 #view-detail.lp .detail-mic { display: none; }
-.path-card { padding: 14px 16px; }
+.path-card { padding: 16px 20px; margin-top: 12px; }   /* v1.35: 위 카드와 12px 띄우고, 좌우는 위 카드(20px)와 같게 */
 .path-card[hidden] { display: none; }
-.path-label { font-size: 13px; font-weight: 700; color: var(--muted); margin: 0 0 2px; }
-.path-hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0 10px; }
-.path-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 6px 0; background: none; border: 0;
+.path-label { font-size: 13px; font-weight: 700; color: var(--muted); margin: 0 0 4px; }
+.path-hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0 12px; }
+.path-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 4px 0; background: none; border: 0;
   font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .path-dot { flex: none; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   font-size: 14px; font-weight: 800; background: var(--card); color: var(--muted); border: 1.5px solid var(--line); }
@@ -879,6 +881,7 @@ button.wx-link { display: block; width: auto; margin: 10px auto 0; }
 .path-row.now .path-name { color: var(--accent); font-weight: 800; }
 .path-sub { font-size: 12px; color: var(--muted); }
 .path-next { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 8px 14px; min-height: 56px; }
+.detail-actions .path-next { padding: 8px 16px; }   /* v1.35: button.primary의 14px에 덮이지 않게 */
 .path-next[hidden] { display: none; }
 .path-next-top { font-size: 12px; font-weight: 400; opacity: 1; color: var(--on-accent); }
 .path-next-main { font-size: 17px; font-weight: 800; }
