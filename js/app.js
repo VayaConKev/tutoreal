@@ -874,7 +874,7 @@ function addText(who, text) {
     line.entry = { who, text: '' };
     transcript.lines.push(line.entry);
     transcript[who] = line;
-    line.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    line.scrollIntoView({ block: 'nearest', behavior: reduceMotion() ? 'auto' : 'smooth' });
   }
   line.querySelector('.text').textContent += text;
   line.entry.text += text;
@@ -1216,7 +1216,7 @@ function endedTalk(reason, info, t) {
   setTalkBar(t.mode ? 'after' : 'off', !spoke);
   $('#talk-next').hidden = !spoke;
   $('#talk-back').hidden = spoke || !!t.mode;   // 119단계: 모드 대화는 머리줄 '‹ N장'으로 돌아간다
-  $('#talk-status').scrollIntoView({ block: 'center', behavior: 'smooth' });   // 아래로 내려가 있어도 끝난 문구가 보이게
+  $('#talk-status').scrollIntoView({ block: 'center', behavior: reduceMotion() ? 'auto' : 'smooth' });   // 아래로 내려가 있어도 끝난 문구가 보이게
 }
 
 /* ── 대화 후 화면: 1/4 자기 평가 → 2/4 어려웠던 부분 고르기 → 3/4 공유 선택 → 4/4 피드백 (31단계) ──
@@ -1415,7 +1415,7 @@ document.addEventListener('click', (ev) => {
   if (!a) return;
   const c = a.parentElement.previousElementSibling;
   const slide = c.querySelector('.fb-slide');
-  if (slide) c.scrollBy({ left: Number(a.dataset.step) * (slide.offsetWidth + 10), behavior: 'smooth' });
+  if (slide) c.scrollBy({ left: Number(a.dataset.step) * (slide.offsetWidth + 10), behavior: reduceMotion() ? 'auto' : 'smooth' });
 });
 
 /**
@@ -2221,7 +2221,7 @@ function setRecordTab(tab, animate = true) {
   fitPagerHeight();
   // 아래로 내려가 있었으면 탭이 보이도록 올린다 (다른 쪽의 맨 위부터 보게)
   const tabs = $('#record-tabs');
-  if (animate && tabs.getBoundingClientRect().top < 0) tabs.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  if (animate && tabs.getBoundingClientRect().top < 0) tabs.scrollIntoView({ block: 'start', behavior: reduceMotion() ? 'auto' : 'smooth' });   // v1.40: '동작 줄이기'면 바로
 }
 // 내용이 늦게 채워지거나(피드백 받기) 접기를 펼치면 높이가 바뀐다
 if (window.ResizeObserver) {

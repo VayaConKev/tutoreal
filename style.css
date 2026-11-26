@@ -52,7 +52,7 @@ body.no-brand header { display: none; }
 body.no-brand .wrap { padding-top: max(14px, env(safe-area-inset-top, 0px)); }
 /* 라이트/다크 전환 버튼 */
 .theme-btn {
-  display: flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 999px; cursor: pointer;
+  display: flex; align-items: center; gap: 4px; min-height: 44px; padding: 6px 12px; border-radius: 999px; cursor: pointer;   /* v1.40: 높이 34 → 44px */
   border: 1px solid var(--line); background: var(--card); color: var(--muted); font: inherit; font-size: 13px;
 }
 .theme-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -118,7 +118,7 @@ h2.page-title { font-size: 22px; color: var(--text); font-weight: 800; letter-sp
 .goal-list li { margin: 0; }
 .chapter-goal .goal-list { font-size: 14px; }
 #detail-goal .goal-list { margin: 0; }
-.auto-login { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 15px; margin: -4px 0 12px; cursor: pointer; }
+.auto-login { display: flex; align-items: center; gap: 8px; min-height: 44px; color: var(--muted); font-size: 15px; margin: -12px 0 4px; cursor: pointer; }   /* v1.40: 누르는 높이 23 → 44px (바깥 여백을 줄여 자리는 비슷하게) */
 .auto-login input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
 .chevron { color: var(--muted); font-size: 24px; }
 
@@ -135,7 +135,7 @@ h2.page-title { font-size: 22px; color: var(--text); font-weight: 800; letter-sp
 /* 핵심 단어 발음 듣기 (56단계): 칩 앞의 작은 스피커, 읽는 동안 진하게 */
 .chip-say { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 6px 12px; border: 0; font: inherit; font-size: 14px; cursor: pointer; }   /* 85단계: 높이 30→36px (누르기 쉽게) */
 .chip-say .say-icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.chip-say.speaking { background: var(--teal); color: var(--on-accent); }
+.chip-say.speaking { background: var(--teal-ink); color: var(--on-accent); }   /* v1.40: --teal 위 흰 글자는 2.5:1 → --teal-ink 5.5:1 (다크 8.4:1) */
 
 button.primary, button.secondary {
   width: 100%; border: 0; border-radius: 12px; padding: 14px; font: inherit; font-weight: 700; cursor: pointer;
@@ -151,7 +151,7 @@ button.secondary { background: var(--accent-soft); color: var(--accent); margin-
 /* 뒤로 가기 아이콘 (v1.39): 글자 기호 '‹' 대신 선 아이콘. 글자 색을 따르고, 왼쪽 빈 곳을 당겨 예전 '‹ ' 자리와 폭을 비슷하게 */
 .back-icon { flex: none; width: 16px; height: 16px; margin: 0 2px 0 -4px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 input[type="text"] {
-  width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px;
+  width: 100%; border: 1px solid var(--muted); border-radius: 12px; padding: 14px; margin-bottom: 12px;   /* v1.40: 입력칸 테두리 대비 1.3:1 → 5:1 */
   background: var(--bg); color: var(--text); font: inherit; font-size: 17px;
 }
 input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -238,7 +238,7 @@ button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline:
 .face.selected { border: 2px solid var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 700; }
 .field-label { display: block; color: var(--muted); font-size: 14px; margin-bottom: 6px; }
 textarea {
-  width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 12px; resize: vertical;
+  width: 100%; border: 1px solid var(--muted); border-radius: 12px; padding: 12px; resize: vertical;   /* v1.40: 대비 */
   background: var(--bg); color: var(--text); font: inherit; font-size: 16px;
 }
 .fb-summary { font-size: 17px; font-weight: 700; margin: 0; }
@@ -260,8 +260,10 @@ textarea {
 .fb-better-row > span:first-child { font-weight: 700; }
 /* 발음 듣기 버튼 (61단계) */
 .say-btn { flex: none; width: 32px; height: 32px; margin: -4px -4px -4px 0; border: 0; border-radius: 50%; background: transparent; color: var(--teal-ink); display: grid; place-items: center; cursor: pointer; }
+.say-btn { position: relative; }
+.say-btn::after { content: ''; position: absolute; inset: -6px; }   /* v1.40: 보이는 크기 32px 그대로, 누르는 곳은 44px */
 .say-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.say-btn.speaking { background: var(--teal); color: var(--on-accent); }
+.say-btn.speaking { background: var(--teal-ink); color: var(--on-accent); }   /* v1.40: 대비 */
 /* 체크리스트 접기 (61단계) */
 .fb-more { margin-top: 8px; }
 /* 더 좋은 표현 카드 넘기기 (62단계): 한 장씩 멈추고, 다음 장이 오른쪽에 살짝 보인다. 스크롤바는 숨김 */
@@ -273,7 +275,7 @@ textarea {
 .fb-dots { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 10px; }
 .fb-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: background .2s, width .2s; }
 .fb-dot.on { width: 18px; border-radius: 4px; background: var(--accent); }
-.fb-arrow { border: 0; background: none; color: var(--muted); font: inherit; font-size: 20px; line-height: 1; padding: 0 8px; cursor: pointer; }
+.fb-arrow { min-width: 44px; min-height: 44px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 20px; line-height: 1; padding: 0 8px; cursor: pointer; }   /* v1.40: 24×20 → 44×44px */
 .fb-more summary { cursor: pointer; color: var(--accent); font-size: 14px; font-weight: 600; padding: 6px 0; list-style: none; }
 .fb-more summary::-webkit-details-marker { display: none; }
 .fb-more summary::after { content: " ▾"; }
@@ -527,7 +529,7 @@ textarea {
 #view-drill.chunk-done #drill-count, #view-drill.chunk-done #drill-progress { display: none; }
 #view-drill.chunk-done .drill-card { background: none; border: 0; padding: 28px 0 0; min-height: 0; text-align: center; }
 .chunk-check { display: flex; align-items: center; justify-content: center; width: 84px; height: 84px; margin: 0 auto 14px;
-  border-radius: 50%; background: var(--teal); }
+  border-radius: 50%; background: var(--teal-ink); }   /* v1.40: 흰 ✓ 대비 2.5:1 → 5.5:1 */
 .chunk-check svg { width: 44px; height: 44px; fill: none; stroke: var(--on-accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 .chunk-title { font-size: 24px; font-weight: 800; margin: 0 0 8px; }
 .chunk-sub { color: var(--muted); font-size: 15px; line-height: 1.6; margin: 0; }
@@ -621,6 +623,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 .continue-go { margin-top: 4px; min-height: 48px; border: 0; border-radius: 14px; background: var(--card); color: var(--accent);
   font: inherit; font-size: 16px; font-weight: 800; cursor: pointer; }
 .continue-go:active { transform: scale(0.99); }
+.continue-card .continue-go:focus-visible { outline-color: var(--on-accent); }   /* v1.40: 주 색 카드 안에서는 포커스 테두리를 카드 위 글자 색으로 (주 색이면 안 보임) */
 .continue-card { cursor: pointer; -webkit-tap-highlight-color: transparent; }   /* 120단계: 카드 전체를 누를 수 있다 */
 .continue-card:active { transform: scale(0.995); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .continue-bar { background: rgba(4, 34, 63, 0.2); } :root:not([data-theme="light"]) { --continue-fill: var(--on-accent); } }
@@ -806,8 +809,10 @@ button.wx-link { display: block; width: auto; margin: 10px auto 0; }
 .talk-bar .talk-bar-back, #view-drill.learn-bar #drill-back { margin: 0 0 0 -12px; flex: none; font-weight: 700; }
 .talk-bar-title, .drill-bar-title { flex: 1; min-width: 0; margin: 0; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .talk-quit-wrap { position: relative; flex: none; margin-left: auto; }
+.talk-quit { position: relative; }
+.talk-quit::after { content: ''; position: absolute; inset: -4px 0; }   /* v1.40: 보이는 높이 36px 그대로, 누르는 곳은 44px */
 .talk-quit {
-  min-height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--danger-soft); color: var(--danger);
+  min-height: 36px; padding: 0 16px; border: 1px solid var(--danger); border-radius: 999px; background: var(--card); color: var(--danger);   /* v1.40: 연한 빨강 바탕 4.4:1 → 카드 바탕 5.1:1 */
   font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
 }
 .talk-quit.armed { background: var(--danger); color: var(--on-danger); }
