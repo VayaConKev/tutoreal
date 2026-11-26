@@ -732,7 +732,7 @@ function renderPath() {
   $('#path-card').querySelectorAll('.path-row').forEach((b) => b.addEventListener('click', () => goPathStage(b.dataset.stage, b.dataset.group)));
   // 다음 단계 버튼 (UI 예시): 위 '다음 단계 · 약 N분', 아래 '단계 이름 · 묶음 이름'
   const where = DRILL_STAGES.includes(next.stage) && many ? ` · ${groupLabel(next.group)} 묶음` : '';
-  const short = { read: '따라 읽기', blank: '빈칸 채우기', korean: '통째로 말하기', script: '대본 보며 대화', cue: '큐카드 보며 대화', free: '자유 대화' }[next.stage];
+  const short = { read: '듣고 따라 읽기', blank: '빈칸 채우기', korean: '통째로 말하기', script: '대본 보며 대화', cue: '큐카드 보며 대화', free: '자유 대화' }[next.stage];
   $('#path-next').innerHTML = `<span class="path-next-top">${next.again ? '모든 단계 완료 · 약' : '다음 단계 · 약'} ${next.min}분</span>
     <span class="path-next-main">${short}${where}${next.again ? ' · 한 번 더' : ''}</span>`;
   $('#path-next').onclick = () => goPathStage(next.stage, next.group);
