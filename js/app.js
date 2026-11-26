@@ -229,6 +229,12 @@ function recordPassDay(d) {
 const CHECK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 // 뒤로 가기 아이콘 (v1.39): index.html의 뒤로 가기 버튼들과 같은 모양 (style.css .back-icon)
 const BACK_ICON = '<svg class="back-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>';
+// 넘기기·들어가기 화살표 (v1.42): 글자 기호 ‹ › 대신 선 아이콘 (style.css .chev-icon). 목록 줄 끝 ›, 선생님 표의 ›, 피드백 넘기기 ‹ ›
+const NEXT_ICON = '<svg class="chev-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+const PREV_ICON = '<svg class="chev-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>';
+// 펼치기·접기 화살표 (v1.42): 글자 ▾▴ 대신 챕터 화면 접기 줄과 같은 선 아이콘 (style.css .sum-icon, 접기는 .up으로 뒤집음)
+const SUM_ICON = '<svg class="sum-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+const SUM_ICON_UP = '<svg class="sum-icon up" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 function renderPassWeek(today) {
   const days = loadPassDays();
   const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
@@ -498,7 +504,7 @@ function renderList() {
         <span class="chapter-goal">${goalHtml(c.goal)}</span>
         ${progressHtml(p)}
       </span>
-      <span class="chevron" aria-hidden="true">›</span>
+      <span class="chevron" aria-hidden="true">${NEXT_ICON}</span>
     </button>`;
   }).join('');
   box.querySelectorAll('.chapter').forEach((btn) => {
@@ -1078,7 +1084,7 @@ function renderTalkCard() {
   const body = view === 'script'
     ? `<p class="talk-card-line" lang="${courseNow() === 'ja' ? 'ja' : 'en'}">${escapeHtml(l.nurse)}</p><p class="talk-card-sub">${escapeHtml(l.cue)}</p>`
     : `<p class="talk-card-line">${escapeHtml(l.cue)}</p>`;
-  const all = view === 'script' ? `<button class="link talk-card-all" id="talk-card-all" aria-expanded="${talkUi.expanded}">${talkUi.expanded ? '대본 접기 ▴' : '대본 전체 보기 ▾'}</button>
+  const all = view === 'script' ? `<button class="link talk-card-all" id="talk-card-all" aria-expanded="${talkUi.expanded}">${talkUi.expanded ? `대본 접기${SUM_ICON_UP}` : `대본 전체 보기${SUM_ICON}`}</button>
     ${talkUi.expanded ? `<ol class="talk-script">${lines.map((x, k) => `<li><button type="button" class="talk-script-line${k === i ? ' now' : ''}" data-i="${k}">
       <span class="who">나</span><span lang="${courseNow() === 'ja' ? 'ja' : 'en'}">${escapeHtml(x.nurse)}</span>
       ${x.answer ? `<span class="who">${partnerWord()}</span><span class="ans">${escapeHtml(x.answer)}</span>` : ''}</button></li>`).join('')}</ol>` : ''}` : '';
@@ -1326,7 +1332,7 @@ function checklistHtml(list, gentle) {
   return `<div class="fb-block fb-checklist">
     <p class="fb-title">안내 체크리스트 ${doneN} / ${required.length}${open.length ? '' : ' <span class="all-done">모두 했어요 ✓</span>'}</p>
     ${open.length ? `<ul class="fb-check">${open.map(item).join('')}</ul>` : ''}
-    ${rest.length ? `<details class="fb-more"><summary>${restLabel}</summary><ul class="fb-check">${rest.map(item).join('')}</ul></details>` : ''}
+    ${rest.length ? `<details class="fb-more"><summary>${restLabel}${SUM_ICON}</summary><ul class="fb-check">${rest.map(item).join('')}</ul></details>` : ''}
   </div>`;
 }
 
@@ -1405,9 +1411,9 @@ function fixCarousel(fixes) {
       ${fixes.map((f, i) => `<div class="fb-slide" aria-label="${i + 1} / ${fixes.length}">${fixCard(f)}</div>`).join('')}
     </div>
     <div class="fb-dots">
-      <button type="button" class="fb-arrow" data-step="-1" aria-label="이전 표현">‹</button>
+      <button type="button" class="fb-arrow" data-step="-1" aria-label="이전 표현">${PREV_ICON}</button>
       ${fixes.map((_, i) => `<span class="fb-dot${i ? '' : ' on'}"></span>`).join('')}
-      <button type="button" class="fb-arrow" data-step="1" aria-label="다음 표현">›</button>
+      <button type="button" class="fb-arrow" data-step="1" aria-label="다음 표현">${NEXT_ICON}</button>
     </div>`;
 }
 const carouselIndex = (c) => {
@@ -2030,7 +2036,7 @@ function openHistory() {
           <span class="record-meta">${escapeHtml(practiceMeta(r.p))}</span>
         </span>
         ${r.p.complete ? '<span class="tag done-tag">✓ 완료</span>' : ''}
-        <span class="chevron" aria-hidden="true">›</span>
+        <span class="chevron" aria-hidden="true">${NEXT_ICON}</span>
       </button>` : (() => { const e = list[r.i]; const i = r.i; return `
       <button class="record" data-i="${i}">
         ${avatarHtml(e)}
@@ -2039,7 +2045,7 @@ function openHistory() {
           <span class="record-meta">${escapeHtml(recordMeta(e))}</span>
         </span>
         <span class="tag${e.shared ? '' : ' private'}">${e.shared ? '공유' : '나만'}</span>
-        <span class="chevron" aria-hidden="true">›</span>
+        <span class="chevron" aria-hidden="true">${NEXT_ICON}</span>
       </button>`; })())).join('');
     box.querySelectorAll('.record').forEach((btn) => {
       btn.addEventListener('click', () => (btn.dataset.p
@@ -2897,7 +2903,7 @@ function renderTeacher() {
       <h3>학생</h3>
       ${s.studentStats.map((st) => `
         <button class="trow" data-student="${escapeHtml(st.student_id)}">
-          <span>${studentAvatar(st.name, st.avatar, 'sm')}${escapeHtml(st.name)} ›</span>
+          <span>${studentAvatar(st.name, st.avatar, 'sm')}${escapeHtml(st.name)}${NEXT_ICON}</span>
           <span class="t-meta">${st.count ? `${st.count}회 ${st.minutes}분 · ${escapeHtml(st.chapters.join(', '))}` : '연습 없음'}</span>
         </button>`).join('')}
     </div>
@@ -2905,7 +2911,7 @@ function renderTeacher() {
       <h3>챕터</h3>
       ${s.chapterStats.map((c) => `
         <button class="trow" data-chapter="${escapeHtml(c.chapter_id)}">
-          <span>${escapeHtml(chapterLabel(c))} ›</span>
+          <span>${escapeHtml(chapterLabel(c))}${NEXT_ICON}</span>
           <span class="t-meta">${c.students}명 · ${c.count}회</span>
         </button>`).join('')}
     </div>`;
@@ -3002,7 +3008,7 @@ async function loadStudentTalks(id, name) {
       const meta = [shortDate(t.at), talkMinutes(t), t.confidence ? CONFIDENCE[t.confidence].split(' ')[0] : '', hard ? `어려운 부분 ${hard}` : '']
         .filter(Boolean).join(' · ');
       return `<button class="trow" data-talk="${i}">
-          <span>${t.chapter_order ? `${escapeHtml(t.chapter_order)}장 · ` : ''}${escapeHtml(t.partner || t.chapter_title)} ›</span>
+          <span>${t.chapter_order ? `${escapeHtml(t.chapter_order)}장 · ` : ''}${escapeHtml(t.partner || t.chapter_title)}${NEXT_ICON}</span>
           <span class="t-meta">${escapeHtml(meta)}</span>
         </button>`;
     }).join('') + (talks.length >= 20 ? '<p class="t-note">최근 20개까지 보여요.</p>' : '')
@@ -3249,14 +3255,14 @@ function renderWordCard() {
   const tag = dailyWord.preview ? ' <span class="opt-tag preview-tag">미리 보기</span>' : '';
   box.innerHTML = st.done
     ? `<button class="word-card done" id="word-card">
-        <span>✓ 오늘의 단어 #${dailyWord.no} · ${st.won ? st.guesses.length : 'X'}/${WORD_TRIES}${st.explain && st.explain.fb ? ' ✍️' : ''}${tag}</span>${fire}<span class="chevron" aria-hidden="true">›</span>
+        <span>✓ 오늘의 단어 #${dailyWord.no} · ${st.won ? st.guesses.length : 'X'}/${WORD_TRIES}${st.explain && st.explain.fb ? ' ✍️' : ''}${tag}</span>${fire}<span class="chevron" aria-hidden="true">${NEXT_ICON}</span>
       </button>`
     : `<button class="word-card" id="word-card">
         <span class="word-card-text">
           <span class="eyebrow">🎮 오늘의 게임</span>
           <span class="word-card-title">오늘의 단어 #${dailyWord.no}${tag}</span>
           <span class="word-card-sub">5글자 영어 단어 맞히기 · 한 판 쉬어 가기</span>
-        </span>${fire}<span class="chevron" aria-hidden="true">›</span>
+        </span>${fire}<span class="chevron" aria-hidden="true">${NEXT_ICON}</span>
       </button>`;
   $('#word-card').addEventListener('click', openWord);
 }

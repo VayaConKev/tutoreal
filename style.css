@@ -120,7 +120,10 @@ h2.page-title { font-size: 22px; color: var(--text); font-weight: 800; letter-sp
 #detail-goal .goal-list { margin: 0; }
 .auto-login { display: flex; align-items: center; gap: 8px; min-height: 44px; color: var(--muted); font-size: 15px; margin: -12px 0 4px; cursor: pointer; }   /* v1.40: 누르는 높이 23 → 44px (바깥 여백을 줄여 자리는 비슷하게) */
 .auto-login input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
-.chevron { color: var(--muted); font-size: 24px; }
+.chevron { flex: none; display: inline-flex; color: var(--muted); }   /* v1.42: 글자 › 대신 선 아이콘 */
+/* 넘기기·들어가기 화살표 (v1.42): 뒤로 가기 아이콘(.back-icon)과 같은 선 굵기 2 */
+.chev-icon { flex: none; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.trow .chev-icon { width: 16px; height: 16px; margin-left: 2px; vertical-align: -3px; color: var(--muted); }   /* 선생님 표: 이름 바로 뒤 작은 화살표 */
 
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
 .eyebrow { color: var(--accent); font-weight: 700; font-size: 14px; margin: 0; }
@@ -275,11 +278,10 @@ textarea {
 .fb-dots { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 10px; }
 .fb-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: background .2s, width .2s; }
 .fb-dot.on { width: 18px; border-radius: 4px; background: var(--accent); }
-.fb-arrow { min-width: 44px; min-height: 44px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 20px; line-height: 1; padding: 0 8px; cursor: pointer; }   /* v1.40: 24×20 → 44×44px */
+.fb-arrow { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; border: 0; background: none; color: var(--muted); font: inherit; padding: 0 8px; cursor: pointer; }   /* v1.40: 24×20 → 44×44px */
 .fb-more summary { cursor: pointer; color: var(--accent); font-size: 14px; font-weight: 600; display: flex; align-items: center; min-height: 44px; padding: 0; list-style: none; }   /* v1.41: 높이 34 → 44px */
 .fb-more summary::-webkit-details-marker { display: none; }
-.fb-more summary::after { content: " ▾"; }
-.fb-more[open] summary::after { content: " ▴"; }
+.fb-more[open] summary .sum-icon { transform: rotate(180deg); }   /* v1.42: 글자 ▾▴ 대신 선 아이콘 (.sum-icon) */
 .fb-more .fb-check { margin-top: 6px; }
 .all-done { color: var(--teal-ink); font-weight: 700; margin-left: 4px; }
 /* 카드 안(4/4 피드백, 선생님 화면)에서는 테두리를 겹치지 않게 가볍게 */
@@ -399,7 +401,7 @@ textarea {
   padding: 12px 14px; margin-bottom: 8px; color: inherit; font: inherit; cursor: pointer;
 }
 .record:active { transform: scale(0.99); background: var(--accent-soft); }   /* 누르는 느낌 (57단계) */
-.record .chevron { font-size: 22px; line-height: 1; margin-left: -4px; }
+.record .chevron { margin-left: -4px; }
 .record-text { flex: 1; min-width: 0; }
 /* 백업 권하기 (57단계) */
 .backup-nudge { background: var(--teal-soft); border: 1px solid var(--teal); border-radius: var(--radius); padding: 12px 14px; margin: 0 0 12px; }
@@ -870,7 +872,7 @@ button.wx-link { display: block; width: auto; margin: 10px auto 0; }
 .detail-more > summary { cursor: pointer; color: var(--text); font-weight: 600; font-size: 15px; min-height: 44px; display: flex; align-items: center; list-style: none; }
 .detail-more > summary::-webkit-details-marker { display: none; }
 .sum-icon { width: 16px; height: 16px; margin-left: 4px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.detail-more[open] > summary .sum-icon { transform: rotate(180deg); }
+.detail-more[open] > summary .sum-icon, .sum-icon.up { transform: rotate(180deg); }
 #view-detail.lp #back, #view-detail.lp #detail-no { color: var(--muted); }
 #view-detail.lp .detail-mic { display: none; }
 .path-card { padding: 16px 20px; margin-top: 12px; }   /* v1.35: 위 카드와 12px 띄우고, 좌우는 위 카드(20px)와 같게 */
