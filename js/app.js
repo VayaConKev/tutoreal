@@ -109,7 +109,8 @@ function show(name) {
   document.body.classList.toggle('has-tabbar', !!tab);
   // 대화·오늘의 단어 화면은 위쪽 로고 줄을 숨겨 대화 글자와 칸이 더 많이 보이게 한다 (80단계, 78단계에는 작은 휴대폰의 오늘의 단어만)
   // 121단계: 학습 단계 유도가 켜졌으면 문장 연습 화면도 로고 줄을 숨긴다 (로고는 홈 쪽 화면에만)
-  document.body.classList.toggle('no-brand', name === 'talk' || name === 'word' || (name === 'drill' && lpOn()));
+  // v1.38: 학습 단계 유도가 켜졌으면 챕터 화면도 (단계 6개가 작은 휴대폰에서 더 보이게)
+  document.body.classList.toggle('no-brand', name === 'talk' || name === 'word' || ((name === 'drill' || name === 'detail') && lpOn()));
   document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   if (name === 'list' && chapters.length) renderList();   // 대화·문장 연습을 하고 돌아오면 진행 상황(79단계)을 새로 센다
   if (name === 'detail') renderPath();

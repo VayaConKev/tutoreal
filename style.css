@@ -867,6 +867,16 @@ button.wx-link { display: block; width: auto; margin: 10px auto 0; }
 #view-detail.lp #back, #view-detail.lp #detail-no { color: var(--muted); }
 #view-detail.lp .detail-mic { display: none; }
 .path-card { padding: 16px 20px; margin-top: 12px; }   /* v1.35: 위 카드와 12px 띄우고, 좌우는 위 카드(20px)와 같게 */
+/* v1.38 레이아웃: 제목 카드와 단계 카드를 한 장으로 (사이는 가는 선 하나). 제목 카드 위·아래 여백을 줄여 작은 휴대폰에서 단계가 더 보이게.
+   '다음 단계' 버튼은 늘 탭 바 바로 위에 붙인다 (119단계 '대화 시작'과 같은 방식). 로고 줄은 show()에서 숨긴다 */
+#view-detail.lp .detail-head { padding: 16px 20px 0; border-bottom: 0; border-radius: var(--radius) var(--radius) 0 0; }
+#view-detail.lp .detail-head h3 { margin: 2px 0 0; }
+#view-detail.lp .path-card { margin-top: 0; padding-top: 12px; border-radius: 0 0 var(--radius) var(--radius); }
+#view-detail.lp { padding-bottom: 88px; }   /* 붙여 둔 버튼 자리 */
+#view-detail.lp .detail-actions {
+  position: fixed; left: 0; right: 0; bottom: calc(68px + env(safe-area-inset-bottom, 0px)); max-width: 560px; margin: 0 auto;
+  padding: 12px max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px));
+}
 .path-card[hidden] { display: none; }
 /* v1.36: 이 화면 굵기는 400·600·700만. 구역 이름('핵심 단어'·'문장 연습' 등)은 13px 600 흐린 글자 한 가지 */
 .path-label, #view-detail.lp .detail-more h2 { font-size: 13px; font-weight: 600; color: var(--muted); }
