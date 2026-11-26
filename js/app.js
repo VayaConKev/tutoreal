@@ -868,7 +868,18 @@ function addText(who, text) {
       (glossCourse() && who === 'ai' ? '<button class="ko-btn" hidden>뜻 보기</button><span class="ko" hidden></span>' : '');
     if (who === 'ai' && currentChapter.ai_captions === 'tap') {
       line.classList.add('covered');
-      line.addEventListener('click', () => line.classList.remove('covered'), { once: true });
+      // v1.41: 키보드·스위치로도 열 수 있게 (Tab으로 고르고 Enter·Space). 열리면 다시 보통 글로
+      line.tabIndex = 0;
+      line.setAttribute('role', 'button');
+      const onKey = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); reveal(); } };
+      const reveal = () => {
+        line.classList.remove('covered');
+        line.removeAttribute('tabindex');
+        line.removeAttribute('role');
+        line.removeEventListener('keydown', onKey);
+      };
+      line.addEventListener('click', reveal, { once: true });
+      line.addEventListener('keydown', onKey);
     }
     $('#transcript').append(line);
     line.entry = { who, text: '' };
