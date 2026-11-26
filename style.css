@@ -148,6 +148,8 @@ button.secondary { background: var(--accent-soft); color: var(--accent); margin-
   display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; margin: -10px 0 4px -12px;
   background: none; border: 0; color: var(--accent); font: inherit; cursor: pointer;
 }
+/* 뒤로 가기 아이콘 (v1.39): 글자 기호 '‹' 대신 선 아이콘. 글자 색을 따르고, 왼쪽 빈 곳을 당겨 예전 '‹ ' 자리와 폭을 비슷하게 */
+.back-icon { flex: none; width: 16px; height: 16px; margin: 0 2px 0 -4px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 input[type="text"] {
   width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px;
   background: var(--bg); color: var(--text); font: inherit; font-size: 17px;

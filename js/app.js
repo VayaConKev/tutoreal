@@ -227,6 +227,8 @@ function recordPassDay(d) {
   if (!list.includes(key)) { list.push(key); list.sort(); savePassDays(list); }
 }
 const CHECK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+// 뒤로 가기 아이콘 (v1.39): index.html의 뒤로 가기 버튼들과 같은 모양 (style.css .back-icon)
+const BACK_ICON = '<svg class="back-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>';
 function renderPassWeek(today) {
   const days = loadPassDays();
   const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
@@ -1002,7 +1004,7 @@ function setTalkBar(state, canLeave = true) {
   setQuitArmed(false);
   $('#talk-bar').hidden = state === 'off' || !currentChapter;
   if ($('#talk-bar').hidden) return;
-  $('#talk-bar-back').textContent = `‹ ${chapterNum(currentChapter.chapter_id, currentChapter.order)}장`;
+  $('#talk-bar-back').innerHTML = `${BACK_ICON}${escapeHtml(chapterNum(currentChapter.chapter_id, currentChapter.order))}장`;
   $('#talk-bar-title').textContent = currentChapter.title;
   $('#talk-bar-back').hidden = state === 'live' || !canLeave;
   $('#talk-quit').hidden = state !== 'live';
@@ -2451,7 +2453,7 @@ function startDrill() {
   drill.coach = null;
   drill.coachError = '';
   cancelRecording();
-  $('#drill-back').textContent = `‹ ${chapterNum(currentChapter.chapter_id, currentChapter.order)}장`;
+  $('#drill-back').innerHTML = `${BACK_ICON}${escapeHtml(chapterNum(currentChapter.chapter_id, currentChapter.order))}장`;
   $('#view-drill').classList.toggle('learn-bar', lpOn());   // 121단계: 켜졌으면 '‹ N장 | 제목' 머리줄
   $('#drill-bar-title').hidden = !lpOn();
   $('#drill-bar-title').textContent = currentChapter.title;
